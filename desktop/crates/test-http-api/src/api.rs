@@ -185,6 +185,8 @@ pub fn router(shared: Shared) -> Router {
         .route("/check_radicle_cli", post(check_radicle_cli_handler))
         .route("/node_running", post(node_running_handler))
         .route("/repo_count", post(repo_count_handler))
+        .route("/list_known_users", post(list_known_users_handler))
+        .route("/list_repo_labels", post(list_repo_labels_handler))
         .route("/list_repos", post(repo_root_handler))
         .route("/list_repos_summary", post(list_repos_summary_handler))
         .route(
@@ -370,6 +372,19 @@ async fn repo_root_handler(
 async fn repo_count_handler(Ctx(ctx): Ctx) -> impl IntoResponse {
     let repos = ctx.repo_count()?;
     Ok::<_, Error>(Json(repos))
+}
+
+async fn list_known_users_handler(Ctx(ctx): Ctx) -> impl IntoResponse {
+    let users = ctx.list_known_users()?;
+    Ok::<_, Error>(Json(users))
+}
+
+async fn list_repo_labels_handler(
+    Ctx(ctx): Ctx,
+    Json(RepoBody { rid }): Json<RepoBody>,
+) -> impl IntoResponse {
+    let labels = ctx.list_repo_labels(rid)?;
+    Ok::<_, Error>(Json(labels))
 }
 
 async fn list_repos_summary_handler(

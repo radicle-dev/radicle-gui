@@ -32,6 +32,21 @@ pub async fn repo_count(ctx: tauri::State<'_, AppState>) -> Result<types::repo::
 }
 
 #[tauri::command]
+pub async fn list_known_users(
+    ctx: tauri::State<'_, AppState>,
+) -> Result<Vec<types::cobs::Author>, Error> {
+    blocking(ctx, |ctx| ctx.list_known_users()).await
+}
+
+#[tauri::command]
+pub async fn list_repo_labels(
+    ctx: tauri::State<'_, AppState>,
+    rid: RepoId,
+) -> Result<Vec<String>, Error> {
+    blocking(ctx, move |ctx| ctx.list_repo_labels(rid)).await
+}
+
+#[tauri::command]
 pub async fn list_repo_refs(
     ctx: tauri::State<'_, AppState>,
     rid: RepoId,

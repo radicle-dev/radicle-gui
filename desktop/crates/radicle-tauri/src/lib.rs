@@ -133,6 +133,8 @@ pub fn run() {
             repo::repo_commits_by_prefix,
             repo::repo_split_tree_path,
             repo::repo_count,
+            repo::list_known_users,
+            repo::list_repo_labels,
             repo::repo_readme,
             repo::repo_tree,
             repo::repo_blob,

@@ -400,6 +400,107 @@ pub trait Repo: Profile {
         Ok::<_, Error>(entries)
     }
 
+    /// List users known to this node, most active first.
+    ///
+    /// Activity is the number of patches and issues a user authored across the
+    /// repos we seed. Nodes known only from the address book are included with
+    /// zero activity, so the list is as complete as possible.
+    fn list_known_users(&self) -> Result<Vec<cobs::Author>, Error> {
+        use radicle::node::address::Store as AddressStore;
+
+        let profile = self.profile();
+        let aliases = profile.aliases();
+        let policies = profile.policies()?;
+
+        let mut counts: BTreeMap<identity::Did, usize> = BTreeMap::new();
+
+        for RepositoryInfo { rid, .. } in profile.storage.repositories()? {
+            if !policies.is_seeding(&rid)? {
+                continue;
+            }
+            let Ok(repo) = profile.storage.repository(rid) else {
+                continue;
+            };
+            if let Ok(patches) = profile.patches(&repo)
+                && let Ok(list) = patches.list()
+            {
+                for (_, patch) in list.flatten() {
+                    *counts.entry(*patch.author().id()).or_default() += 1;
+                }
+            }
+            if let Ok(issues) = profile.issues(&repo)
+                && let Ok(list) = issues.list()
+            {
+                for (_, issue) in list.flatten() {
+                    *counts.entry(*issue.author().id()).or_default() += 1;
+                }
+            }
+        }
+
+        if let Ok(db) = profile.database()
+            && let Ok(entries) = AddressStore::entries(&db)
+        {
+            for entry in entries {
+                counts.entry(identity::Did::from(entry.node)).or_insert(0);
+            }
+        }
+
+        let mut users: Vec<(usize, cobs::Author)> = counts
+            .into_iter()
+            .map(|(did, count)| (count, cobs::Author::new(&did, &aliases)))
+            .collect();
+        // Most active first; Author's own ordering breaks ties deterministically.
+        users.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+
+        Ok(users.into_iter().map(|(_, author)| author).collect())
+    }
+
+    /// List the distinct labels used across a repo's issues and patches, most
+    /// frequently used first.
+    ///
+    /// Radicle has no project-level label registry, so the project's label
+    /// vocabulary is derived from the labels actually applied to collaborative
+    /// objects. This is shared by construction: every peer computes the same
+    /// list from the same replicated issues and patches.
+    fn list_repo_labels(&self, rid: identity::RepoId) -> Result<Vec<String>, Error> {
+        use radicle::cob::Label;
+
+        let profile = self.profile();
+        let repo = profile.storage.repository(rid)?;
+
+        let mut counts: BTreeMap<Label, usize> = BTreeMap::new();
+        if let Ok(issues) = profile.issues(&repo)
+            && let Ok(list) = issues.list()
+        {
+            for (_, issue) in list.flatten() {
+                for label in issue.labels() {
+                    *counts.entry(label.clone()).or_default() += 1;
+                }
+            }
+        }
+        if let Ok(patches) = profile.patches(&repo)
+            && let Ok(list) = patches.list()
+        {
+            for (_, patch) in list.flatten() {
+                for label in patch.labels() {
+                    *counts.entry(label.clone()).or_default() += 1;
+                }
+            }
+        }
+
+        let mut labels: Vec<(usize, Label)> = counts
+            .into_iter()
+            .map(|(label, count)| (count, label))
+            .collect();
+        // Most used first; ties broken alphabetically for determinism.
+        labels.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+
+        Ok(labels
+            .into_iter()
+            .map(|(_, label)| label.to_string())
+            .collect())
+    }
+
     fn list_repos_summary(&self, show: Show) -> Result<Vec<repo::RepoSummary>, Error> {
         let profile = self.profile();
         let storage = &profile.storage;

@@ -10,6 +10,7 @@
 
   import { nodeRunning } from "@app/lib/events";
   import { invoke } from "@app/lib/invoke";
+  import { show } from "@app/lib/modal";
   import type { ReviewEntry } from "@app/lib/reviewSummary";
   import {
     entriesFromRevisions,
@@ -29,15 +30,18 @@
   } from "@app/lib/utils";
 
   import { announce } from "@app/components/AnnounceSwitch.svelte";
-  import AssigneeInput from "@app/components/AssigneeInput.svelte";
+  import AssigneeChip from "@app/components/AssigneeChip.svelte";
+  import Button from "@app/components/Button.svelte";
   import DropdownList from "@app/components/DropdownList.svelte";
   import DropdownListItem from "@app/components/DropdownListItem.svelte";
   import Icon from "@app/components/Icon.svelte";
   import IdChip from "@app/components/IdChip.svelte";
-  import LabelInput from "@app/components/LabelInput.svelte";
+  import Label from "@app/components/Label.svelte";
   import NodeId from "@app/components/NodeId.svelte";
   import Popover, { closeFocused } from "@app/components/Popover.svelte";
   import UserAvatar from "@app/components/UserAvatar.svelte";
+  import AssigneeModal from "@app/modals/AssigneeModal.svelte";
+  import LabelModal from "@app/modals/LabelModal.svelte";
 
   interface Props {
     config: Config;
@@ -98,12 +102,15 @@
     });
   }
 
-  let labelSaveInProgress: boolean = $state(false);
-  let assigneesSaveInProgress: boolean = $state(false);
+  const canEdit = $derived(
+    !!roles.isDelegate(
+      config.publicKey,
+      repo.delegates.map(delegate => delegate.did),
+    ),
+  );
 
   async function saveLabels(labels: string[]) {
     try {
-      labelSaveInProgress = true;
       await invoke("edit_patch", {
         rid: repo.rid,
         cobId: patch.id,
@@ -116,14 +123,12 @@
     } catch (error) {
       console.error("Editing labels failed", error);
     } finally {
-      labelSaveInProgress = false;
       await loadPatch();
     }
   }
 
   async function saveAssignees(assignees: Author[]) {
     try {
-      assigneesSaveInProgress = true;
       await invoke("edit_patch", {
         rid: repo.rid,
         cobId: patch.id,
@@ -136,9 +141,28 @@
     } catch (error) {
       console.error("Editing assignees failed", error);
     } finally {
-      assigneesSaveInProgress = false;
       await loadPatch();
     }
+  }
+
+  function removeLabel(label: string) {
+    void saveLabels(patch.labels.filter(l => l !== label));
+  }
+  function removeAssignee(did: string) {
+    void saveAssignees(patch.assignees.filter(a => a.did !== did));
+  }
+
+  function openLabels() {
+    show({
+      component: LabelModal,
+      props: { labels: patch.labels, rid: repo.rid, save: saveLabels },
+    });
+  }
+  function openAssignees() {
+    show({
+      component: AssigneeModal,
+      props: { assignees: patch.assignees, save: saveAssignees },
+    });
   }
 
   const targetBranch = $derived(
@@ -322,6 +346,12 @@
     background-color: var(--color-surface-subtle);
     color: var(--color-text-primary);
   }
+  .meta-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
 </style>
 
 <div class="meta-row">
@@ -487,21 +517,35 @@
       {/if}
     </div>
   {/if}
-  <LabelInput
-    allowedToEdit={!!roles.isDelegate(
-      config.publicKey,
-      repo.delegates.map(delegate => delegate.did),
-    )}
-    labels={patch.labels}
-    submitInProgress={labelSaveInProgress}
-    save={saveLabels} />
-  <AssigneeInput
-    delegates={repo.delegates}
-    allowedToEdit={!!roles.isDelegate(
-      config.publicKey,
-      repo.delegates.map(delegate => delegate.did),
-    )}
-    assignees={patch.assignees}
-    submitInProgress={assigneesSaveInProgress}
-    save={saveAssignees} />
+  <div class="meta-group">
+    {#each patch.labels as label (label)}
+      <Label
+        {label}
+        styleHeight="2rem"
+        onRemove={canEdit ? () => removeLabel(label) : undefined} />
+    {/each}
+    <Button
+      variant="outline"
+      disabled={!canEdit}
+      title={canEdit ? undefined : "Only delegates can add labels"}
+      onclick={openLabels}>
+      <Icon name="label" />
+      Add labels
+    </Button>
+  </div>
+  <div class="meta-group">
+    {#each patch.assignees as assignee (assignee.did)}
+      <AssigneeChip
+        {assignee}
+        onRemove={canEdit ? () => removeAssignee(assignee.did) : undefined} />
+    {/each}
+    <Button
+      variant="outline"
+      disabled={!canEdit}
+      title={canEdit ? undefined : "Only delegates can add assignees"}
+      onclick={openAssignees}>
+      <Icon name="avatar-incognito" />
+      Add assignees
+    </Button>
+  </div>
 </div>

@@ -6,14 +6,19 @@
 
   import { nodeRunning } from "@app/lib/events";
   import { invoke } from "@app/lib/invoke";
+  import { show } from "@app/lib/modal";
   import * as roles from "@app/lib/roles";
   import { authorForNodeId } from "@app/lib/utils";
 
   import { announce } from "@app/components/AnnounceSwitch.svelte";
-  import AssigneeInput from "@app/components/AssigneeInput.svelte";
+  import AssigneeChip from "@app/components/AssigneeChip.svelte";
+  import Button from "@app/components/Button.svelte";
+  import Icon from "@app/components/Icon.svelte";
   import IdChip from "@app/components/IdChip.svelte";
-  import LabelInput from "@app/components/LabelInput.svelte";
+  import Label from "@app/components/Label.svelte";
   import NodeId from "@app/components/NodeId.svelte";
+  import AssigneeModal from "@app/modals/AssigneeModal.svelte";
+  import LabelModal from "@app/modals/LabelModal.svelte";
 
   interface Props {
     config: Config;
@@ -31,12 +36,8 @@
     ),
   );
 
-  let labelSaveInProgress: boolean = $state(false);
-  let assigneesSaveInProgress: boolean = $state(false);
-
   async function saveLabels(labels: string[]) {
     try {
-      labelSaveInProgress = true;
       await invoke("edit_issue", {
         rid: repo.rid,
         cobId: issue.id,
@@ -46,14 +47,12 @@
     } catch (error) {
       console.error("Editing labels failed", error);
     } finally {
-      labelSaveInProgress = false;
       await reload();
     }
   }
 
   async function saveAssignees(assignees: Author[]) {
     try {
-      assigneesSaveInProgress = true;
       await invoke("edit_issue", {
         rid: repo.rid,
         cobId: issue.id,
@@ -63,9 +62,28 @@
     } catch (error) {
       console.error("Editing assignees failed", error);
     } finally {
-      assigneesSaveInProgress = false;
       await reload();
     }
+  }
+
+  function removeLabel(label: string) {
+    void saveLabels(issue.labels.filter(l => l !== label));
+  }
+  function removeAssignee(did: string) {
+    void saveAssignees(issue.assignees.filter(a => a.did !== did));
+  }
+
+  function openLabels() {
+    show({
+      component: LabelModal,
+      props: { labels: issue.labels, rid: repo.rid, save: saveLabels },
+    });
+  }
+  function openAssignees() {
+    show({
+      component: AssigneeModal,
+      props: { assignees: issue.assignees, save: saveAssignees },
+    });
   }
 </script>
 
@@ -88,6 +106,12 @@
     color: var(--color-text-tertiary);
     font: var(--txt-body-m-regular);
   }
+  .meta-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
 </style>
 
 <div class="meta-row">
@@ -95,15 +119,37 @@
     <NodeId {...authorForNodeId(issue.author)} />
   </div>
   <IdChip id={issue.id} label="issue ID" />
-  <LabelInput
-    allowedToEdit={isDelegate}
-    labels={issue.labels}
-    submitInProgress={labelSaveInProgress}
-    save={saveLabels} />
-  <AssigneeInput
-    delegates={repo.delegates}
-    allowedToEdit={isDelegate}
-    assignees={issue.assignees}
-    submitInProgress={assigneesSaveInProgress}
-    save={saveAssignees} />
+  <div class="meta-group">
+    {#each issue.labels as label (label)}
+      <Label
+        {label}
+        styleHeight="2rem"
+        onRemove={isDelegate ? () => removeLabel(label) : undefined} />
+    {/each}
+    <Button
+      variant="outline"
+      disabled={!isDelegate}
+      title={isDelegate ? undefined : "Only delegates can add labels"}
+      onclick={openLabels}>
+      <Icon name="label" />
+      Add labels
+    </Button>
+  </div>
+  <div class="meta-group">
+    {#each issue.assignees as assignee (assignee.did)}
+      <AssigneeChip
+        {assignee}
+        onRemove={isDelegate
+          ? () => removeAssignee(assignee.did)
+          : undefined} />
+    {/each}
+    <Button
+      variant="outline"
+      disabled={!isDelegate}
+      title={isDelegate ? undefined : "Only delegates can add assignees"}
+      onclick={openAssignees}>
+      <Icon name="avatar-incognito" />
+      Add assignees
+    </Button>
+  </div>
 </div>

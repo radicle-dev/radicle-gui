@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { cubicOut } from "svelte/easing";
   import { fade } from "svelte/transition";
 
   import { hide, modalStore } from "@app/lib/modal";
@@ -7,6 +8,16 @@
   // Only Tauri drags the window, and outside it the strip would do nothing but
   // swallow the scrim clicks that dismiss the modal.
   const dragRegion = Boolean(window.__TAURI_INTERNALS__);
+
+  // Rise up and scale in on enter; fall back down on exit.
+  function riseFall(_node: Element, { duration = 200 } = {}) {
+    return {
+      duration,
+      easing: cubicOut,
+      css: (t: number, u: number) =>
+        `opacity: ${t}; transform: translateY(${u * 16}px) scale(${0.96 + 0.04 * t});`,
+    };
+  }
 </script>
 
 <style>
@@ -60,7 +71,7 @@
         data-tauri-drag-region>
       </div>
     {/if}
-    <div class="content" data-modal-content>
+    <div class="content" data-modal-content transition:riseFall>
       <svelte:component this={$modalStore.component} {...$modalStore.props} />
     </div>
   </div>
