@@ -7,6 +7,7 @@ const DEFAULT_MEILI_URL: &str = "http://localhost:7700";
 const DEFAULT_INDEX_NAME: &str = "repos";
 const DEFAULT_RESCAN_INTERVAL_SECS: u64 = 3600;
 const DEFAULT_RECONNECT_BACKOFF_SECS: u64 = 5;
+const DEFAULT_BATCH_SECS: u64 = 30;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -15,6 +16,7 @@ pub struct Config {
     pub index_name: String,
     pub rescan_interval: Duration,
     pub reconnect_backoff: Duration,
+    pub batch_interval: Duration,
 }
 
 impl Config {
@@ -32,6 +34,7 @@ impl Config {
             "RADICLE_SEARCH_RECONNECT_BACKOFF_SECS",
             DEFAULT_RECONNECT_BACKOFF_SECS,
         )?;
+        let batch_interval = duration_from_env("RADICLE_SEARCH_BATCH_SECS", DEFAULT_BATCH_SECS)?;
 
         Ok(Self {
             meili_url,
@@ -39,6 +42,7 @@ impl Config {
             index_name,
             rescan_interval,
             reconnect_backoff,
+            batch_interval,
         })
     }
 }

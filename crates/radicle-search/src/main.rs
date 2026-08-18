@@ -23,6 +23,7 @@ Environment
     RADICLE_SEARCH_INDEX_NAME          Meilisearch index name (default: repos)
     RADICLE_SEARCH_RESCAN_SECS         Periodic full rescan interval in seconds (default: 3600)
     RADICLE_SEARCH_RECONNECT_BACKOFF_SECS  Reconnect delay after a dropped event stream (default: 5)
+    RADICLE_SEARCH_BATCH_SECS          Interval for re-indexing repos touched by events (default: 30)
     RAD_HOME, RAD_SOCKET               Standard Radicle paths
     RUST_LOG                           Log level, e.g. RUST_LOG=warn or
                                        RUST_LOG=radicle_search=debug (default: info)

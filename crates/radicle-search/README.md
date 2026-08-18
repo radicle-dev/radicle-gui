@@ -35,9 +35,15 @@ Only public repos this node seeds are indexed.
    `rad node events`) and reacts to:
    - `RefsFetched`, `LocalRefsAnnounced`, `CanonicalRefUpdated`, `RefsSynced`
      → re-index the affected repo.
-   - `SeedDiscovered`, `SeedDropped`, `RefsAnnounced` → re-index only if
-     the rid is one we locally seed (filtered against an in-memory cache,
-     so gossip about repos we don't host is dropped at near-zero cost).
+   - `RefsAnnounced` → re-index only if the rid is one we locally seed
+     (filtered against an in-memory cache, so gossip about repos we don't
+     host is dropped at near-zero cost).
+   - `SeedDiscovered` and `SeedDropped` are ignored; the seeding count they
+     affect is refreshed by the periodic rescan.
+
+   Affected repos are collected and re-indexed together every
+   `RADICLE_SEARCH_BATCH_SECS` (default 30s), so a burst of events for the
+   same repo costs a single re-index.
 3. **Periodic rescan.** Every `RADICLE_SEARCH_RESCAN_SECS` (default 1h)
    as a safety net for missed events.
 
@@ -107,6 +113,7 @@ All via environment variables:
 | `RADICLE_SEARCH_INDEX_NAME` | `repos` | Index name this daemon maintains. |
 | `RADICLE_SEARCH_RESCAN_SECS` | `3600` | Interval between safety-net full rescans. |
 | `RADICLE_SEARCH_RECONNECT_BACKOFF_SECS` | `5` | Delay before reconnecting after an event-stream disconnect. |
+| `RADICLE_SEARCH_BATCH_SECS` | `30` | Interval at which repos touched by node events are re-indexed. |
 | `RAD_HOME` | `~/.radicle` | Standard Radicle profile path. |
 | `RAD_SOCKET` | `$RAD_HOME/node/control.sock` | Standard node control socket. |
 
