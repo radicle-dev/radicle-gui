@@ -375,3 +375,57 @@ describe("safeDecodeURIComponent", () => {
     );
   });
 });
+
+describe("untwemoji", () => {
+  function code(text: string) {
+    const node = document.createElement("code");
+    node.textContent = text;
+    utils.twemoji(node);
+    return node;
+  }
+
+  test("restores emoji turned into images by twemoji", () => {
+    const text =
+      'alert("test"); // ❌\nconfirm("test"); // ❌\nprompt("test"); // ❌\n';
+    const node = code(text);
+    expect(node.querySelectorAll("img.txt-emoji")).toHaveLength(3);
+
+    utils.untwemoji(node);
+    expect(node.querySelector("img")).toBeNull();
+    expect(node.textContent).toEqual(text);
+  });
+
+  test("restores adjacent and multi-codepoint emoji", () => {
+    const text = "❌❌✅ 👩‍💻 👍🏽 🇱🇻";
+    const node = code(text);
+    utils.untwemoji(node);
+    expect(node.querySelector("img")).toBeNull();
+    expect(node.textContent).toEqual(text);
+  });
+
+  test("leaves images that are not emoji alone", () => {
+    const node = document.createElement("code");
+    node.innerHTML = '<img alt="logo" src="logo.png">';
+    utils.untwemoji(node);
+    expect(node.innerHTML).toEqual('<img alt="logo" src="logo.png">');
+  });
+
+  test("inserts alt text as text, never as markup", () => {
+    const node = document.createElement("code");
+    const img = document.createElement("img");
+    img.className = "txt-emoji";
+    img.alt = "<img src=x onerror=alert(1)>";
+    node.append(img);
+
+    utils.untwemoji(node);
+    expect(node.childElementCount).toEqual(0);
+    expect(node.textContent).toEqual("<img src=x onerror=alert(1)>");
+  });
+
+  test("drops emoji images without alt text", () => {
+    const node = document.createElement("code");
+    node.innerHTML = 'a<img class="txt-emoji" src="/twemoji/274c.svg">b';
+    utils.untwemoji(node);
+    expect(node.innerHTML).toEqual("ab");
+  });
+});

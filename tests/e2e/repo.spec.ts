@@ -567,6 +567,35 @@ test.describe("browser error handling", () => {
   });
 });
 
+test("emoji in markdown code blocks", async ({ page }) => {
+  await page.goto(`${markdownUrl}/tree/main/markdown-code.md`);
+
+  const highlighted = page
+    .locator("div.pre-wrapper")
+    .filter({ hasText: "alert" });
+  const highlightedText =
+    'alert("test"); // ❌\nconfirm("test"); // ❌✅\nprompt("test"); // 👩‍💻\n';
+  await expect(highlighted.locator("code .pl-c")).toHaveText([
+    "// ❌",
+    "// ❌✅",
+    "// 👩‍💻",
+  ]);
+  await expect(highlighted.locator("code")).toHaveText(highlightedText);
+  await expect(highlighted.locator("img")).toHaveCount(0);
+  await expect(highlighted.locator("radicle-clipboard")).toHaveAttribute(
+    "text",
+    highlightedText,
+  );
+
+  const plain = page.locator("div.pre-wrapper").filter({ hasText: "plain:" });
+  await expect(plain.locator("code")).toHaveText("plain: ❌ ✅\n");
+  await expect(plain.locator("img")).toHaveCount(0);
+  await expect(plain.locator("radicle-clipboard")).toHaveAttribute(
+    "text",
+    "plain: ❌ ✅\n",
+  );
+});
+
 test("external markdown link", async ({ context, page }) => {
   await context.route("https://example.com/**", route => {
     return route.fulfill({ body: "hello", contentType: "text/plain" });

@@ -315,6 +315,12 @@ export function twemoji(
   });
 }
 
+export function untwemoji(node: Element) {
+  for (const img of node.querySelectorAll("img.txt-emoji")) {
+    img.replaceWith(img.getAttribute("alt") ?? "");
+  }
+}
+
 // Formats COBs Object Ids
 export function formatObjectId(id: string): string {
   return id.substring(0, 7);

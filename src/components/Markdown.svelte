@@ -35,6 +35,7 @@
   import {
     isUrl,
     twemoji,
+    untwemoji,
     scrollIntoView,
     canonicalize,
     canonicalizeGithubImageUrl,
@@ -248,6 +249,7 @@
     for (const node of nodes) {
       const preElement = node.parentElement as HTMLElement;
       const copyButton = document.createElement("radicle-clipboard");
+      untwemoji(node);
       copyButton.setAttribute("text", node.textContent || "");
       // Create a wrapper around the pre element,
       // so we can position the copy button that works even when scrolling horizontally.

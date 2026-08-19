@@ -559,6 +559,21 @@ export async function createMarkdownFixture(peer: RadiclePeer) {
   await Fs.cp(Path.join(tmpDir, "repos", "markdown"), repoFolder, {
     recursive: true,
   });
+  await Fs.writeFile(
+    Path.join(repoFolder, "markdown-code.md"),
+    [
+      "```javascript",
+      'alert("test"); // ❌',
+      'confirm("test"); // ❌✅',
+      'prompt("test"); // 👩‍💻',
+      "```",
+      "",
+      "```",
+      "plain: ❌ ✅",
+      "```",
+      "",
+    ].join("\n"),
+  );
 
   await peer.git(["add", "."], { cwd: repoFolder });
   const commitMessage = `Add Markdown cheat sheet
