@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use axum::body::Body;
 use axum::extract::{Query, State};
@@ -27,10 +27,21 @@ use crate::error::RawError as Error;
 
 const MAX_BLOB_SIZE: usize = 10_485_760;
 
+/// Whether the `zstd` binary that `tar.zst` archives shell out to is in `PATH`.
+static ZSTD_AVAILABLE: LazyLock<bool> = LazyLock::new(|| {
+    std::process::Command::new("zstd")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+});
+
 /// Values for `git archive --format` that we support.
 #[derive(Debug, Default)]
 enum ArchiveFormat {
     Tar,
+    TarZst,
     // NOTE: Even though `git archive` would use `tar` as the default format,
     // we use `tar.gz` as the default format for HTTP responses, to benefit
     // from compression when downloading large repositories. It was also used
@@ -46,6 +57,7 @@ impl ArchiveFormat {
         match self {
             ArchiveFormat::Tar => "tar",
             ArchiveFormat::TarGz => "tar.gz",
+            ArchiveFormat::TarZst => "tar.zst",
             ArchiveFormat::Zip => "zip",
         }
     }
@@ -54,6 +66,7 @@ impl ArchiveFormat {
         match self {
             ArchiveFormat::Tar => ".tar",
             ArchiveFormat::TarGz => ".tar.gz",
+            ArchiveFormat::TarZst => ".tar.zst",
             ArchiveFormat::Zip => ".zip",
         }
     }
@@ -64,6 +77,7 @@ impl ArchiveFormat {
         match self {
             ArchiveFormat::Tar => "application/x-tar",
             ArchiveFormat::TarGz => "application/gzip",
+            ArchiveFormat::TarZst => "application/zstd",
             ArchiveFormat::Zip => "application/zip",
         }
     }
@@ -78,6 +92,8 @@ impl ArchiveFormat {
             (stripped, Some(ArchiveFormat::Tar))
         } else if let Some(stripped) = s.strip_suffix(ArchiveFormat::TarGz.extension()) {
             (stripped, Some(ArchiveFormat::TarGz))
+        } else if let Some(stripped) = s.strip_suffix(ArchiveFormat::TarZst.extension()) {
+            (stripped, Some(ArchiveFormat::TarZst))
         } else if let Some(stripped) = s.strip_suffix(ArchiveFormat::Zip.extension()) {
             (stripped, Some(ArchiveFormat::Zip))
         } else {
@@ -196,6 +212,11 @@ async fn archive_by_committish(
     format: ArchiveFormat,
     profile: Arc<Profile>,
 ) -> Result<Response<Body>, Error> {
+    // Without zstd, git would stream an empty body after a 200 response.
+    if matches!(format, ArchiveFormat::TarZst) && !*ZSTD_AVAILABLE {
+        return Err(Error::NotFound);
+    }
+
     let storage = &profile.storage;
     let repo = storage.repository(rid)?;
 
@@ -264,6 +285,11 @@ async fn archive_by_committish(
     }
 
     let mut command = Command::new("git");
+
+    // Git has no builtin zstd tar format, so we register one.
+    if matches!(format, ArchiveFormat::TarZst) {
+        command.arg("-c").arg("tar.tar.zst.command=zstd");
+    }
 
     command
         .arg("archive")
@@ -390,6 +416,34 @@ mod routes {
 
         let response = get(&app, format!("/{RID_PRIVATE}/head/README")).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_archive_tar_zst() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = test::seed(tmp.path());
+        let app = super::router(ctx.profile().to_owned(), Arc::new(HashMap::new()));
+
+        let response = get(&app, format!("/{RID}/archive/master.tar.zst")).await;
+
+        // Git shells out to zstd for this format.
+        if !*super::ZSTD_AVAILABLE {
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "zstd must be in PATH on CI"
+            );
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            return;
+        }
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("Content-Type").unwrap(),
+            "application/zstd"
+        );
+
+        // zstd magic number.
+        let body = response.body().await;
+        assert_eq!(&body[..4], &[0x28, 0xb5, 0x2f, 0xfd]);
     }
 
     #[tokio::test]

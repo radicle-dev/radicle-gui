@@ -11,6 +11,7 @@ Homepage: https://radicle.dev/
 Package: radicle-httpd
 Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends}, git
+Recommends: zstd
 Description: HTTP API daemon for Radicle peer-to-peer code collaboration
  This package provides a standalone HTTP API service for interacting with
  Radicle's distributed storage and peer-to-peer network. It enables external
