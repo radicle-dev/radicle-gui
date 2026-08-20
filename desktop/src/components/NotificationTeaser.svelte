@@ -13,6 +13,7 @@
     absoluteTimestamp,
     authorForNodeId,
     formatTimestamp,
+    pluralize,
   } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
@@ -29,6 +30,8 @@
     clearByIds: (ids: string[]) => Promise<void>;
     notificationItems: NotificationItem[];
     onExclude?: () => void;
+    /** Newly arrived, so flash where it landed. */
+    pulse?: boolean;
     selected?: boolean;
   }
 
@@ -36,6 +39,7 @@
     clearByIds,
     notificationItems,
     onExclude,
+    pulse = false,
     rid,
     oid,
     kind,
@@ -44,6 +48,16 @@
 
   const uniqueActions = $derived(
     compressActions(notificationActions(notificationItems), kind, oid),
+  );
+
+  // An object with months of unread activity summarizes into dozens of lines,
+  // which would let one notification fill the whole inbox. The rest stay
+  // accounted for in the count rather than being discarded.
+  const maxActionLines = 4;
+
+  const visibleActions = $derived(uniqueActions.slice(0, maxActionLines));
+  const hiddenActionCount = $derived(
+    Math.max(0, uniqueActions.length - maxActionLines),
   );
 
   const title = $derived.by(() => {
@@ -67,7 +81,6 @@
     justify-content: space-between;
     gap: 0.25rem;
     min-height: 5rem;
-    background-color: var(--color-surface-subtle);
     padding: 1rem;
     cursor: pointer;
     font: var(--txt-body-l-regular);
@@ -88,12 +101,35 @@
   .selected {
     background-color: var(--color-surface-mid);
   }
+  /* N.b. the brand fill is used at its mid strength so the text stays
+     readable through the flash. */
+  @keyframes pulse-new {
+    0%,
+    100% {
+      background-color: transparent;
+    }
+    50% {
+      background-color: var(--color-surface-brand-mid);
+    }
+  }
+  .pulse {
+    animation: pulse-new 1s ease-in-out 3;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pulse {
+      animation: none;
+      background-color: var(--color-surface-brand-mid);
+    }
+  }
   .notification-teaser:hover {
-    background-color: var(--color-surface-mid);
+    background-color: var(--color-surface-subtle);
   }
   .status {
     padding: 0;
     margin-right: 1rem;
+  }
+  .more-updates {
+    color: var(--color-text-tertiary);
   }
   .notification-teaser:first-of-type {
     border-radius: var(--border-radius-sm) var(--border-radius-sm) 0 0;
@@ -111,6 +147,7 @@
   tabindex="0"
   role="button"
   class:selected
+  class:pulse
   class="notification-teaser"
   onclick={() => {
     if (route) {
@@ -136,7 +173,7 @@
         <InlineTitle content={title} />
       {/if}
       <div class="txt-body-m-regular" style:width="100%">
-        {#each uniqueActions as action}
+        {#each visibleActions as action}
           <div
             class="global-flex"
             style:gap="0.25rem"
@@ -153,6 +190,11 @@
             </span>
           </div>
         {/each}
+        {#if hiddenActionCount > 0}
+          <div class="more-updates global-flex" style:min-height="2rem">
+            +{hiddenActionCount} older {pluralize("update", hiddenActionCount)}
+          </div>
+        {/if}
       </div>
     </div>
   </div>
@@ -160,7 +202,8 @@
     {#if onExclude}
       <Button
         variant="naked"
-        stylePadding="0 0.25rem"
+        styleWidth="2rem"
+        stylePadding="0"
         title="Exclude from filter results"
         onclick={e => {
           e.stopPropagation();
@@ -171,7 +214,8 @@
     {/if}
     <Button
       variant="naked"
-      stylePadding="0 0.25rem"
+      styleWidth="2rem"
+      stylePadding="0"
       title="Delete"
       onclick={e => {
         e.stopPropagation();

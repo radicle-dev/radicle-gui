@@ -80,6 +80,7 @@
         variant="naked"
         {styleHeight}
         keyShortcuts={ariaKeyShortcuts("filter")}
+        title={placeholder}
         onclick={() => (show = true)}>
         <Icon name={icon} />
       </Button>

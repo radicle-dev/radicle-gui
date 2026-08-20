@@ -32,6 +32,7 @@ function issue(
       author: by,
     })),
     repoId: "rad:z1",
+    relevance: { authored: false, assigned: false, participating: false },
   };
 }
 

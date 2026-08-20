@@ -3,6 +3,7 @@ import type { Action } from "../issue/Action";
 import type { State } from "../issue/State";
 import type { ActionWithAuthor } from "./ActionWithAuthor";
 import type { RefUpdate } from "./RefUpdate";
+import type { Relevance } from "./Relevance";
 
 export type Issue = {
   rowId: string;
@@ -13,4 +14,5 @@ export type Issue = {
   status: State;
   actions: Array<ActionWithAuthor<Action>>;
   repoId: string;
+  relevance: Relevance;
 };

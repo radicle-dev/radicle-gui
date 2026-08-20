@@ -4,6 +4,7 @@ import type { NotificationItem } from "@bindings/cob/inbox/NotificationItem";
 import type { Action as IssueAction } from "@bindings/cob/issue/Action";
 import type { Action as PatchAction } from "@bindings/cob/patch/Action";
 
+import escape from "lodash/escape";
 import isEqual from "lodash/isEqual";
 import uniqWith from "lodash/uniqWith";
 
@@ -20,12 +21,52 @@ import {
 export type Action =
   ActionWithAuthor<IssueAction> | ActionWithAuthor<PatchAction>;
 
+export type RevisionNames = Record<string, string>;
+
+// A description's first line acts as its title, the way a commit message
+// subject does.
+function descriptionSubject(text: string): string | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) return undefined;
+  const idx = trimmed.indexOf("\n");
+  const subject = idx === -1 ? trimmed : trimmed.slice(0, idx).trim();
+  return subject || undefined;
+}
+
+function quoted(name: string): string {
+  return `&ldquo;${escape(name)}&rdquo;`;
+}
+
+// A revision's name is the subject line of its description, which comes from
+// the commit message. Actions carrying a description have it inline; the ones
+// that only reference a revision id are resolved through `names`.
+function revisionLabel(action: Action, names: RevisionNames = {}): string {
+  if (action.type === "revision" || action.type === "revision.edit") {
+    const subject = descriptionSubject(action.description);
+    if (subject) {
+      return quoted(subject);
+    }
+  }
+
+  if ("revision" in action) {
+    const name = names[action.revision];
+    if (name) {
+      return quoted(name);
+    }
+    return `%${formatOid(action.revision)}%`;
+  }
+
+  const name = names[action.oid];
+  return name ? quoted(name) : `%${formatOid(action.oid)}%`;
+}
+
 // N.b. I have taken the `%` char as indicator for a `txt-id` class
 export function createSummary(
   a: Action[],
   kind: "issue" | "patch",
   oid: string,
   count: number,
+  names: RevisionNames = {},
 ) {
   const lastAction = a[a.length - 1];
   let summary = `${lastAction.type} not implemented!`;
@@ -35,23 +76,23 @@ export function createSummary(
   }
 
   if (lastAction.oid === oid) {
-    summary = `opened ${kind} %${formatOid(lastAction.oid)}%`;
+    summary = `opened ${kind}`;
   } else if (lastAction.type === "comment") {
     summary = `left ${count > 1 ? count : "a"} ${pluralize("comment", count)}`;
   } else if (lastAction.type === "revision") {
-    const revisions = a.map(i => `%${formatOid(i.oid)}%`).slice(0, 10);
+    const revisions = a.map(action => revisionLabel(action, names)).slice(0, 3);
     summary = `created ${pluralize("revision", count)} ${[
       ...revisions,
-      ...(a.length >= 11 ? ["%…%"] : []),
+      ...(a.length > 3 ? ["…"] : []),
     ].join(", ")}`;
   } else if (lastAction.type === "merge") {
-    summary = `merged ${pluralize("revision", count)} %${formatOid(lastAction.revision)}%`;
+    summary = `merged ${pluralize("revision", count)} ${revisionLabel(lastAction, names)}`;
   } else if (lastAction.type === "edit" && kind === "issue") {
     summary = `edited issue${count ? times(count) : ""}`;
   } else if (lastAction.type === "edit" && kind === "patch") {
-    summary = `edited ${pluralize("revision", count)} %${formatOid(lastAction.oid)}%`;
+    summary = `edited ${pluralize("revision", count)} ${revisionLabel(lastAction, names)}`;
   } else if (lastAction.type === "revision.edit") {
-    summary = `edited ${pluralize("revision", count)} %${formatOid(lastAction.revision)}%`;
+    summary = `edited ${pluralize("revision", count)} ${revisionLabel(lastAction, names)}`;
   } else if (lastAction.type === "lifecycle" && count > 1) {
     summary = `changed to ${lastAction.state.status} and ${count} more changes`;
   } else if (
@@ -93,9 +134,9 @@ export function createSummary(
   } else if (lastAction.type === "comment.edit") {
     summary = `edited ${count > 1 ? count : "a"} ${pluralize("comment", count)}`;
   } else if (lastAction.type === "review" && lastAction.verdict) {
-    summary = `${lastAction.verdict}ed revision %${formatOid(lastAction.revision)}% with a review`;
+    summary = `${lastAction.verdict}ed revision ${revisionLabel(lastAction, names)} with a review`;
   } else if (lastAction.type === "review") {
-    summary = `left a review with a comment on revision %${formatOid(lastAction.revision)}%`;
+    summary = `left a review with a comment on revision ${revisionLabel(lastAction, names)}`;
   } else if (lastAction.type === "assign") {
     summary = "changed assigns";
   } else if (lastAction.type === "revision.comment.edit") {
@@ -135,6 +176,7 @@ export function compressActions(
   actions: Action[],
   kind: "issue" | "patch",
   oid: string,
+  names: RevisionNames = {},
 ) {
   const result: {
     summary: string;
@@ -166,6 +208,7 @@ export function compressActions(
         kind,
         oid,
         currentGroup.length,
+        names,
       );
 
       result.push({
@@ -185,6 +228,7 @@ export function compressActions(
       kind,
       oid,
       currentGroup.length,
+      names,
     );
     result.push({
       summary: summaryStr,

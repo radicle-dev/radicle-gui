@@ -21,6 +21,8 @@
   let { sidebarData, notificationsByRepo }: Props = $props();
   /* eslint-enable prefer-const */
 
+  let newRowIds = $state<string[]>([]);
+
   $effect(() => {
     notificationCount.value = sidebarData.notificationCount;
   });
@@ -63,13 +65,29 @@
     );
   }
 
-  async function showAll(rid: string) {
-    const all = await invoke<NotificationsByRepo[]>("list_notifications", {
-      params: { repos: [rid], all: true },
+  function collectRowIds(repos: NotificationsByRepo[]): Set<string> {
+    return new Set(
+      repos.flatMap(repo => repo.notifications.flat().map(item => item.rowId)),
+    );
+  }
+
+  // Whatever arrives that was not already on screen gets highlighted, so it is
+  // obvious where the new notifications landed.
+  async function loadNew() {
+    const before = collectRowIds(notificationsByRepo);
+    await loadNotifications();
+    newRowIds = [...collectRowIds(notificationsByRepo)].filter(
+      id => !before.has(id),
+    );
+  }
+
+  async function loadMore(rid: string, take: number) {
+    const page = await invoke<NotificationsByRepo[]>("list_notifications", {
+      params: { repos: [rid], take },
     });
     notificationsByRepo = [
       ...notificationsByRepo.filter(r => r.rid !== rid),
-      ...all,
+      ...page,
     ];
   }
 </script>
@@ -84,8 +102,6 @@
   }
   .inner {
     width: 100%;
-    max-width: 75rem;
-    margin: 0 auto;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -117,10 +133,11 @@
             {clearAll}
             {clearByIds}
             {clearByRepo}
-            loadNew={loadNotifications}
+            {loadNew}
+            {loadMore}
+            {newRowIds}
             notificationCount={notificationCount.value}
-            {notificationsByRepo}
-            {showAll} />
+            {notificationsByRepo} />
         </div>
       </div>
     </ScrollArea>

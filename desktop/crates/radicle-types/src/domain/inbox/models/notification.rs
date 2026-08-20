@@ -98,6 +98,72 @@ where
     Ok(iter.filter_map(|a| a.ok()).collect::<Vec<_>>())
 }
 
+/// How the local node relates to a notified issue or patch. Derived from the
+/// object itself rather than from the unread activity, so it holds regardless
+/// of what the unread range happens to contain.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+#[ts(export_to = "cob/inbox/")]
+pub struct Relevance {
+    /// The local node opened it.
+    pub authored: bool,
+    /// The local node is assigned to it.
+    pub assigned: bool,
+    /// The local node has commented on it or reviewed it.
+    pub participating: bool,
+}
+
+/// The subject line of a revision's description, which comes from its commit
+/// message. Keyed by revision id so the frontend can name the revisions that
+/// merge and review actions reference by id alone.
+pub fn revision_names(patch: &radicle::patch::Patch) -> std::collections::BTreeMap<String, String> {
+    patch
+        .revisions()
+        .filter_map(|(id, revision)| {
+            let subject = revision.description().lines().next()?.trim();
+            if subject.is_empty() {
+                return None;
+            }
+            Some((id.to_string(), subject.to_string()))
+        })
+        .collect()
+}
+
+impl Relevance {
+    pub fn for_issue(issue: &radicle::issue::Issue, me: &identity::Did) -> Self {
+        Self {
+            authored: issue.author().id() == me,
+            assigned: issue.assignees().any(|did| did == me),
+            participating: issue
+                .replies()
+                .any(|(_, comment)| identity::Did::from(comment.author()) == *me),
+        }
+    }
+
+    pub fn for_patch(patch: &radicle::patch::Patch, me: &identity::Did) -> Self {
+        let participating = patch.revisions().any(|(_, revision)| {
+            revision.author().id() == me
+                || revision
+                    .discussion()
+                    .comments()
+                    .any(|(_, comment)| identity::Did::from(comment.author()) == *me)
+                || revision.reviews().any(|(key, review)| {
+                    identity::Did::from(*key) == *me
+                        || review
+                            .comments()
+                            .any(|(_, comment)| identity::Did::from(comment.author()) == *me)
+                })
+        });
+
+        Self {
+            authored: patch.author().id() == me,
+            assigned: patch.assignees().any(|did| did == *me),
+            participating,
+        }
+    }
+}
+
 #[derive(Serialize, Debug, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -139,6 +205,7 @@ pub struct Issue {
     pub actions: Vec<ActionWithAuthor<cobs::issue::Action>>,
     #[ts(as = "String")]
     pub repo_id: Option<identity::RepoId>,
+    pub relevance: Relevance,
 }
 
 #[derive(Debug, Serialize, TS, Deserialize)]
@@ -170,6 +237,8 @@ pub struct Patch {
     pub actions: Vec<ActionWithAuthor<models::patch::Action>>,
     #[ts(as = "String")]
     pub repo_id: Option<identity::RepoId>,
+    pub relevance: Relevance,
+    pub revision_names: std::collections::BTreeMap<String, String>,
 }
 
 /// Type of notification.

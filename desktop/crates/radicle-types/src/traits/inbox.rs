@@ -20,6 +20,7 @@ pub trait Inbox: Profile {
     ) -> Result<notification::NotificationsByRepoList, Error> {
         let profile = &self.profile();
         let aliases = profile.aliases();
+        let me = profile.did();
         let repos_with_groups = sqlite_service.repo_group(params.clone())?;
 
         let mut repo_counts = std::collections::HashMap::new();
@@ -113,6 +114,12 @@ pub trait Inbox: Profile {
                                                         status: (p.state().clone()).into(),
                                                         actions,
                                                         repo_id: Some(repo_id),
+                                                        relevance:
+                                                            notification::Relevance::for_patch(
+                                                                &p, &me,
+                                                            ),
+                                                        revision_names:
+                                                            notification::revision_names(&p),
                                                     },
                                                 ))
                                             }
@@ -148,6 +155,10 @@ pub trait Inbox: Profile {
                                                         status: (*i.state()).into(),
                                                         actions,
                                                         repo_id: Some(repo_id),
+                                                        relevance:
+                                                            notification::Relevance::for_issue(
+                                                                &i, &me,
+                                                            ),
                                                     },
                                                 ))
                                             }
