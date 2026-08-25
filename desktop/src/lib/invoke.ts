@@ -163,6 +163,19 @@ export const cachedRepoCommitCount = cached(
   { max: 5_000 },
 );
 
+async function repoActivity(rid: string, head: string): Promise<number[]> {
+  return withTestBackend(tauri.invoke, "repo_activity", { rid, head });
+}
+
+// One year of commit timestamps per repo, used by the activity sparkline.
+// Cached by (rid, head) since a given head always yields the same history, and
+// a profile page asks for every listed repo at once.
+export const cachedRepoActivity = cached(
+  repoActivity,
+  (...[rid, head]) => `repo_activity:${rid}:${head}`,
+  { max: 500 },
+);
+
 async function listJobs(rid: string, sha: string): Promise<Job[]> {
   return withTestBackend(tauri.invoke, "list_jobs", { rid, sha });
 }

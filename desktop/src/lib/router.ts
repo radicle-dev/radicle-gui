@@ -198,6 +198,16 @@ function guideUrlToRoute(url: URL): { resource: "guide" } | undefined {
   }
 }
 
+function userUrlToRoute(segments: string[]): Route | null {
+  // Accepts both the full `did:key:z…` form and a bare node id, and
+  // normalises either to a DID so the route has one canonical path.
+  const parsed = utils.parseNodeId(decodeURIComponent(segments[0] ?? ""));
+  if (!parsed) {
+    return null;
+  }
+  return { resource: "user", did: utils.didFromPublicKey(parsed.pubkey) };
+}
+
 function urlToRoute(url: URL): Route | null {
   const segments = url.pathname.substring(1).split("/");
   const resource = segments.shift();
@@ -220,6 +230,9 @@ function urlToRoute(url: URL): Route | null {
     case "repos": {
       return repoUrlToRoute(segments, url.searchParams);
     }
+    case "users": {
+      return userUrlToRoute(segments);
+    }
     default: {
       return null;
     }
@@ -231,6 +244,8 @@ export function routeToPath(route: Route): string {
     return "/inbox";
   } else if (route.resource === "guide") {
     return "/guide";
+  } else if (route.resource === "user") {
+    return `/users/${route.did}`;
   } else if (
     route.resource === "repo.home" ||
     route.resource === "repo.commits" ||

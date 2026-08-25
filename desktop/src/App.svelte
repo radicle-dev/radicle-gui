@@ -52,6 +52,7 @@
   import RepoCommit from "@app/views/repo/RepoCommit.svelte";
   import RepoCommits from "@app/views/repo/RepoCommits.svelte";
   import RepoHome from "@app/views/repo/RepoHome.svelte";
+  import User from "@app/views/User.svelte";
 
   import Command from "./components/Command.svelte";
   import ExternalLink from "./components/ExternalLink.svelte";
@@ -269,6 +270,8 @@
         <InboxView {...$activeRouteStore.params} />
       {:else if $activeRouteStore.resource === "guide"}
         <GuideView {...$activeRouteStore.params} />
+      {:else if $activeRouteStore.resource === "user"}
+        <User {...$activeRouteStore.params} />
       {:else if $activeRouteStore.resource === "repo.home"}
         <RepoHome {...$activeRouteStore.params} />
       {:else if $activeRouteStore.resource === "repo.commits"}
