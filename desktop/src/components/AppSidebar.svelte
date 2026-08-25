@@ -288,6 +288,10 @@
     return $activeRoute.resource === "guide";
   }
 
+  function isOwnProfile(): boolean {
+    return $activeRoute.resource === "user" && $activeRoute.params.user.isLocal;
+  }
+
   function isSettings(): boolean {
     return $modalStore?.component === SettingsView;
   }
@@ -626,7 +630,9 @@
         <div class="body">
           <div class="nav">
             {#if !mini}
-              <IdentityButton config={sidebarData.config} />
+              <IdentityButton
+                config={sidebarData.config}
+                active={isOwnProfile()} />
             {/if}
 
             <a

@@ -1,11 +1,10 @@
 <script lang="ts">
-  import type { Config } from "@bindings/config/Config";
   import type { Placement } from "@floating-ui/dom";
   import type { ComponentProps } from "svelte";
 
-  import { cachedAlias, cachedConfig, writeToClipboard } from "@app/lib/invoke";
-  import { entityUrl } from "@app/lib/mentions";
+  import { cachedAlias, writeToClipboard } from "@app/lib/invoke";
   import { getPatchActivitySource } from "@app/lib/patchActivityContext";
+  import { routeToPath } from "@app/lib/router";
   import { didFromPublicKey, pluralize, truncateId } from "@app/lib/utils";
 
   import Icon from "@app/components/Icon.svelte";
@@ -49,8 +48,8 @@
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
   let copyIcon: "copy" | "checkmark" = $state("copy");
   let fetchedAlias: string | undefined = $state(undefined);
-  let fetchedConfig: Config | undefined = $state(undefined);
   const did = $derived(didFromPublicKey(publicKey));
+  const profilePath = $derived(routeToPath({ resource: "user", did }));
   const effectiveAlias = $derived(alias ?? fetchedAlias);
   const activitySource = getPatchActivitySource();
   // Only while the card is open. The figures are card-only, and resolving them
@@ -71,22 +70,6 @@
       .then(result => {
         if (cancelled) return;
         if (result) fetchedAlias = result;
-      })
-      // eslint-disable-next-line @typescript-eslint/no-empty-function
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  });
-
-  // Fetch the node config lazily when the card opens; it drives the explorer
-  // profile link, which needs the configured `publicExplorer`.
-  $effect(() => {
-    if (!cardExpanded || fetchedConfig) return;
-    let cancelled = false;
-    void cachedConfig()
-      .then(result => {
-        if (!cancelled) fetchedConfig = result;
       })
       // eslint-disable-next-line @typescript-eslint/no-empty-function
       .catch(() => {});
@@ -129,6 +112,14 @@
   }
   .node-id-trigger {
     border-radius: var(--border-radius-sm);
+    color: inherit;
+    text-decoration: none;
+  }
+  .node-id-trigger:hover .alias,
+  .node-id-trigger:focus-visible .alias,
+  .node-id-trigger:hover .no-alias,
+  .node-id-trigger:focus-visible .no-alias {
+    text-decoration: underline;
   }
   .avatar-container {
     overflow: hidden;
@@ -297,15 +288,21 @@
   styleDisplay={inline ? "inline-flex" : undefined}
   bind:expanded={cardExpanded}>
   {#snippet toggle(_onclick)}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
+    <a
       class="avatar-alias node-id-trigger"
       class:inline
       style:font={styleFont}
+      href={profilePath}
       onmouseenter={openCard}
       onmouseleave={scheduleClose}
       onfocusin={openCard}
-      onfocusout={scheduleClose}>
+      onfocusout={scheduleClose}
+      onclick={event => {
+        // Mentions sit inside `role="button"` rows (issue, patch and
+        // notification teasers) whose click handler would otherwise win and
+        // navigate to the row's target instead of the profile.
+        event.stopPropagation();
+      }}>
       <div
         class="avatar-container"
         style:width={avatarSize}
@@ -323,7 +320,7 @@
           </span>
         {/if}
       {/if}
-    </div>
+    </a>
   {/snippet}
   {#snippet popover()}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -458,15 +455,11 @@
       <div class="node-id-card-actions">
         <a
           class="node-id-card-action txt-body-s-medium"
-          href={fetchedConfig
-            ? entityUrl({ type: "node", nid: publicKey }, fetchedConfig)
-            : undefined}
-          title="View profile on radicle.network"
-          target="_blank"
-          rel="noreferrer"
+          href={profilePath}
+          title="View profile"
           onclick={event => event.stopPropagation()}>
           View profile
-          <Icon name="open-external" />
+          <Icon name="arrow-right" />
         </a>
       </div>
     </div>
