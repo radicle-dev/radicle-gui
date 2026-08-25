@@ -8,6 +8,10 @@ use radicle::patch::{Patch, PatchId, Status};
 use radicle::{git, identity};
 use sqlite as sql;
 
+use crate::domain::contribution::models::contribution::{
+    ActivityItem, ActivityKind, ContributionDay, ContributionError, RepoContribution,
+};
+use crate::domain::contribution::traits::ContributionStorage;
 use crate::domain::inbox::models::notification;
 use crate::domain::inbox::traits::InboxStorage;
 use crate::domain::issue::models::issue::{ListIssuesError, Status as IssueStatus};
@@ -165,6 +169,184 @@ impl Sqlite {
             let issue = serde_json::from_str::<Issue>(row.read::<&str, _>("issue")).ok()?;
             Some((id, issue))
         }))
+    }
+}
+
+/// Every patch, follow-up revision and issue a DID opened, as one row set.
+/// Shared by the activity feed and the contribution calendar so the two can
+/// never disagree about what counts as a contribution. `?1` is the author's
+/// DID, `?2` the same author's bare node id — a patch stores its author as a
+/// full DID while an issue stores the node id on its thread's root comment.
+const AUTHORED_ACTIVITY: &str = r#"
+               SELECT 'patch' AS kind,
+                      p.id AS id,
+                      NULL AS revision_id,
+                      JSON_EXTRACT(p.patch, '$.title') AS title,
+                      JSON_EXTRACT(p.patch, '$.state.status') AS status,
+                      (SELECT JSON_EXTRACT(revision.value, '$.timestamp')
+                         FROM JSON_EACH(JSON_EXTRACT(p.patch, '$.revisions')) AS revision
+                        WHERE JSON_EXTRACT(revision.value, '$.id') = p.id
+                      ) AS timestamp,
+                      p.repo AS repo
+                 FROM patches AS p
+                WHERE JSON_EXTRACT(p.patch, '$.author.id') = ?1
+               UNION ALL
+               -- Follow-up revisions only. A patch's initial revision carries
+               -- the patch's own id, and the branch above already reports it as
+               -- the patch being opened. Identifying it that way rather than by
+               -- earliest timestamp is deliberate: revision timestamps are
+               -- supplied by whoever authored them, so a peer with a skewed
+               -- clock would otherwise push the real initial revision out of
+               -- first place. See `revisionPosition` in `src/lib/utils.ts`.
+               SELECT 'revision',
+                      p.id,
+                      JSON_EXTRACT(revision.value, '$.id'),
+                      JSON_EXTRACT(p.patch, '$.title'),
+                      JSON_EXTRACT(p.patch, '$.state.status'),
+                      JSON_EXTRACT(revision.value, '$.timestamp'),
+                      p.repo
+                 FROM patches AS p,
+                      JSON_EACH(JSON_EXTRACT(p.patch, '$.revisions')) AS revision
+                WHERE JSON_EXTRACT(revision.value, '$.author.id') = ?1
+                  AND JSON_EXTRACT(revision.value, '$.id') <> p.id
+               UNION ALL
+               SELECT 'issue',
+                      i.id,
+                      NULL,
+                      JSON_EXTRACT(i.issue, '$.title'),
+                      JSON_EXTRACT(i.issue, '$.state.status'),
+                      (SELECT JSON_EXTRACT(comment.value, '$.edits[0].timestamp')
+                         FROM JSON_EACH(JSON_EXTRACT(i.issue, '$.thread.comments')) AS comment
+                        WHERE JSON_EXTRACT(comment.value, '$.replyTo') IS NULL
+                          AND JSON_EXTRACT(comment.value, '$.author') = ?2
+                        LIMIT 1
+                      ),
+                      i.repo
+                 FROM issues AS i
+                WHERE EXISTS (
+                      SELECT 1
+                        FROM JSON_EACH(JSON_EXTRACT(i.issue, '$.thread.comments')) AS comment
+                       WHERE JSON_EXTRACT(comment.value, '$.replyTo') IS NULL
+                         AND JSON_EXTRACT(comment.value, '$.author') = ?2
+                      )
+"#;
+
+impl ContributionStorage for Sqlite {
+    fn contributions_by_author(
+        &self,
+        did: identity::Did,
+    ) -> Result<Vec<RepoContribution>, ContributionError> {
+        // Counts exclude follow-up revisions, which are not a separate patch
+        // or issue, but `last_contribution` includes them: pushing a revision
+        // is still touching the repo.
+        let mut stmt = self.db.prepare(format!(
+            "SELECT repo,
+                    SUM(CASE WHEN kind = 'patch' THEN 1 ELSE 0 END) AS patches,
+                    SUM(CASE WHEN kind = 'issue' THEN 1 ELSE 0 END) AS issues,
+                    MAX(timestamp) AS last_contribution
+             FROM ({AUTHORED_ACTIVITY})
+             GROUP BY repo;"
+        ))?;
+        stmt.bind((1, did.to_string().as_str()))?;
+        stmt.bind((2, did.as_key().to_string().as_str()))?;
+
+        Ok(stmt
+            .into_iter()
+            .filter_map(|row| {
+                let row = row.ok()?;
+                Some(RepoContribution {
+                    rid: identity::RepoId::from_str(row.read::<&str, _>("repo")).ok()?,
+                    patches_authored: row.read::<i64, _>("patches").max(0) as usize,
+                    issues_authored: row.read::<i64, _>("issues").max(0) as usize,
+                    last_contribution: row.read::<Option<i64>, _>("last_contribution"),
+                })
+            })
+            .collect())
+    }
+
+    fn recent_activity_by_author(
+        &self,
+        did: identity::Did,
+        limit: usize,
+    ) -> Result<Vec<ActivityItem>, ContributionError> {
+        // Creation time is not stored as a column: a patch's is the earliest of
+        // its revision timestamps, an issue's is the first edit of its root
+        // comment. Both are already milliseconds.
+        let mut stmt = self.db.prepare(format!(
+            "SELECT kind, id, revision_id, title, status, timestamp, repo
+             FROM ({AUTHORED_ACTIVITY})
+             WHERE timestamp IS NOT NULL
+             ORDER BY timestamp DESC, id DESC
+             LIMIT ?3;"
+        ))?;
+        stmt.bind((1, did.to_string().as_str()))?;
+        stmt.bind((2, did.as_key().to_string().as_str()))?;
+        stmt.bind((3, limit as i64))?;
+
+        Ok(stmt
+            .into_iter()
+            .filter_map(|row| {
+                let row = row.ok()?;
+                let kind = match row.read::<&str, _>("kind") {
+                    "patch" => ActivityKind::Patch,
+                    "revision" => ActivityKind::Revision,
+                    "issue" => ActivityKind::Issue,
+                    _ => return None,
+                };
+                Some(ActivityItem {
+                    rid: identity::RepoId::from_str(row.read::<&str, _>("repo")).ok()?,
+                    kind,
+                    id: row.read::<&str, _>("id").to_string(),
+                    revision_id: row
+                        .read::<Option<&str>, _>("revision_id")
+                        .map(str::to_string),
+                    // Positions need the patch's delivered revision order,
+                    // which the cache does not preserve; a driver fills these
+                    // in via `Patches::annotate_revision_positions`.
+                    revision_position: None,
+                    revision_total: None,
+                    title: row.read::<&str, _>("title").to_string(),
+                    status: row.read::<&str, _>("status").to_string(),
+                    timestamp: row.read::<i64, _>("timestamp"),
+                })
+            })
+            .collect())
+    }
+
+    fn contribution_calendar(
+        &self,
+        did: identity::Did,
+        days: u32,
+    ) -> Result<Vec<ContributionDay>, ContributionError> {
+        // Bucketed in UTC so the same profile renders identically wherever it
+        // is opened; a local-time bucket would shift items across day
+        // boundaries per viewer.
+        let mut stmt = self.db.prepare(format!(
+            "SELECT DATE(timestamp / 1000, 'unixepoch') AS day, COUNT(*) AS count
+             FROM ({AUTHORED_ACTIVITY})
+             WHERE timestamp IS NOT NULL
+               AND timestamp >= ?3
+             GROUP BY day
+             ORDER BY day;"
+        ))?;
+        let cutoff = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64 - i64::from(days) * 86_400_000)
+            .unwrap_or(0);
+        stmt.bind((1, did.to_string().as_str()))?;
+        stmt.bind((2, did.as_key().to_string().as_str()))?;
+        stmt.bind((3, cutoff))?;
+
+        Ok(stmt
+            .into_iter()
+            .filter_map(|row| {
+                let row = row.ok()?;
+                Some(ContributionDay {
+                    date: row.read::<&str, _>("day").to_string(),
+                    count: row.read::<i64, _>("count").max(0) as usize,
+                })
+            })
+            .collect())
     }
 }
 

@@ -946,6 +946,67 @@ pub trait Repo: Profile {
         Ok(revwalk.count())
     }
 
+    /// Commit timestamps (unix seconds) reachable from `head` within the last
+    /// year. Drives the per-repo activity sparkline, which buckets them by
+    /// week, so only the timestamps are needed — not the commits themselves.
+    fn repo_activity(&self, rid: identity::RepoId, head: git::Oid) -> Result<Vec<i64>, Error> {
+        /// The sparkline renders one year of history.
+        const WEEKS: i64 = 52;
+
+        let profile = self.profile();
+        let repo = profile.storage.repository(rid)?;
+        let cutoff = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64 - WEEKS * 7 * 86_400)
+            .unwrap_or(0);
+
+        // Fast path: `git log` stops walking once it is past `--since`, so the
+        // cost is proportional to the last year rather than the whole history.
+        // Falls back to the libgit2 walk below if the git binary is
+        // unavailable or errors.
+        let mut command = std::process::Command::new("git");
+        command.current_dir(repo.backend.path()).args([
+            "log",
+            "--format=%ct",
+            &format!("--since=@{cutoff}"),
+            &head.to_string(),
+        ]);
+        #[cfg(windows)]
+        command.creation_flags(CREATE_NO_WINDOW);
+        let timestamps = command
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| {
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .filter_map(|line| line.trim().parse::<i64>().ok())
+                    .collect::<Vec<_>>()
+            });
+        if let Some(timestamps) = timestamps {
+            return Ok(timestamps);
+        }
+
+        // Fallback: walk in commit-time order and stop at the cutoff.
+        let mut revwalk = repo.backend.revwalk()?;
+        revwalk.set_sorting(git2::Sort::TIME)?;
+        revwalk.push(head.into())?;
+
+        let mut timestamps = Vec::new();
+        for oid in revwalk {
+            let Ok(commit) = repo.backend.find_commit(oid?) else {
+                continue;
+            };
+            let time = commit.time().seconds();
+            if time < cutoff {
+                break;
+            }
+            timestamps.push(time);
+        }
+
+        Ok(timestamps)
+    }
+
     fn repo_commit(
         &self,
         rid: identity::RepoId,

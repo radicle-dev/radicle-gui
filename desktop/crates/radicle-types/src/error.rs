@@ -82,6 +82,10 @@ pub enum Error {
     #[error(transparent)]
     ListIssuesError(#[from] crate::domain::issue::models::issue::ListIssuesError),
 
+    /// Contribution query error.
+    #[error(transparent)]
+    ContributionError(#[from] crate::domain::contribution::models::contribution::ContributionError),
+
     /// CobStore error.
     #[error(transparent)]
     CobStore(#[from] radicle::cob::store::Error),

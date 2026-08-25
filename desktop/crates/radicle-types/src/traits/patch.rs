@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use radicle::cob::Title;
 use radicle::node::Handle;
@@ -7,6 +7,7 @@ use radicle::storage::{ReadRepository as _, ReadStorage};
 use radicle::{Node, cob, git, identity};
 
 use crate::cobs;
+use crate::domain::contribution::models::contribution::{ActivityItem, ActivityKind};
 use crate::domain::patch::models;
 use crate::error::Error;
 use crate::traits::Profile;
@@ -27,6 +28,65 @@ pub trait Patches: Profile {
             patch.map(|patch| models::patch::Patch::new(id.into(), &patch, &doc, aliases));
 
         Ok::<_, Error>(patches)
+    }
+
+    /// Fill in `revision_position` / `revision_total` on revision activity items.
+    ///
+    /// Numbering comes from `patch.revisions()` — the same delivered order the
+    /// patch page counts by — so the two views can never disagree about which
+    /// revision is which. It deliberately does not come from the COB cache:
+    /// that stores a patch's revisions as a JSON object keyed by revision id,
+    /// so the only order recoverable there is lexicographic, and ordering by
+    /// timestamp would let a peer with a skewed clock renumber everyone's
+    /// revisions (see `revisionPosition` in `src/lib/utils.ts`).
+    ///
+    /// One lookup per distinct patch, not per item: a patch with many
+    /// revisions is exactly the case that puts several rows in one feed page.
+    fn annotate_revision_positions(&self, items: &mut [ActivityItem]) {
+        let profile = self.profile();
+        // (repo, patch) -> revision id -> (position, total)
+        let mut positions: HashMap<(identity::RepoId, String), HashMap<String, (usize, usize)>> =
+            HashMap::new();
+
+        for item in items.iter() {
+            if item.kind != ActivityKind::Revision {
+                continue;
+            }
+            let key = (item.rid, item.id.clone());
+            if positions.contains_key(&key) {
+                continue;
+            }
+
+            let mut found = HashMap::new();
+            if let Ok(oid) = item.id.parse::<git::Oid>()
+                && let Ok(repo) = profile.storage.repository(item.rid)
+                && let Ok(patches) = profile.patches(&repo)
+                && let Ok(Some(patch)) = patches.get(&oid.into())
+            {
+                let ordered = patch.revisions().map(|(id, _)| id).collect::<Vec<_>>();
+                let total = ordered.len();
+                for (index, id) in ordered.into_iter().enumerate() {
+                    found.insert(id.to_string(), (index + 1, total));
+                }
+            }
+            positions.insert(key, found);
+        }
+
+        for item in items.iter_mut() {
+            if item.kind != ActivityKind::Revision {
+                continue;
+            }
+            let Some(revision_id) = item.revision_id.as_deref() else {
+                continue;
+            };
+            if let Some((position, total)) = positions
+                .get(&(item.rid, item.id.clone()))
+                .and_then(|found| found.get(revision_id))
+            {
+                item.revision_position = Some(*position);
+                item.revision_total = Some(*total);
+            }
+        }
     }
 
     fn revisions_by_patch(

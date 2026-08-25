@@ -158,6 +158,15 @@ pub async fn repo_commit_count(
 }
 
 #[tauri::command]
+pub async fn repo_activity(
+    ctx: tauri::State<'_, AppState>,
+    rid: RepoId,
+    head: git::Oid,
+) -> Result<Vec<i64>, Error> {
+    blocking(ctx, move |ctx| ctx.repo_activity(rid, head)).await
+}
+
+#[tauri::command]
 pub async fn repo_commit(
     ctx: tauri::State<'_, AppState>,
     rid: RepoId,

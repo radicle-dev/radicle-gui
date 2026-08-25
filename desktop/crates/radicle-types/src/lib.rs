@@ -25,6 +25,7 @@ pub mod repo;
 pub mod source;
 pub mod test;
 pub mod traits;
+pub mod user;
 
 #[derive(Clone)]
 pub struct AppState {
