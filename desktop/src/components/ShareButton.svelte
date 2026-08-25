@@ -27,6 +27,9 @@
     id: string;
     // The noun the id represents, e.g. "issue", so "copy id" reads "Copy issue ID".
     idLabel: string;
+    // Wording for the copy-id action, for an id that is not called an "ID" —
+    // a DID already ends in the word, so "Copy DID ID" would not do.
+    copyIdLabel?: string;
     config: Config;
     styleHeight?: ComponentProps<typeof Button>["styleHeight"];
     variant?: ComponentProps<typeof Button>["variant"];
@@ -36,6 +39,7 @@
     target,
     id,
     idLabel,
+    copyIdLabel = undefined,
     config,
     styleHeight = "2rem",
     variant = "ghost",
@@ -62,8 +66,8 @@
     {
       kind: "copyId",
       icon: "copy",
-      label: "Copy ID",
-      title: `Copy ${idLabel} ID`,
+      label: copyIdLabel ?? "Copy ID",
+      title: copyIdLabel ?? `Copy ${idLabel} ID`,
     },
   ]);
 
