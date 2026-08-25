@@ -229,23 +229,28 @@ async fn archive_by_committish(
     let project = doc.project()?;
     let repo_name = project.name();
 
+    let not_found = |e: radicle::git::raw::Error| {
+        if e.code() == ErrorCode::NotFound {
+            Error::NotFound
+        } else {
+            Error::Git(e)
+        }
+    };
+
     let oid = match committish {
         Committish::Oid(oid) => oid,
         Committish::Ref(refname) => repo
             .backend
             .resolve_reference_from_short_name(refname)
-            .map(|reference| reference.target())?
+            .map_err(not_found)?
+            .target()
             .ok_or(Error::NotFound)?
             .into(),
     };
 
-    if let Err(e) = repo.backend.find_object(oid.into(), None) {
-        return Err(if e.code() == ErrorCode::NotFound {
-            Error::NotFound
-        } else {
-            Error::Git(e)
-        });
-    }
+    repo.backend
+        .find_object(oid.into(), None)
+        .map_err(not_found)?;
 
     // Build a prefix for the archive, which includes the
     // refname (if one was given):
@@ -444,6 +449,19 @@ mod routes {
         // zstd magic number.
         let body = response.body().await;
         assert_eq!(&body[..4], &[0x28, 0xb5, 0x2f, 0xfd]);
+    }
+
+    #[tokio::test]
+    async fn test_archive_unknown_ref() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = test::seed(tmp.path());
+        let app = super::router(ctx.profile().to_owned(), Arc::new(HashMap::new()));
+
+        let response = get(&app, format!("/{RID}/archive/master.tar.gz")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let response = get(&app, format!("/{RID}/archive/does-not-exist.tar.gz")).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
