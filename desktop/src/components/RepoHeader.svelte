@@ -7,6 +7,7 @@
 
   import CheckoutRepoButton from "@app/components/CheckoutRepoButton.svelte";
   import NodeId from "@app/components/NodeId.svelte";
+  import RepoSeeds from "@app/components/RepoSeeds.svelte";
   import ShareButton from "@app/components/ShareButton.svelte";
   import VisibilityBadge from "@app/components/VisibilityBadge.svelte";
 
@@ -122,6 +123,8 @@
       type={repo.visibility.type}
       seeded={repo.seeded}
       seeds={repo.seeding} />
+
+    <RepoSeeds rid={repo.rid} />
 
     <div class="meta-item">
       <button

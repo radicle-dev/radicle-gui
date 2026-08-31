@@ -4,7 +4,7 @@ use radicle_types::AppState;
 use tauri::Manager;
 use tauri_plugin_log::{Target, TargetKind};
 
-use commands::{auth, cob, diff, identity, inbox, profile, repo, startup, thread};
+use commands::{auth, cob, diff, identity, inbox, node, profile, repo, startup, thread};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -116,6 +116,9 @@ pub fn run() {
             inbox::clear_notifications,
             inbox::notification_count,
             inbox::list_notifications,
+            node::announce_repo,
+            node::node_status,
+            node::repo_sync_status,
             profile::alias,
             profile::config,
             profile::search_aliases,

@@ -122,6 +122,10 @@ pub enum Error {
     #[error(transparent)]
     Database(#[from] radicle::node::db::Error),
 
+    /// Node seed store error.
+    #[error(transparent)]
+    SeedStore(#[from] radicle::node::seed::store::Error),
+
     /// Repository error.
     #[error(transparent)]
     SurfFsError(#[from] radicle_surf::fs::error::Directory),

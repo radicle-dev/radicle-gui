@@ -5,6 +5,7 @@ use traits::identity::Identity;
 use traits::inbox::Inbox;
 use traits::issue::{Issues, IssuesMut};
 use traits::job::Jobs;
+use traits::node::Node;
 use traits::patch::{Patches, PatchesMut};
 use traits::release::Releases;
 use traits::release_mut::ReleasesMut;
@@ -20,6 +21,7 @@ pub mod diff;
 pub mod domain;
 pub mod error;
 pub mod identity;
+pub mod node;
 pub mod outbound;
 pub mod repo;
 pub mod source;
@@ -39,6 +41,7 @@ impl Inbox for AppState {}
 impl Issues for AppState {}
 impl IssuesMut for AppState {}
 impl Jobs for AppState {}
+impl Node for AppState {}
 impl Patches for AppState {}
 impl PatchesMut for AppState {}
 impl Releases for AppState {}

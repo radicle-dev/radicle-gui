@@ -43,6 +43,7 @@ use radicle_types::traits::identity::Identity;
 use radicle_types::traits::inbox::Inbox;
 use radicle_types::traits::issue::{Issues, IssuesMut};
 use radicle_types::traits::job::Jobs;
+use radicle_types::traits::node::Node;
 use radicle_types::traits::patch::{Patches, PatchesMut};
 use radicle_types::traits::release::{ReleaseFilter, Releases};
 use radicle_types::traits::release_mut::ReleasesMut;
@@ -65,6 +66,7 @@ impl Thread for Context {}
 impl Issues for Context {}
 impl IssuesMut for Context {}
 impl Jobs for Context {}
+impl Node for Context {}
 impl Patches for Context {}
 impl PatchesMut for Context {}
 impl Releases for Context {}
@@ -185,6 +187,9 @@ pub fn router(shared: Shared) -> Router {
         .route("/check_radicle_cli", post(check_radicle_cli_handler))
         .route("/node_running", post(node_running_handler))
         .route("/repo_count", post(repo_count_handler))
+        .route("/announce_repo", post(announce_repo_handler))
+        .route("/node_status", post(node_status_handler))
+        .route("/repo_sync_status", post(repo_sync_status_handler))
         .route("/list_repos", post(repo_root_handler))
         .route("/list_repos_summary", post(list_repos_summary_handler))
         .route(
@@ -365,6 +370,27 @@ async fn repo_root_handler(
     let repos = ctx.list_repos(show)?;
 
     Ok::<_, Error>(Json(repos))
+}
+
+async fn announce_repo_handler(
+    Ctx(ctx): Ctx,
+    Json(RepoBody { rid }): Json<RepoBody>,
+) -> impl IntoResponse {
+    ctx.announce_repo(rid)?;
+    Ok::<_, Error>(Json(()))
+}
+
+async fn node_status_handler(Ctx(ctx): Ctx) -> impl IntoResponse {
+    let status = ctx.node_status()?;
+    Ok::<_, Error>(Json(status))
+}
+
+async fn repo_sync_status_handler(
+    Ctx(ctx): Ctx,
+    Json(RepoBody { rid }): Json<RepoBody>,
+) -> impl IntoResponse {
+    let status = ctx.repo_sync_status(rid)?;
+    Ok::<_, Error>(Json(status))
 }
 
 async fn repo_count_handler(Ctx(ctx): Ctx) -> impl IntoResponse {

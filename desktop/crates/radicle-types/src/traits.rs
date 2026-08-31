@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
-use radicle::node;
 use radicle::node::{Alias, AliasStore, NodeId};
 
 use crate::cobs::AliasSuggestion;
@@ -16,6 +15,7 @@ pub mod identity;
 pub mod inbox;
 pub mod issue;
 pub mod job;
+pub mod node;
 pub mod patch;
 pub mod release;
 pub mod release_mut;
@@ -76,11 +76,11 @@ pub trait Profile {
         {
             for policy in follow_policies.flatten() {
                 match policy.policy {
-                    node::policy::Policy::Allow => {
+                    radicle::node::policy::Policy::Allow => {
                         followed.insert(policy.nid);
                         candidates.insert(policy.nid, policy.alias);
                     }
-                    node::policy::Policy::Block => {
+                    radicle::node::policy::Policy::Block => {
                         blocked.insert(policy.nid);
                     }
                 }
