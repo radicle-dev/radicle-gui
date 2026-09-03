@@ -9,6 +9,7 @@
     "build": "vite build",
     "check": "scripts/check",
     "check:ci": "scripts/check-ci",
+    "check:open-graph": "cd workers/open-graph && npx wrangler deploy --dry-run",
     "check:radicle-httpd": "cargo clippy --all --tests && cargo fmt --all --check",
     "format": "npx prettier . --write",
     "test:unit": "TZ='UTC' vitest run",

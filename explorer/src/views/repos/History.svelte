@@ -11,8 +11,10 @@
   import config from "@app/lib/config";
   import { HttpdClient } from "@http-client";
   import {
+    defaultBranchName,
     baseUrlToString,
     formatQualifiedRefname,
+    repoName,
     safeDecodeURIComponent,
   } from "@app/lib/utils";
   import { groupCommits } from "@app/lib/commit";
@@ -47,7 +49,7 @@
   $: currentRefname = formatQualifiedRefname(
     revision
       ? safeDecodeURIComponent(revision)
-      : repo.payloads["xyz.radicle.project"].data.defaultBranch,
+      : (defaultBranchName(repo) ?? ""),
     peer,
   );
 
@@ -128,7 +130,7 @@
       {currentRefname}
       id={repo.rid}
       alias={repo.alias}
-      name={repo.payloads["xyz.radicle.project"].data.name} />
+      name={repoName(repo)} />
   </svelte:fragment>
   <RepoNameHeader {repo} {repoId} {baseUrl} {seedingPolicy} slot="header" />
 

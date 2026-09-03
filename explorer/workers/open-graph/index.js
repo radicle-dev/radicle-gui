@@ -4,6 +4,15 @@ import resvgWasm from "@resvg/resvg-wasm/index_bg.wasm";
 import bootonRegular from "./Booton-Regular.ttf";
 import bootonSemiBold from "./Booton-SemiBold.ttf";
 import forestJpg from "./forest.jpg";
+import {
+  crefsPayloadSchema,
+  legacyRepoFields,
+} from "../../http-client/lib/compat.ts";
+import {
+  defaultBranchName,
+  defaultBranchTip,
+  repoName,
+} from "../../src/lib/utils.ts";
 
 const WIDTH = 1200;
 const HEIGHT = 630;
@@ -102,7 +111,8 @@ async function apiFetch(url) {
   return res.json();
 }
 
-const fetchRepo = (host, rid) => apiFetch(`${apiBase(host)}/repos/${rid}`);
+const fetchRepo = (host, rid) =>
+  apiFetch(`${apiBase(host)}/repos/${rid}`).then(normalizeRepo);
 const fetchIssue = (host, rid, id) =>
   apiFetch(`${apiBase(host)}/repos/${rid}/issues/${id}`);
 const fetchPatch = (host, rid, id) =>
@@ -229,6 +239,20 @@ function gravatarImg(dataUri, size = 28) {
 
 function repoPayload(repo) {
   return repo?.payloads?.["xyz.radicle.project"];
+}
+
+// Give repos from every supported httpd the same shape, like `repoSchema` in
+// http-client/lib/repo.ts. Older httpd sends no `cobs`.
+function normalizeRepo(repo) {
+  if (!repo || repo.cobs !== undefined) return repo;
+  return {
+    ...repo,
+    ...legacyRepoFields(
+      repoPayload(repo),
+      crefsPayloadSchema.parse(repo.payloads?.["xyz.radicle.crefs"]),
+      repo.refs,
+    ),
+  };
 }
 
 function authorLabel(author) {
@@ -1167,11 +1191,11 @@ function userCard(host, did, identity) {
 function repoCard(repo, host) {
   if (!repo) return nodeCard(host, null, null);
   const p = repoPayload(repo);
-  const issueCount = p?.meta?.issues?.open ?? 0;
-  const patchCount = p?.meta?.patches?.open ?? 0;
+  const issueCount = repo.cobs?.issues?.open ?? 0;
+  const patchCount = repo.cobs?.patches?.open ?? 0;
   const delegates = repo.delegates ?? [];
-  const repoName = p?.data?.name ?? "";
-  const avatarKey = `${repoName}${repo.rid.replace("rad:z", "")}${repoName}`;
+  const name = p?.data?.name ?? "";
+  const avatarKey = `${name}${repo.rid.replace("rad:z", "")}${name}`;
 
   return el(
     "div",
@@ -1215,7 +1239,7 @@ function repoCard(repo, host) {
             WebkitLineClamp: 1,
             WebkitBoxOrient: "vertical",
           },
-          repoName || repo.rid,
+          repoName(repo),
         ),
         el(
           "div",
@@ -1309,10 +1333,10 @@ function repoCard(repo, host) {
 function historyCard(repo, host, stats, branch, peer, peerAlias) {
   if (!repo) return repoCard(repo, host);
   const p = repoPayload(repo);
-  const repoName = p?.data?.name ?? "";
-  const avatarKey = `${repoName}${repo.rid.replace("rad:z", "")}${repoName}`;
+  const name = p?.data?.name ?? "";
+  const avatarKey = `${name}${repo.rid.replace("rad:z", "")}${name}`;
   const commitCount = stats?.commits;
-  const branchLabel = branch || p?.data?.defaultBranch;
+  const branchLabel = branch || defaultBranchName(repo);
 
   return el(
     "div",
@@ -1356,7 +1380,7 @@ function historyCard(repo, host, stats, branch, peer, peerAlias) {
             WebkitLineClamp: 1,
             WebkitBoxOrient: "vertical",
           },
-          repoName || repo.rid,
+          repoName(repo),
         ),
         el(
           "div",
@@ -1444,9 +1468,9 @@ function historyCard(repo, host, stats, branch, peer, peerAlias) {
 function issuesCard(repo, host) {
   if (!repo) return repoCard(repo, host);
   const p = repoPayload(repo);
-  const repoName = p?.data?.name ?? "";
-  const avatarKey = `${repoName}${repo.rid.replace("rad:z", "")}${repoName}`;
-  const issues = p?.meta?.issues ?? {};
+  const name = p?.data?.name ?? "";
+  const avatarKey = `${name}${repo.rid.replace("rad:z", "")}${name}`;
+  const issues = repo.cobs?.issues ?? {};
 
   return el(
     "div",
@@ -1490,7 +1514,7 @@ function issuesCard(repo, host) {
             WebkitLineClamp: 1,
             WebkitBoxOrient: "vertical",
           },
-          repoName || repo.rid,
+          repoName(repo),
         ),
         el(
           "div",
@@ -1553,9 +1577,9 @@ function issuesCard(repo, host) {
 function patchesCard(repo, host) {
   if (!repo) return repoCard(repo, host);
   const p = repoPayload(repo);
-  const repoName = p?.data?.name ?? "";
-  const avatarKey = `${repoName}${repo.rid.replace("rad:z", "")}${repoName}`;
-  const patches = p?.meta?.patches ?? {};
+  const name = p?.data?.name ?? "";
+  const avatarKey = `${name}${repo.rid.replace("rad:z", "")}${name}`;
+  const patches = repo.cobs?.patches ?? {};
 
   return el(
     "div",
@@ -1599,7 +1623,7 @@ function patchesCard(repo, host) {
             WebkitLineClamp: 1,
             WebkitBoxOrient: "vertical",
           },
-          repoName || repo.rid,
+          repoName(repo),
         ),
         el(
           "div",
@@ -1721,8 +1745,8 @@ function statePill(label, status, iconName) {
 function issueCard(repo, host, issue) {
   if (!issue) return repoCard(repo, host);
   const p = repoPayload(repo);
-  const repoName = p?.data?.name ?? "";
-  const avatarKey = `${repoName}${repo.rid.replace("rad:z", "")}${repoName}`;
+  const name = p?.data?.name ?? "";
+  const avatarKey = `${name}${repo.rid.replace("rad:z", "")}${name}`;
   const status = issue.state?.status ?? "open";
   const statusLabel = status === "closed" ? "Closed Issue" : "Open Issue";
 
@@ -1784,7 +1808,7 @@ function issueCard(repo, host, issue) {
                 fontSize: 28,
                 lineHeight: "40px",
               },
-              repoName || repo.rid,
+              repoName(repo),
             ),
           ),
           el(
@@ -1839,8 +1863,8 @@ function issueCard(repo, host, issue) {
 function patchCard(repo, host, patch) {
   if (!patch) return repoCard(repo, host);
   const p = repoPayload(repo);
-  const repoName = p?.data?.name ?? "";
-  const avatarKey = `${repoName}${repo.rid.replace("rad:z", "")}${repoName}`;
+  const name = p?.data?.name ?? "";
+  const avatarKey = `${name}${repo.rid.replace("rad:z", "")}${name}`;
   const status = patch.state?.status ?? "open";
   const statusLabels = {
     open: "Open Patch",
@@ -1912,7 +1936,7 @@ function patchCard(repo, host, patch) {
                 fontSize: 28,
                 lineHeight: "40px",
               },
-              repoName || repo.rid,
+              repoName(repo),
             ),
           ),
           el(
@@ -1967,8 +1991,8 @@ function patchCard(repo, host, patch) {
 function commitCard(repo, host, commit, authorAvatar, committerAvatar) {
   if (!commit) return repoCard(repo, host);
   const p = repoPayload(repo);
-  const repoName = p?.data?.name ?? "";
-  const avatarKey = `${repoName}${repo.rid.replace("rad:z", "")}${repoName}`;
+  const name = p?.data?.name ?? "";
+  const avatarKey = `${name}${repo.rid.replace("rad:z", "")}${name}`;
   const c = commit.commit ?? {};
   const author = c.author;
   const committer = c.committer;
@@ -2032,7 +2056,7 @@ function commitCard(repo, host, commit, authorAvatar, committerAvatar) {
                 fontSize: 28,
                 lineHeight: "40px",
               },
-              repoName || repo.rid,
+              repoName(repo),
             ),
           ),
           el(
@@ -2334,8 +2358,7 @@ export default {
             fetchRepo(route.host, route.rid),
             route.peer ? fetchRemote(route.host, route.rid, route.peer) : null,
           ]);
-          const p = repoPayload(repo);
-          let sha = p?.meta?.head;
+          let sha = defaultBranchTip(repo);
           let peerAlias = null;
           let branch = route.branch;
 
@@ -2346,7 +2369,7 @@ export default {
             );
             peerAlias = delegate?.alias ?? null;
             if (remote.heads) {
-              const targetBranch = branch || p?.data?.defaultBranch;
+              const targetBranch = branch || defaultBranchName(repo);
               sha =
                 remote.heads[targetBranch] ??
                 Object.values(remote.heads)[0] ??

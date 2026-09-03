@@ -107,6 +107,62 @@ export async function createContributor(
 // Fetch what other peers have contributed to the repo. Artifact fixtures are
 // registered without announcing, so the delegate's node needs an explicit
 // fetch before its httpd serves them.
+// Replace a repo's identity document with one that has no project payload,
+// so its default branch comes only from the canonical refs payload.
+export async function dropProjectPayload(
+  peer: RadiclePeer,
+  repoFolder: string,
+  defaultBranch = "main",
+) {
+  const { stdout: did } = await peer.rad(["self", "--did"]);
+  const docPath = `${repoFolder}.identity.json`;
+  await Fs.writeFile(
+    docPath,
+    JSON.stringify({
+      payload: {
+        "xyz.radicle.crefs": {
+          rules: {
+            [`refs/heads/${defaultBranch}`]: {
+              allow: "delegates",
+              threshold: 1,
+            },
+          },
+          symbolic: { HEAD: `refs/heads/${defaultBranch}` },
+        },
+      },
+      delegates: [did],
+      threshold: 1,
+    }),
+  );
+
+  // `rad id update --edit` only runs its editor in a terminal, so `script`
+  // provides one. The editor then copies the prepared document into place.
+  const update = [
+    "rad",
+    "id",
+    "update",
+    "--edit",
+    "--title",
+    "Drop project payload",
+    "--description",
+    "Use canonical refs only",
+    "--no-confirm",
+    // Printing the result panics on the zero-width terminal of `script`.
+    "--quiet",
+  ];
+  const quoted = update.map(arg => `'${arg}'`).join(" ");
+  const script =
+    process.platform === "darwin"
+      ? `script -q /dev/null ${quoted}`
+      : `script -qec "${quoted}" /dev/null`;
+  // `script` reads the terminal settings of its standard input, which a pipe
+  // doesn't have.
+  await peer.spawn("sh", ["-c", `${script} < /dev/null`], {
+    cwd: repoFolder,
+    env: { EDITOR: `cp ${docPath}` },
+  });
+}
+
 export async function syncFrom(peer: RadiclePeer, repoFolder: string) {
   await peer.rad(["sync", "--fetch"], { cwd: repoFolder });
 }

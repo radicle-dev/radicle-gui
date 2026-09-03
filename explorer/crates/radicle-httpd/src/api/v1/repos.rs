@@ -1407,6 +1407,19 @@ mod routes {
                     }
                   }
                 },
+                "cobs": {
+                  "patches": {
+                    "open": 1,
+                    "draft": 0,
+                    "archived": 0,
+                    "merged": 0,
+                  },
+                  "issues": {
+                    "open": 1,
+                    "closed": 0,
+                  },
+                },
+                "defaultBranch": "refs/heads/master",
                 "delegates": [
                   {
                     "id": DID,
@@ -1444,6 +1457,19 @@ mod routes {
                     }
                   }
                 },
+                "cobs": {
+                  "patches": {
+                    "open": 0,
+                    "draft": 0,
+                    "archived": 0,
+                    "merged": 0,
+                  },
+                  "issues": {
+                    "open": 0,
+                    "closed": 0,
+                  },
+                },
+                "defaultBranch": "refs/heads/master",
                 "delegates": [
                   {
                     "id": DID,
@@ -1494,6 +1520,19 @@ mod routes {
                     }
                   }
                 },
+                "cobs": {
+                  "patches": {
+                    "open": 1,
+                    "draft": 0,
+                    "archived": 0,
+                    "merged": 0,
+                  },
+                  "issues": {
+                    "open": 1,
+                    "closed": 0,
+                  },
+                },
+                "defaultBranch": "refs/heads/master",
                 "delegates": [
                   {
                     "id": DID,
@@ -1531,6 +1570,19 @@ mod routes {
                     }
                   }
                 },
+                "cobs": {
+                  "patches": {
+                    "open": 0,
+                    "draft": 0,
+                    "archived": 0,
+                    "merged": 0,
+                  },
+                  "issues": {
+                    "open": 0,
+                    "closed": 0,
+                  },
+                },
+                "defaultBranch": "refs/heads/master",
                 "delegates": [
                   {
                     "id": DID,
@@ -1712,6 +1764,25 @@ mod routes {
                     }
                   }
                 },
+               "cobs": {
+                 "patches": {
+                   "open": 1,
+                   "draft": 0,
+                   "archived": 0,
+                   "merged": 0,
+                 },
+                 "issues": {
+                   "open": 1,
+                   "closed": 0,
+                 },
+                 "releases": {
+                   "delegate": 0,
+                   "delegateRedacted": 0,
+                   "other": 0,
+                   "otherRedacted": 0,
+                 },
+               },
+               "defaultBranch": "refs/heads/master",
                "delegates": [
                  {
                    "id": DID,
@@ -2300,6 +2371,40 @@ mod routes {
         assert_eq!(refs["tags"]["refs/tags/v1.0"]["commit"], json!(HEAD));
         assert!(refs["refs"]["refs/heads/feature/branch"].is_string());
         assert!(refs["tags"].get("refs/tags/v2.0-rc").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_repos_without_canonical_head() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = super::router(seed_no_quorum(tmp.path()));
+        let response = get(&app, format!("/repos/{RID}")).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Without a head there is no `meta`, but the project payload is kept.
+        let body = response.json().await;
+        let project = &body["payloads"]["xyz.radicle.project"];
+        assert_eq!(project["data"]["name"], json!("hello-world"));
+        assert!(project.get("meta").is_none());
+        assert_eq!(body["defaultBranch"], json!("refs/heads/master"));
+        assert_eq!(body["cobs"]["issues"]["open"], json!(1));
+        assert_eq!(body["cobs"]["patches"]["open"], json!(1));
+    }
+
+    #[cfg(not(feature = "artifacts"))]
+    #[tokio::test]
+    async fn test_repos_without_release_support() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = super::router(seed(tmp.path()));
+        let body = get(&app, format!("/repos/{RID}")).await.json().await;
+
+        // Clients detect release support by the count, so it must be absent
+        // rather than zero.
+        assert!(body["cobs"].get("releases").is_none());
+        assert!(body["payloads"]["xyz.radicle.project"]["meta"]
+            .get("releases")
+            .is_none());
+        assert_eq!(body["cobs"]["issues"]["open"], json!(1));
     }
 
     #[tokio::test]

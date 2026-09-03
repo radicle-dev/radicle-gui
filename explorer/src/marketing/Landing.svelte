@@ -14,12 +14,12 @@
   import { renderRepoAvatar } from "@radicle-gui/ui/lib/avatar";
 
   interface CarouselRepo {
-    name: string;
+    name: string | undefined;
     description: string;
     rid: string;
     seeding: number;
-    issues: number;
-    patches: number;
+    issues: number | undefined;
+    patches: number | undefined;
     route: Route;
     avatar: string;
   }
@@ -66,21 +66,19 @@
       if (token !== loadToken) {
         return;
       }
-      repos = list
-        .filter(r => r.payloads["xyz.radicle.project"])
-        .map(r => {
-          const project = r.payloads["xyz.radicle.project"];
-          return {
-            name: project.data.name,
-            description: project.data.description,
-            rid: r.rid,
-            seeding: r.seeding,
-            issues: project.meta.issues.open,
-            patches: project.meta.patches.open,
-            route: { resource: "repo.source", repo: r.rid, node: seed },
-            avatar: renderRepoAvatar(project.data.name),
-          };
-        });
+      repos = list.map(r => {
+        const project = r.payloads["xyz.radicle.project"];
+        return {
+          name: project?.data.name,
+          description: project?.data.description ?? "",
+          rid: r.rid,
+          seeding: r.seeding,
+          issues: r.cobs?.issues?.open,
+          patches: r.cobs?.patches?.open,
+          route: { resource: "repo.source", repo: r.rid, node: seed },
+          avatar: renderRepoAvatar(project?.data.name ?? r.rid),
+        };
+      });
     } catch (error) {
       if (token === loadToken && import.meta.env.DEV) {
         console.warn(
@@ -361,6 +359,13 @@
     white-space: nowrap;
   }
 
+  .name-placeholder {
+    height: 1.125rem;
+    width: 40%;
+    border-radius: var(--border-radius-sm);
+    background-color: var(--color-surface-mid);
+  }
+
   .id-link {
     font: var(--txt-code-regular);
     color: var(--color-accent-blue-500);
@@ -623,21 +628,35 @@
             class="repo-card">
             <div class="repo-image">
               {#if repo.avatar}
-                <img src={repo.avatar} alt={repo.name} class="repo-avatar" />
+                <img
+                  src={repo.avatar}
+                  alt={repo.name ?? repo.rid}
+                  class="repo-avatar" />
               {/if}
             </div>
 
             <div class="repo-body">
               <div class="repo-info">
-                <h3 class="txt-bold-18">{repo.name}</h3>
+                {#if repo.name}
+                  <h3 class="txt-bold-18">{repo.name}</h3>
+                {:else}
+                  <div
+                    class="name-placeholder"
+                    title="This repository has no name">
+                  </div>
+                {/if}
                 <p class="description txt-medium-14">{repo.description}</p>
                 <span class="id-link">{shortenRid(repo.rid)}</span>
               </div>
 
               <div class="meta-row">
                 <div class="stats txt-code-regular">
-                  <span class="stat">{repo.issues} issues</span>
-                  <span class="stat">{repo.patches} patches</span>
+                  {#if repo.issues !== undefined}
+                    <span class="stat">{repo.issues} issues</span>
+                  {/if}
+                  {#if repo.patches !== undefined}
+                    <span class="stat">{repo.patches} patches</span>
+                  {/if}
                 </div>
                 <span class="time txt-medium-14">{repo.seeding} seeds</span>
               </div>

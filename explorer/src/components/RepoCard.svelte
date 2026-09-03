@@ -6,6 +6,7 @@
 
   import {
     absoluteTimestamp,
+    defaultBranchTip,
     formatTimestamp,
     formatRepositoryId,
     repoSegment,
@@ -28,6 +29,7 @@
   $: project = repoInfo.repo.payloads["xyz.radicle.project"];
   $: baseUrl = repoInfo.baseUrl;
   $: isPrivate = repo.visibility.type === "private";
+  $: tip = defaultBranchTip(repo);
 </script>
 
 <style>
@@ -126,6 +128,14 @@
     padding: 0.25rem;
   }
 
+  .name-placeholder {
+    align-self: center;
+    height: 1rem;
+    width: 40%;
+    border-radius: var(--border-radius-sm);
+    background-color: var(--color-surface-mid);
+  }
+
   .stats-row {
     position: relative;
     display: flex;
@@ -162,11 +172,15 @@
     <div class="headline-and-badges txt-overflow">
       <div class="icon">
         <RepoAvatar
-          rid={repoInfo.repo.rid}
-          name={project.data.name}
+          rid={repo.rid}
+          name={project?.data.name ?? ""}
           styleWidth="1.5rem" />
       </div>
-      <div class="txt-body-l-semibold" use:twemoji>{project.data.name}</div>
+      {#if project}
+        <div class="txt-body-l-semibold" use:twemoji>{project.data.name}</div>
+      {:else}
+        <div class="name-placeholder" title="This repository has no name"></div>
+      {/if}
       <div class="badges" style:margin-left="auto">
         {#if isPrivate}
           <div
@@ -182,7 +196,7 @@
     <div class="content-and-activity">
       <div class="content">
         <div class="txt-body-m-regular txt-overflow" use:twemoji>
-          {project.data.description}
+          {project?.data.description ?? ""}
         </div>
         <span style:text-overflow="ellipsis">
           <Id id={repo.rid} title={repo.rid}>
@@ -207,20 +221,26 @@
         class="stats-row txt-code-regular"
         style:color="var(--color-text-tertiary)">
         <Icon name="seed" />
-        {repoInfo.repo.seeding} ·
-        <Icon name="issue" />
-        {project.meta.issues.open} ·
-        <Icon name="patch" />
-        {project.meta.patches.open}
-        {#await api.repo.getCommitBySha(repo.rid, project.meta.head) then { commit }}
-          <span
-            class="txt-body-m-regular"
-            style:margin-left="auto"
-            style:overflow="hidden"
-            style:text-overflow="ellipsis"
-            title={absoluteTimestamp(commit.committer.time)}>
-            Updated {formatTimestamp(commit.committer.time)}
-          </span>
+        {repo.seeding}
+        {#if repo.cobs?.issues && repo.cobs.patches}
+          ·
+          <Icon name="issue" />
+          {repo.cobs.issues.open} ·
+          <Icon name="patch" />
+          {repo.cobs.patches.open}
+        {/if}
+        {#await tip && api.repo.getCommitBySha(repo.rid, tip) then result}
+          {#if result}
+            {@const commit = result.commit}
+            <span
+              class="txt-body-m-regular"
+              style:margin-left="auto"
+              style:overflow="hidden"
+              style:text-overflow="ellipsis"
+              title={absoluteTimestamp(commit.committer.time)}>
+              Updated {formatTimestamp(commit.committer.time)}
+            </span>
+          {/if}
         {/await}
       </div>
     </div>

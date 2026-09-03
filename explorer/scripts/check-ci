@@ -47,6 +47,7 @@ steps=(
   "rust lint|RUSTFLAGS='-D warnings' cargo clippy --workspace --all-features --tests && RUSTFLAGS='-D warnings' cargo clippy -p radicle-httpd --no-default-features --tests && cargo fmt --all -- --check"
   "playwright install|npx playwright install chromium"
   "build|npm run build && npm run test:e2e -- --project chromium --config playwright.buildSmoke.config.ts"
+  "open-graph|npm ci --prefix workers/open-graph && npm run check:open-graph"
   "e2e|npm run test:e2e -- --project chromium"
 )
 summary=()

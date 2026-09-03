@@ -9,7 +9,7 @@
   import config from "@app/lib/config";
   import debounce from "lodash/debounce";
   import { routeToPath } from "@app/lib/router";
-  import { toClipboard, visibleReleaseCount } from "@app/lib/utils";
+  import { toClipboard } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
   import Icon from "@app/components/Icon.svelte";
@@ -21,8 +21,8 @@
   export let repo: Repo;
   export let repoId: string;
 
-  // Undefined on older nodes that don't report release counts.
-  $: releaseCount = visibleReleaseCount(repo);
+  // Undefined on nodes that cannot serve releases.
+  $: releaseCount = repo.releaseCount;
 
   let shareIcon: "link" | "checkmark" = "link";
 
@@ -133,12 +133,14 @@
       <Icon name="issue" />
       <div class="title-counter">
         Issues
-        <span
-          class="counter"
-          class:selected={activeTab === "issues"}
-          class:hover={hover && activeTab !== "issues"}>
-          {repo.payloads["xyz.radicle.project"].meta.issues.open}
-        </span>
+        {#if repo.cobs?.issues}
+          <span
+            class="counter"
+            class:selected={activeTab === "issues"}
+            class:hover={hover && activeTab !== "issues"}>
+            {repo.cobs.issues.open}
+          </span>
+        {/if}
       </div>
     </Button>
   </Link>
@@ -153,18 +155,19 @@
       <Icon name="patch" />
       <div class="title-counter">
         Patches
-        <span
-          class="counter"
-          class:hover={hover && activeTab !== "patches"}
-          class:selected={activeTab === "patches"}>
-          {repo.payloads["xyz.radicle.project"].meta.patches.open}
-        </span>
+        {#if repo.cobs?.patches}
+          <span
+            class="counter"
+            class:hover={hover && activeTab !== "patches"}
+            class:selected={activeTab === "patches"}>
+            {repo.cobs.patches.open}
+          </span>
+        {/if}
       </div>
     </Button>
   </Link>
 
-  <!-- Only nodes that report release counts support the release API; hide the
-  tab on older nodes where the field is absent. -->
+  <!-- Only nodes that report a release count support the release API. -->
   {#if releaseCount !== undefined}
     <Link
       route={{

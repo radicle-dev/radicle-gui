@@ -216,9 +216,7 @@
             <Markdown
               breaks
               content={issue.discussion[0].body}
-              rawPath={rawPath(
-                repo.payloads["xyz.radicle.project"].meta.head,
-              )} />
+              rawPath={rawPath(utils.defaultBranchTip(repo))} />
           {:else}
             <span style:color="var(--color-text-tertiary)">No description</span>
           {/if}
@@ -237,9 +235,7 @@
               <ThreadComponent
                 {baseUrl}
                 {thread}
-                rawPath={rawPath(
-                  repo.payloads["xyz.radicle.project"].meta.head,
-                )} />
+                rawPath={rawPath(utils.defaultBranchTip(repo))} />
               {#if i < threads.length - 1}
                 <div class="connector"></div>
               {/if}

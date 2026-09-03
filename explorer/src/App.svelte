@@ -27,6 +27,7 @@
   import Release from "@app/views/repos/Release.svelte";
   import Releases from "@app/views/repos/Releases.svelte";
   import Source from "@app/views/repos/Source.svelte";
+  import SourceUnavailable from "@app/views/repos/SourceUnavailable.svelte";
   import Users from "@app/views/users/View.svelte";
 
   import Error from "@app/views/error/View.svelte";
@@ -90,6 +91,8 @@
   <Users {...$activeRouteStore.params} />
 {:else if $activeRouteStore.resource === "repo.source"}
   <Source {...$activeRouteStore.params} />
+{:else if $activeRouteStore.resource === "repo.sourceUnavailable"}
+  <SourceUnavailable {...$activeRouteStore.params} />
 {:else if $activeRouteStore.resource === "repo.history"}
   <History {...$activeRouteStore.params} />
 {:else if $activeRouteStore.resource === "repo.commit"}

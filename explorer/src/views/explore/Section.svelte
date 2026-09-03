@@ -39,8 +39,7 @@
       .filter(
         (r): r is PromiseFulfilledResult<Repo> => r.status === "fulfilled",
       )
-      .map(r => r.value)
-      .filter(r => Boolean(r.payloads["xyz.radicle.project"]));
+      .map(r => r.value);
 
     return repos.map(repo => ({
       repo,
