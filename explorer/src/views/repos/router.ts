@@ -36,8 +36,11 @@ import { cached } from "@app/lib/cache";
 import { handleError, unreachableError } from "@app/views/repos/error";
 import {
   REFS_HEADS,
+  defaultBranchName,
+  defaultBranchTip,
   getBranchesFromRefs,
   getTagsFromRefs,
+  repoName,
   unreachable,
 } from "@app/lib/utils";
 import { nodePath } from "@app/views/nodes/router";
@@ -218,6 +221,18 @@ export type RepoLoadedRoute =
       };
     }
   | {
+      resource: "repo.sourceUnavailable";
+      params: {
+        baseUrl: BaseUrl;
+        seedingPolicy: SeedingPolicy;
+        repo: Repo;
+        repoId: string;
+        peer: string | undefined;
+        nodeId: string;
+        nodeAvatarUrl: string | undefined;
+      };
+    }
+  | {
       resource: "repo.commit";
       params: {
         baseUrl: BaseUrl;
@@ -354,24 +369,17 @@ export const cachedGetDiffStats = cached(
 );
 
 function parseRevisionToOid(
-  revision: string | undefined,
-  defaultBranch: string,
+  revision: string,
   branches: Record<string, string>,
 ): string {
-  if (revision) {
-    if (isOid(revision)) {
-      return revision;
-    } else {
-      const oid = branches[revision];
-      if (oid) {
-        return oid;
-      } else {
-        throw new Error(`Revision ${revision} not found`);
-      }
-    }
-  } else {
-    return branches[defaultBranch];
+  if (isOid(revision)) {
+    return revision;
   }
+  const oid = branches[revision];
+  if (oid) {
+    return oid;
+  }
+  throw new Error(`Revision ${revision} not found`);
 }
 
 export async function loadRepoRoute(
@@ -492,44 +500,46 @@ async function loadIssuesView(
   };
 }
 
-// Older nodes don't report a release count and lack the release API. Show a
-// friendly page pointing to another node instead of a raw 404.
+// Neither the project nor the canonical refs payload names a branch, or the
+// named branch has no tip, so there is no revision to browse. The repo still has COBs, so render its shell rather
+// than a full-page not-found that would take the issue and patch tabs with it.
+function sourceUnavailable(
+  route: { node: BaseUrl; repo: string; peer?: string },
+  repo: Repo,
+  seedingPolicy: SeedingPolicy,
+  node: { id: string; avatarUrl?: string | undefined },
+): RepoLoadedRoute {
+  return {
+    resource: "repo.sourceUnavailable",
+    params: {
+      baseUrl: route.node,
+      repoId: route.repo,
+      repo,
+      seedingPolicy,
+      peer: route.peer,
+      nodeId: node.id,
+      nodeAvatarUrl: node.avatarUrl,
+    },
+  };
+}
+
+// A missing release count means the node cannot serve releases: it predates
+// the release API or was built without release support.
 function releasesNotSupported(node: BaseUrl): NotFoundRoute {
   return {
     resource: "notFound",
     params: {
       title: "Releases are not available on this node",
       description:
-        "This node is running an older version that doesn't support browsing releases yet.\nSelect a different node to continue.",
+        "This node is running an older version or was built without release support.\nSelect a different node to continue.",
       baseUrl: node,
     },
   };
 }
 
-// The query for a page of releases in one author scope. Older nodes ignore
-// `scope`, so ask them for every author too when the scope is untrusted.
+// The query for a page of releases in one author scope.
 export function releasesQuery(scope: ReleaseScope, page: number) {
-  return {
-    scope,
-    allAuthors: scope === "untrusted" ? true : undefined,
-    page,
-    perPage: RELEASES_PER_PAGE,
-  };
-}
-
-// Keep only the releases in the author scope. A newer node has done this
-// already; an older one answers the untrusted scope with every author. Its pages
-// then come back short, so page on the length of the response, not of this.
-export function scopeReleases(
-  releases: Release[],
-  repo: Repo,
-  scope: ReleaseScope,
-): Release[] {
-  if (scope === "trusted") {
-    return releases;
-  }
-  const delegateIds = new Set(repo.delegates.map(d => d.id));
-  return releases.filter(r => !delegateIds.has(r.creator.id));
+  return { scope, page, perPage: RELEASES_PER_PAGE };
 }
 
 async function loadReleasesView(
@@ -540,42 +550,31 @@ async function loadReleasesView(
   // shows only when asked for.
   const scope = route.scope ?? "trusted";
 
-  // Fetch releases alongside the repo so the common path stays parallel; the
-  // repo's `meta.releases` then tells us whether a failure is an unsupported
-  // node or a genuine error.
-  const [repo, releasesResult, node] = await Promise.all([
+  const [repo, node] = await Promise.all([
     api.repo.getByRid(route.repo),
-    api.repo.getAllReleases(route.repo, releasesQuery(scope, 0)).then(
-      releases => ({ releases }),
-      (error: unknown) => ({ error }),
-    ),
     api.getNode(),
   ]);
 
-  // Older nodes report a single count here, newer ones the buckets, and
-  // either way its absence means no release API.
-  const releasesMeta = repo.payloads["xyz.radicle.project"].meta.releases;
-  if (releasesMeta === undefined) {
+  // A missing release count means the node cannot serve releases, so do not
+  // ask it for them.
+  if (repo.releaseCount === undefined) {
     return releasesNotSupported(route.node);
   }
-  if ("error" in releasesResult) {
-    throw releasesResult.error;
-  }
-  const page = releasesResult.releases;
 
-  // Others is one click away whenever it holds releases.
-  const showFilters =
-    typeof releasesMeta !== "number"
-      ? releasesMeta.other > 0
-      : scope === "untrusted" || (await legacyHasOthers(api, route.repo, repo));
+  // Others is one click away whenever it holds releases, and Delegates is
+  // one click back from it.
+  const [page, showFilters] = await Promise.all([
+    api.repo.getReleasesPage(repo, releasesQuery(scope, 0)),
+    scope === "untrusted" || api.repo.hasOtherReleases(repo, RELEASES_PER_PAGE),
+  ]);
 
   return {
     resource: "repo.releases",
     params: {
       baseUrl: route.node,
       repoId: route.repo,
-      releases: scopeReleases(page, repo, scope),
-      lastPageFull: page.length === RELEASES_PER_PAGE,
+      releases: page.releases,
+      lastPageFull: page.morePages,
       scope,
       showFilters,
       repo,
@@ -583,25 +582,6 @@ async function loadReleasesView(
       nodeAvatarUrl: node.avatarUrl,
     },
   };
-}
-
-// Older nodes report a single release count without the delegate and
-// non-delegate buckets, so look for others in the first page of every author.
-// A full page means others may come later, and only the filter depends on
-// this, so a full page or a failed fetch keeps the filter. Remove this once
-// nodes without the buckets are no longer supported.
-async function legacyHasOthers(
-  api: HttpdClient,
-  repoId: string,
-  repo: Repo,
-): Promise<boolean> {
-  const everyAuthor = await api.repo
-    .getAllReleases(repoId, releasesQuery("untrusted", 0))
-    .catch(() => undefined);
-  if (everyAuthor === undefined || everyAuthor.length === RELEASES_PER_PAGE) {
-    return true;
-  }
-  return scopeReleases(everyAuthor, repo, "untrusted").length > 0;
 }
 
 async function loadReleaseView(
@@ -618,7 +598,7 @@ async function loadReleaseView(
     api.getNode(),
   ]);
 
-  if (repo.payloads["xyz.radicle.project"].meta.releases === undefined) {
+  if (repo.releaseCount === undefined) {
     return releasesNotSupported(route.node);
   }
   if ("error" in releaseResult) {
@@ -679,13 +659,6 @@ async function loadTreeView(
     nodePromise,
   ]);
 
-  if (!repo["payloads"]["xyz.radicle.project"]) {
-    throw new Error(
-      `Repository ${repo.rid} does not have a xyz.radicle.project payload.`,
-    );
-  }
-
-  const project = repo["payloads"]["xyz.radicle.project"];
   let branchMap = canonicalBranchMap(repo);
 
   if (route.peer) {
@@ -708,11 +681,13 @@ async function loadTreeView(
     route.path = path;
   }
 
-  const commit = parseRevisionToOid(
-    route.revision,
-    project.data.defaultBranch,
-    branchMap,
-  );
+  const revision = route.revision || defaultBranchName(repo);
+  // Without a delegate quorum the default branch has no canonical tip.
+  if (!revision || (!route.revision && !branchMap[revision])) {
+    return sourceUnavailable(route, repo, seedingPolicy, node);
+  }
+
+  const commit = parseRevisionToOid(revision, branchMap);
   const path = route.path || "/";
   const [tree, blobResult] = await Promise.all([
     api.repo.getTree(route.repo, commit),
@@ -827,17 +802,13 @@ async function loadHistoryView(
     ? await getPeerBranchMap(api, route.repo, route.peer)
     : canonicalBranchMap(repo);
 
-  if (!repo["payloads"]["xyz.radicle.project"]) {
-    throw new Error(
-      `Repository ${repo.rid} does not have a xyz.radicle.project payload.`,
-    );
+  const revision = route.revision || defaultBranchName(repo);
+  // Without a delegate quorum the default branch has no canonical tip.
+  if (!revision || (!route.revision && !branchMap[revision])) {
+    return sourceUnavailable(route, repo, seedingPolicy, node);
   }
 
-  const project = repo["payloads"]["xyz.radicle.project"];
-  const commitId =
-    route.revision && isOid(route.revision)
-      ? route.revision
-      : branchMap[route.revision || project.data.defaultBranch];
+  const commitId = isOid(revision) ? revision : branchMap[revision];
 
   if (!commitId) {
     throw new Error(
@@ -1032,11 +1003,12 @@ async function loadPatchView(
 function canonicalBranchMap(repo: Repo): Record<string, string> {
   const branchMap: Record<string, string> = {};
 
-  const project = repo.payloads["xyz.radicle.project"];
-  if (project) {
-    branchMap[project.data.defaultBranch] = project.meta.head;
-    branchMap[encodeURIComponent(project.data.defaultBranch)] =
-      project.meta.head;
+  // `defaultBranch` is qualified but this map is keyed by short names.
+  const name = defaultBranchName(repo);
+  const tip = defaultBranchTip(repo);
+  if (name && tip) {
+    branchMap[name] = tip;
+    branchMap[encodeURIComponent(name)] = tip;
   }
 
   for (const [refName, oid] of canonicalOids(repo.refs)) {
@@ -1362,35 +1334,31 @@ function patchRouteToPath(route: RepoPatchRoute): string {
 export function repoTitle(loadedRoute: RepoLoadedRoute) {
   const title: string[] = [];
 
-  if (!loadedRoute.params.repo["payloads"]["xyz.radicle.project"]) {
-    throw new Error(
-      `Repository ${loadedRoute.params.repo.rid} does not have a xyz.radicle.project payload.`,
-    );
-  }
-  const project = loadedRoute.params.repo["payloads"]["xyz.radicle.project"];
+  const repo = loadedRoute.params.repo;
+  const project = repo["payloads"]["xyz.radicle.project"];
 
   if (loadedRoute.resource === "repo.source") {
-    title.push(project.data.name);
-    if (project.data.description.length > 0) {
+    title.push(repoName(repo));
+    if (project && project.data.description.length > 0) {
       title.push(project.data.description);
     }
   } else if (loadedRoute.resource === "repo.commit") {
     title.push(loadedRoute.params.commit.commit.summary);
     title.push("Commit");
   } else if (loadedRoute.resource === "repo.history") {
-    title.push(project.data.name);
+    title.push(repoName(repo));
     title.push("Commits");
   } else if (loadedRoute.resource === "repo.issue") {
     title.push(loadedRoute.params.issue.title);
     title.push("Issue");
   } else if (loadedRoute.resource === "repo.issues") {
-    title.push(project.data.name);
+    title.push(repoName(repo));
     title.push("Issues");
   } else if (loadedRoute.resource === "repo.patch") {
     title.push(loadedRoute.params.patch.title);
     title.push("Patch");
   } else if (loadedRoute.resource === "repo.patches") {
-    title.push(project.data.name);
+    title.push(repoName(repo));
     title.push("Patches");
   } else if (loadedRoute.resource === "repo.release") {
     title.push(
@@ -1400,8 +1368,10 @@ export function repoTitle(loadedRoute: RepoLoadedRoute) {
     );
     title.push("Release");
   } else if (loadedRoute.resource === "repo.releases") {
-    title.push(project.data.name);
+    title.push(repoName(repo));
     title.push("Releases");
+  } else if (loadedRoute.resource === "repo.sourceUnavailable") {
+    title.push(repoName(repo));
   } else {
     return unreachable(loadedRoute);
   }

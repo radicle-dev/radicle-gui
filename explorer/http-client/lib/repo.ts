@@ -1,6 +1,14 @@
 import type { Fetcher, RequestOptions } from "./fetcher.js";
 
 import { ResponseError } from "./fetcher.js";
+import {
+  crefsPayloadSchema,
+  legacyHasOtherReleases,
+  legacyMetaSchema,
+  legacyReleasesQuery,
+  legacyRepoFields,
+  legacyScopeReleases,
+} from "./compat.js";
 import type { Commit, Commits } from "./repo/commit.js";
 import type { Issue } from "./repo/issue.js";
 import type { Patch } from "./repo/patch.js";
@@ -67,33 +75,47 @@ export type ReleaseCounts = z.infer<typeof releaseCountsSchema>;
 // delegate, or by anyone else.
 export type ReleaseScope = "trusted" | "untrusted";
 
-const repoSchema = object({
+// Repository-level COB counts. Each is absent when the node cannot determine
+// it — an unreadable COB cache, or a build without release support — so a
+// missing count never reads as zero.
+const cobCountsSchema = object({
+  patches: optional(
+    object({
+      open: number(),
+      draft: number(),
+      archived: number(),
+      merged: number(),
+    }),
+  ),
+  issues: optional(
+    object({
+      open: number(),
+      closed: number(),
+    }),
+  ),
+  releases: optional(releaseCountsSchema),
+});
+
+export type CobCounts = z.infer<typeof cobCountsSchema>;
+
+export const repoSchema = object({
   rid: string(),
   payloads: object({
+    // Optional: a repo may declare its default branch in `xyz.radicle.crefs`
+    // instead, and carry no project payload at all.
     "xyz.radicle.project": object({
       data: object({
         name: string(),
         description: string(),
+        // Unqualified, unlike the top-level `defaultBranch`.
         defaultBranch: string(),
       }),
-      meta: object({
-        head: string(),
-        patches: object({
-          open: number(),
-          draft: number(),
-          archived: number(),
-          merged: number(),
-        }),
-        issues: object({
-          open: number(),
-          closed: number(),
-        }),
-        // Absent on older nodes that don't report release counts, and a
-        // single count on nodes that report one instead of the buckets.
-        releases: optional(union([releaseCountsSchema, number()])),
-      }),
-    }),
+      meta: legacyMetaSchema.optional(),
+    }).optional(),
+    "xyz.radicle.crefs": crefsPayloadSchema,
   }),
+  cobs: optional(cobCountsSchema),
+  defaultBranch: optional(string()),
   delegates: array(authorSchema),
   threshold: number(),
   visibility: union([
@@ -106,6 +128,26 @@ const repoSchema = object({
     refs: record(string(), string()),
   }).optional(),
   alias: string().optional(),
+}).transform(repo => {
+  // Every httpd from 0.30.0 sends `cobs`, so only a node without it needs the
+  // legacy fields. A newer node that leaves out `defaultBranch` has none.
+  if (repo.cobs === undefined) {
+    return {
+      ...repo,
+      ...legacyRepoFields(
+        repo.payloads["xyz.radicle.project"],
+        repo.payloads["xyz.radicle.crefs"],
+      ),
+    };
+  }
+
+  return {
+    ...repo,
+    cobs: repo.cobs,
+    // The unredacted delegate releases, which the releases tab opens on.
+    // Absent when the node cannot serve releases.
+    releaseCount: repo.cobs.releases?.delegate,
+  };
 });
 const reposSchema = array(repoSchema);
 
@@ -387,9 +429,10 @@ export class Client {
       );
       return commits;
     } catch (error) {
-      // Older nodes don't serve the dedicated commit-count endpoint, so fall
+      // Compat: httpd < 0.27.0 doesn't serve the commit-count endpoint, so fall
       // back to the tree stats endpoint, which also returns the commit count.
-      // TODO: Drop this fallback once enough nodes serve /stats/commits.
+      // Outside the support window; remove once the e2e tests stop running
+      // against httpd 0.26.0.
       if (error instanceof ResponseError && error.status === 404) {
         const stats = await this.getTreeStatsBySha(rid, sha, options);
         return stats.commits;
@@ -496,9 +539,10 @@ export class Client {
         diffStatsSchema,
       );
     } catch (error) {
-      // Older nodes don't serve the dedicated diff-stats endpoint, so fall back
-      // to the full diff, which also carries the stats.
-      // TODO: Drop this fallback once enough nodes serve /diff/:base/:oid/stats.
+      // Compat: httpd < 0.27.0 doesn't serve the diff-stats endpoint, so fall
+      // back to the full diff, which also carries the stats. Outside the
+      // support window; remove once the e2e tests stop running against httpd
+      // 0.26.0.
       if (error instanceof ResponseError && error.status === 404) {
         const { diff } = await this.getDiff(
           rid,
@@ -618,9 +662,6 @@ export class Client {
       page?: number;
       perPage?: number;
       scope?: ReleaseScope;
-      // Older nodes ignore `scope` and only know this superset of both
-      // scopes.
-      allAuthors?: boolean;
       showRedacted?: boolean;
     },
     options?: RequestOptions,
@@ -629,10 +670,46 @@ export class Client {
       {
         method: "GET",
         path: `repos/${rid}/releases`,
-        query,
+        query: { ...query, ...legacyReleasesQuery(query?.scope) },
         options,
       },
       releasesSchema,
+    );
+  }
+
+  // One page of releases in an author scope, and whether more may follow.
+  public async getReleasesPage(
+    repo: Repo,
+    query: { scope: ReleaseScope; page: number; perPage: number },
+    options?: RequestOptions,
+  ): Promise<{ releases: Release[]; morePages: boolean }> {
+    const response = await this.getAllReleases(repo.rid, query, options);
+    return {
+      releases: legacyScopeReleases(response, repo.delegates, query.scope),
+      // Page on the response, as older nodes fill it with every author.
+      morePages: response.length === query.perPage,
+    };
+  }
+
+  // Whether anyone other than a delegate has a release that a user can see.
+  public async hasOtherReleases(
+    repo: Repo,
+    perPage: number,
+    options?: RequestOptions,
+  ): Promise<boolean> {
+    const counts = repo.cobs?.releases;
+    if (counts) {
+      return counts.other > 0;
+    }
+    return legacyHasOtherReleases(
+      () =>
+        this.getAllReleases(
+          repo.rid,
+          { scope: "untrusted", page: 0, perPage },
+          options,
+        ),
+      repo.delegates,
+      perPage,
     );
   }
 }

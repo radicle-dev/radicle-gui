@@ -26,7 +26,7 @@ Expand: `cobs`, `releaseCount` and a qualified `defaultBranch` move out of the p
 
 Contract:
 
-- Client, 2027-03-14: `legacyMetaSchema` and `legacyRepoFields` in `http-client/lib/compat.ts`
+- Client, 2027-03-14: `legacyMetaSchema`, `crefsPayloadSchema` and `legacyRepoFields` in `http-client/lib/compat.ts`
 - Client, 2027-03-14: `normalizeRepo` in `workers/open-graph/index.js`
 - Server, 0.30.0 + 6 months: legacy `meta` and `head` in `crates/radicle-httpd/src/api.rs`
 

@@ -3,7 +3,7 @@
 
   import { HttpdClient } from "@http-client";
   import { ISSUES_PER_PAGE } from "./router";
-  import { baseUrlToString } from "@app/lib/utils";
+  import { baseUrlToString, hasMorePages } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
   import ErrorMessage from "@app/components/ErrorMessage.svelte";
@@ -57,7 +57,12 @@
   $: showMoreButton =
     !loading &&
     !error &&
-    allIssues.length < repo.payloads["xyz.radicle.project"].meta.issues[status];
+    hasMorePages(
+      allIssues.length,
+      page + 1,
+      ISSUES_PER_PAGE,
+      repo.cobs?.issues?.[status],
+    );
 </script>
 
 <style>
@@ -128,9 +133,11 @@
         <Icon name="issue" />
         <div class="title-counter">
           Open
-          <span class="counter" class:selected={status === "open"}>
-            {repo.payloads["xyz.radicle.project"].meta.issues.open}
-          </span>
+          {#if repo.cobs?.issues}
+            <span class="counter" class:selected={status === "open"}>
+              {repo.cobs.issues.open}
+            </span>
+          {/if}
         </div>
       </Button>
     </Link>
@@ -145,9 +152,11 @@
         <Icon name="issue-closed" />
         <div class="title-counter">
           Closed
-          <span class="counter" class:selected={status === "closed"}>
-            {repo.payloads["xyz.radicle.project"].meta.issues.closed}
-          </span>
+          {#if repo.cobs?.issues}
+            <span class="counter" class:selected={status === "closed"}>
+              {repo.cobs.issues.closed}
+            </span>
+          {/if}
         </div>
       </Button>
     </Link>
@@ -165,7 +174,7 @@
       {error} />
   {/if}
 
-  {#if repo.payloads["xyz.radicle.project"].meta.issues[status] === 0}
+  {#if repo.cobs?.issues?.[status] === 0}
     <div class="placeholder">
       <Placeholder iconName="issue" caption={`No ${status} issues`} />
     </div>

@@ -53,6 +53,12 @@ describe("artifactView", () => {
     expect(view.showFilters).toBe(true);
   });
 
+  test("keeps the filter on others without artifacts by others", () => {
+    const view = artifactView([ours], delegates, "untrusted", false);
+    expect(view.shown).toEqual([]);
+    expect(view.showFilters).toBe(true);
+  });
+
   test("hides the filter without artifacts by others", () => {
     const view = artifactView([ours], delegates, "trusted", false);
     expect(view.showFilters).toBe(false);

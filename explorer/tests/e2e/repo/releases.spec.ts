@@ -108,6 +108,17 @@ test.describe(() => {
     await expect(page.getByText("eve commit")).toBeVisible();
   });
 
+  test("keep a way back from empty others", async ({ page, peer }) => {
+    const { rid, repoFolder } = await createRepo(peer, {
+      name: "no-others-releases",
+    });
+    await registerArtifact(peer, repoFolder, { name: "binary" });
+
+    await page.goto(`${peer.uiUrl()}/${rid}/releases?scope=untrusted`);
+    await page.getByRole("link", { name: "Delegates 1" }).click();
+    await expect(page).toHaveURL(`${peer.uiUrl()}/${rid}/releases`);
+  });
+
   test("empty release listing", async ({ page, peer }) => {
     const { rid } = await createRepo(peer, { name: "no-releases" });
 

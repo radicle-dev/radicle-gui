@@ -9,6 +9,8 @@
     formatCommit,
     formatNodeId,
     formatTimestamp,
+    defaultBranchName as getDefaultBranchName,
+    defaultBranchTip,
     getBranchesFromRefs,
     getTagsFromRefs,
     gravatarURL,
@@ -52,6 +54,8 @@
     type: "branch" | "tag";
   };
 
+  $: defaultBranchName = getDefaultBranchName(repo);
+  $: tip = defaultBranchTip(repo);
   $: peerList = peers ?? [];
   $: canonicalBranchesMap = getBranchesFromRefs(repo.refs?.refs ?? {});
   $: canonicalTagsInfo = Object.fromEntries(
@@ -62,18 +66,20 @@
   );
 
   $: branchElements = [
-    {
-      peer: undefined,
-      revision: repo.payloads["xyz.radicle.project"].data.defaultBranch,
-      head: repo.payloads["xyz.radicle.project"].meta.head,
-      type: "branch",
-    },
+    // Only listed separately when it resolves; otherwise the canonical refs
+    // below already carry every branch there is.
+    ...(defaultBranchName && tip
+      ? [
+          {
+            peer: undefined,
+            revision: defaultBranchName,
+            head: tip,
+            type: "branch",
+          },
+        ]
+      : []),
     ...Object.entries(canonicalBranchesMap)
-      .filter(
-        ([branchName]) =>
-          branchName !==
-          repo.payloads["xyz.radicle.project"].data.defaultBranch,
-      )
+      .filter(([branchName]) => branchName !== defaultBranchName)
       .map(([name, head]) => ({
         peer: undefined,
         revision: name,
@@ -134,8 +140,7 @@
     },
   );
   $: canonicalBranches = Object.entries(canonicalBranchesMap).filter(
-    ([branchName]) =>
-      branchName !== repo.payloads["xyz.radicle.project"].data.defaultBranch,
+    ([branchName]) => branchName !== defaultBranchName,
   );
   $: hasTags =
     Object.keys(canonicalTagsInfo).length > 0 ||
@@ -384,6 +389,9 @@
             Canonical
           </Badge>
         {/if}
+      {:else if !displayPeer}
+        <Icon name="branch" />
+        <span class="txt-overflow">Select branch</span>
       {/if}
       <Icon name={expanded ? "chevron-up" : "chevron-down"} />
     </Button>
@@ -535,26 +543,30 @@
             {/if}
           {/each}
         {:else if selectedTab === "branches"}
-          <Link
-            style={subgridStyle}
-            route={{ ...baseRoute, revision: undefined }}
-            on:afterNavigate={() => {
-              searchInput = "";
-              toggle();
-            }}>
-            <DropdownListItem selected={onCanonical} style={subgridStyle}>
-              <div class="global-flex-item">
-                <Icon name="branch" />
-                {repo.payloads["xyz.radicle.project"].data.defaultBranch}
-                <Badge title="Canonical branch" variant="foreground-emphasized">
-                  Canonical
-                </Badge>
-              </div>
-              <div class="txt-id">
-                {formatCommit(repo.payloads["xyz.radicle.project"].meta.head)}
-              </div>
-            </DropdownListItem>
-          </Link>
+          {#if defaultBranchName && tip}
+            <Link
+              style={subgridStyle}
+              route={{ ...baseRoute, revision: undefined }}
+              on:afterNavigate={() => {
+                searchInput = "";
+                toggle();
+              }}>
+              <DropdownListItem selected={onCanonical} style={subgridStyle}>
+                <div class="global-flex-item">
+                  <Icon name="branch" />
+                  {defaultBranchName}
+                  <Badge
+                    title="Canonical branch"
+                    variant="foreground-emphasized">
+                    Canonical
+                  </Badge>
+                </div>
+                <div class="txt-id">
+                  {formatCommit(tip)}
+                </div>
+              </DropdownListItem>
+            </Link>
+          {/if}
           {#each canonicalBranches as [branchName, branchHead]}
             <Link
               style={subgridStyle}
