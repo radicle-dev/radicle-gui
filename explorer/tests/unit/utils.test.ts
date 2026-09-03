@@ -1,3 +1,5 @@
+import type { Repo } from "@http-client";
+
 import { describe, expect, test } from "vitest";
 import * as utils from "@app/lib/utils";
 
@@ -351,6 +353,47 @@ describe("repoSegment", () => {
   ])("falls back to the RID with $description", ({ repo }) => {
     expect(utils.repoSegment(repo)).toEqual(rid);
   });
+});
+
+describe("repoName", () => {
+  const rid = "rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5";
+
+  test("reads the name from the project payload", () => {
+    const repo = {
+      rid,
+      payloads: { "xyz.radicle.project": { data: { name: "heartwood" } } },
+    } as Repo;
+    expect(utils.repoName(repo)).toEqual("heartwood");
+  });
+
+  test("falls back to the RID without a project payload", () => {
+    const repo = { rid, payloads: {} } as Repo;
+    expect(utils.repoName(repo)).toEqual(utils.formatRepositoryId(rid));
+  });
+});
+
+describe("hasMorePages", () => {
+  test.each([
+    { loaded: 9, total: 10, expected: true },
+    { loaded: 10, total: 10, expected: false },
+    { loaded: 0, total: 0, expected: false },
+  ])(
+    "compares $loaded loaded with a total of $total",
+    ({ loaded, total, expected }) => {
+      expect(utils.hasMorePages(loaded, 1, 10, total)).toBe(expected);
+    },
+  );
+
+  test.each([
+    { loaded: 20, pages: 2, expected: true },
+    { loaded: 19, pages: 2, expected: false },
+    { loaded: 0, pages: 1, expected: false },
+  ])(
+    "without a total, $loaded loaded in $pages pages => $expected",
+    ({ loaded, pages, expected }) => {
+      expect(utils.hasMorePages(loaded, pages, 10, undefined)).toBe(expected);
+    },
+  );
 });
 
 describe("safeDecodeURIComponent", () => {

@@ -9,10 +9,12 @@
 # whatever a job that finished earlier committed is gone.
 #
 # check therefore runs first, and is the only step that writes content no other
-# step produces: the lint caches, and the pinned binaries. The four steps that
-# follow all copy its version and add nothing unique to it — `npm ci` against the
-# same lockfile fetches the same tarballs, and install-binaries does nothing once
-# the pinned version is there. Whichever of them commits last keeps everything.
+# step produces: the lint caches, and the pinned binaries. The steps that follow
+# all copy its version and add nothing unique to it — `npm ci` against the same
+# lockfile fetches the same tarballs, and install-binaries does nothing once the
+# pinned version is there. Whichever of them commits last keeps everything. The
+# one exception is build-smoke, which adds the Open Graph worker's tarballs: when
+# another step commits after it, they are lost and fetched again next time.
 #
 # Stale content is safe. The npm cache is content-addressed, and install-binaries
 # keys its download on the pinned version.
@@ -126,3 +128,7 @@ steps:
       - npm ci
       - npm run build
       - npm run test:e2e -- --project chromium --config playwright.buildSmoke.config.ts
+      # Bundles the Open Graph worker without deploying it.
+      # --prefix keeps the relative NPM_CONFIG_CACHE in explorer/
+      - npm ci --prefix workers/open-graph
+      - npm run check:open-graph

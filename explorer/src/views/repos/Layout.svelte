@@ -5,6 +5,7 @@
   import { onMount } from "svelte";
 
   import { activeRouteStore } from "@app/lib/router";
+  import { repoName } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
   import Header from "@app/components/Header.svelte";
@@ -26,6 +27,7 @@
   export let nodeAvatarUrl: string | undefined;
 
   $: route = $activeRouteStore;
+  $: project = repo.payloads["xyz.radicle.project"];
   $: isRepoHome = route.resource === "repo.source" && route.params.path === "/";
 
   let trail: HTMLElement | undefined = undefined;
@@ -217,10 +219,10 @@
                   }}>
                   <div class="breadcrumb repo-crumb">
                     <RepoAvatar
-                      name={repo.payloads["xyz.radicle.project"].data.name}
+                      name={project?.data.name ?? ""}
                       rid={repo.rid}
                       styleWidth="1rem" />
-                    {repo.payloads["xyz.radicle.project"].data.name}
+                    {repoName(repo)}
                   </div>
                 </Link>
               </span>
@@ -270,7 +272,9 @@
 
       <div style:width="100%">
         <Link
-          title={`${repo.payloads["xyz.radicle.project"].meta.issues.open} Issues`}
+          title={repo.cobs?.issues
+            ? `${repo.cobs.issues.open} Issues`
+            : "Issues"}
           route={{
             resource: "repo.issues",
             repo: repoId,
@@ -286,7 +290,9 @@
 
       <div style:width="100%">
         <Link
-          title={`${repo.payloads["xyz.radicle.project"].meta.patches.open} Patches`}
+          title={repo.cobs?.patches
+            ? `${repo.cobs.patches.open} Patches`
+            : "Patches"}
           route={{
             resource: "repo.patches",
             repo: repoId,
@@ -300,7 +306,7 @@
         </Link>
       </div>
 
-      {#if repo.payloads["xyz.radicle.project"].meta.releases !== undefined}
+      {#if repo.releaseCount !== undefined}
         <div style:width="100%">
           <Link
             title="Releases"

@@ -2,7 +2,7 @@
   import type { BaseUrl, Release, ReleaseScope, Repo } from "@http-client";
 
   import { HttpdClient } from "@http-client";
-  import { RELEASES_PER_PAGE, releasesQuery, scopeReleases } from "./router";
+  import { releasesQuery } from "./router";
   import { baseUrlToString } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
@@ -42,9 +42,8 @@
 
   $: delegateIds = new Set(repo.delegates.map(d => d.id));
 
-  // Older nodes report a single count, so their segments go without counters.
-  $: releasesMeta = repo.payloads["xyz.radicle.project"].meta.releases;
-  $: counts = typeof releasesMeta === "object" ? releasesMeta : undefined;
+  // Without counts per scope, the segments go without counters.
+  $: counts = repo.cobs?.releases;
 
   const api = new HttpdClient(baseUrl);
 
@@ -54,12 +53,13 @@
     // doesn't leave a gap behind on retry.
     const next = page + 1;
     try {
-      const response = await api.repo.getAllReleases(
+      const response = await api.repo.getReleasesPage(
         repo.rid,
+        repo.delegates,
         releasesQuery(scope, next),
       );
-      allReleases = [...allReleases, ...scopeReleases(response, repo, scope)];
-      morePages = response.length === RELEASES_PER_PAGE;
+      allReleases = [...allReleases, ...response.releases];
+      morePages = response.morePages;
       page = next;
     } catch (e) {
       error = e;

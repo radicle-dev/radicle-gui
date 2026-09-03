@@ -43,6 +43,12 @@ jobs:
         run: npm run build
       - name: Run Playwright build smoke test
         run: npm run test:e2e -- --project chromium --config playwright.buildSmoke.config.ts
+      # The worker resolves compat.ts imports, such as zod, from explorer's
+      # node_modules, so it needs both installs.
+      - name: Install Open Graph worker dependencies
+        run: npm ci --prefix workers/open-graph
+      - name: Bundle Open Graph worker
+        run: npm run check:open-graph
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         if: always()

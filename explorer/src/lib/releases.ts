@@ -46,8 +46,9 @@ export function artifactView(
       trusted: visible(byScope.trusted).length,
       untrusted: visible(byScope.untrusted).length,
     },
-    // Others is one click away whenever it holds something.
-    showFilters: byScope.untrusted.length > 0,
+    // Others is one click away whenever it holds something, and Delegates is
+    // one click back from it.
+    showFilters: scope === "untrusted" || byScope.untrusted.length > 0,
   };
 }
 

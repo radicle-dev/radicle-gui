@@ -81,9 +81,10 @@ changes go through expand and contract, see
 ## Pre-push checklist
 
 `npm run check:ci` runs the checks, unit, http-client, e2e and build smoke tests
-from the GitHub workflows, and stops at the first failure. It logs each step's
-output, duration and exit code to `tests/tmp/check-ci.log`. If Rust code
-changed, also run the Rust commands and the `:local` variants above.
+and the Open Graph worker bundle from the GitHub workflows, and stops at the
+first failure. It logs each step's output, duration and exit code to
+`tests/tmp/check-ci.log`. If Rust code changed, also run the Rust commands and
+the `:local` variants above.
 
 ## Svelte components
 

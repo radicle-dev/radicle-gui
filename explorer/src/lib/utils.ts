@@ -6,25 +6,14 @@ import twemojiModule from "twemoji";
 
 export const REFS_HEADS = "refs/heads/";
 
-// Reads the repository's default branch. Heartwood no longer requires the
-// project payload, so this is the single place to change once the API stops
-// carrying the default branch there.
-export function defaultBranch(repo: Repo): string {
-  return repo.payloads["xyz.radicle.project"].data.defaultBranch;
+// The commit the default branch resolves to.
+export function defaultBranchTip(repo: Repo): string | undefined {
+  return repo.defaultBranch ? repo.refs?.refs[repo.defaultBranch] : undefined;
 }
 
-// Counts the releases a user can browse: the two unredacted buckets, or the
-// single count older nodes report in place of the buckets. Undefined means the
-// node doesn't report releases at all, which is how the release API is
-// detected.
-export function visibleReleaseCount(repo: Repo): number | undefined {
-  const releases = repo.payloads["xyz.radicle.project"].meta.releases;
-  if (releases === undefined) {
-    return undefined;
-  }
-  return typeof releases === "number"
-    ? releases
-    : releases.delegate + releases.other;
+// The default branch in the unqualified form that routes use.
+export function defaultBranchName(repo: Repo): string | undefined {
+  return repo.defaultBranch ? unqualifyBranch(repo.defaultBranch) : undefined;
 }
 
 export function unqualifyBranch(refname: string): string {
@@ -103,6 +92,26 @@ export function formatRepositoryId(id: string): string {
 
 export function truncateId(pubkey: string): string {
   return `${pubkey.substring(0, 6)}…${pubkey.slice(-6)}`;
+}
+
+// Whether a paged list may have more items. With a total, compare against it;
+// without one, offer more while every loaded page came back full.
+export function hasMorePages(
+  loaded: number,
+  pages: number,
+  perPage: number,
+  total: number | undefined,
+): boolean {
+  return total === undefined ? loaded === pages * perPage : loaded < total;
+}
+
+// A repo only has a name if it carries a project payload. Fall back to the RID,
+// which every repo has.
+export function repoName(repo: Repo): string {
+  return (
+    repo.payloads["xyz.radicle.project"]?.data.name ??
+    formatRepositoryId(repo.rid)
+  );
 }
 
 // The URL path segment to use for a repo: its configured alias when the node

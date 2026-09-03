@@ -60,6 +60,13 @@
     text-align: left;
     text-overflow: ellipsis;
   }
+  .name-placeholder {
+    display: block;
+    width: 12rem;
+    height: 1.5rem;
+    border-radius: var(--border-radius-sm);
+    background-color: var(--color-surface-mid);
+  }
   .repo-name:hover {
     color: inherit;
   }
@@ -108,7 +115,10 @@
 
 <div class="header-layout">
   <div class="avatar">
-    <RepoAvatar name={project.data.name} rid={repo.rid} styleWidth="10rem" />
+    <RepoAvatar
+      name={project?.data.name ?? ""}
+      rid={repo.rid}
+      styleWidth="10rem" />
   </div>
   <div class="meta">
     <div class="title">
@@ -119,9 +129,12 @@
             repo: repoId,
             node: baseUrl,
           }}>
-          <span class="repo-name">
-            {project.data.name}
-          </span>
+          {#if project}
+            <span class="repo-name">{project.data.name}</span>
+          {:else}
+            <span class="name-placeholder" title="This repository has no name">
+            </span>
+          {/if}
         </Link>
       </span>
       {#if repo.visibility.type === "private"}
@@ -136,19 +149,23 @@
         {formatRepositoryId(repo.rid)}
       </Id>
     </div>
+    {#if project}
+      <div
+        class="description global-hide-on-mobile-down"
+        title={project.data.description}
+        use:twemoji>
+        {@html render(project.data.description)}
+      </div>
+    {/if}
+  </div>
+  {#if project}
     <div
-      class="description global-hide-on-mobile-down"
+      class="description mobile-description global-hide-on-small-desktop-up"
       title={project.data.description}
       use:twemoji>
       {@html render(project.data.description)}
     </div>
-  </div>
-  <div
-    class="description mobile-description global-hide-on-small-desktop-up"
-    title={project.data.description}
-    use:twemoji>
-    {@html render(project.data.description)}
-  </div>
+  {/if}
   <div class="info">
     <ContextRepo
       {baseUrl}

@@ -40,13 +40,14 @@ Contract:
 ### Repo facts outside the project payload
 
 Expand: `cobs`, `releaseCount` and a qualified `defaultBranch` move out of the
-project payload. The legacy `meta` (counts and `head`) stays inside it. Read by
-the explorer client and the Open Graph worker.
+project payload. The legacy `meta` (counts and `head`) stays inside it. Only
+`repos/:rid` sends the release counts: counting reads every release, so repo
+lists leave them out. Read by the explorer client and the Open Graph worker.
 
 Contract:
 
-- Client, when explorer drops httpd 0.30: `legacyMetaSchema` and
-  `legacyRepoFields` in `http-client/lib/compat.ts`
+- Client, when explorer drops httpd 0.30: `legacyMetaSchema`,
+  `crefsPayloadSchema` and `legacyRepoFields` in `http-client/lib/compat.ts`
 - Client, when explorer drops httpd 0.30: `normalizeRepo` in
   `workers/open-graph/index.js`
 - Server, a major release: legacy `meta` and `head` in
