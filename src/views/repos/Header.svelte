@@ -133,12 +133,14 @@
       <Icon name="issue" />
       <div class="title-counter">
         Issues
-        <span
-          class="counter"
-          class:selected={activeTab === "issues"}
-          class:hover={hover && activeTab !== "issues"}>
-          {repo.payloads["xyz.radicle.project"].meta.issues.open}
-        </span>
+        {#if repo.cobs?.issues}
+          <span
+            class="counter"
+            class:selected={activeTab === "issues"}
+            class:hover={hover && activeTab !== "issues"}>
+            {repo.cobs.issues.open}
+          </span>
+        {/if}
       </div>
     </Button>
   </Link>
@@ -153,12 +155,14 @@
       <Icon name="patch" />
       <div class="title-counter">
         Patches
-        <span
-          class="counter"
-          class:hover={hover && activeTab !== "patches"}
-          class:selected={activeTab === "patches"}>
-          {repo.payloads["xyz.radicle.project"].meta.patches.open}
-        </span>
+        {#if repo.cobs?.patches}
+          <span
+            class="counter"
+            class:hover={hover && activeTab !== "patches"}
+            class:selected={activeTab === "patches"}>
+            {repo.cobs.patches.open}
+          </span>
+        {/if}
       </div>
     </Button>
   </Link>

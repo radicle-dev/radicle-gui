@@ -24,18 +24,16 @@ export async function fetchRepoInfos(
     repos = await api.repo.getAll(query);
   }
 
-  return repos
-    .filter(r => Boolean(r.payloads["xyz.radicle.project"]))
-    .map(repo => ({
-      repo,
-      baseUrl,
-      activity: loadRepoActivity(repo.rid, baseUrl, activitySignal).catch(e => {
-        if (import.meta.env.DEV && (e as Error)?.name !== "AbortError") {
-          console.warn("loadRepoActivity failed for", repo.rid, e);
-        }
-        return [];
-      }),
-    }));
+  return repos.map(repo => ({
+    repo,
+    baseUrl,
+    activity: loadRepoActivity(repo.rid, baseUrl, activitySignal).catch(e => {
+      if (import.meta.env.DEV && (e as Error)?.name !== "AbortError") {
+        console.warn("loadRepoActivity failed for", repo.rid, e);
+      }
+      return [];
+    }),
+  }));
 }
 
 export async function sortRepoInfosByActivity(

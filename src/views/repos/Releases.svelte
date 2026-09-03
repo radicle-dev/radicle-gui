@@ -39,7 +39,7 @@
   $: delegateIds = new Set(repo.delegates.map(d => d.id));
 
   // Older nodes report a single count, so their segments go without counters.
-  $: releasesMeta = repo.payloads["xyz.radicle.project"].meta.releases;
+  $: releasesMeta = repo.cobs?.releases;
   $: counts = typeof releasesMeta === "object" ? releasesMeta : undefined;
 
   const api = new HttpdClient(baseUrl);

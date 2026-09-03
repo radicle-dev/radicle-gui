@@ -6,11 +6,18 @@ import twemojiModule from "twemoji";
 
 export const REFS_HEADS = "refs/heads/";
 
-// Reads the repository's default branch. Heartwood no longer requires the
-// project payload, so this is the single place to change once the API stops
-// carrying the default branch there.
-export function defaultBranch(repo: Repo): string {
-  return repo.payloads["xyz.radicle.project"].data.defaultBranch;
+// The commit the default branch resolves to. Nodes older than 0.26.0 send no
+// canonical refs at all, so fall back to the tip they report inside the project
+// payload; drop that arm with the contract in httpd 0.30.0.
+export function defaultBranchTip(repo: Repo): string | undefined {
+  if (!repo.defaultBranch) {
+    return undefined;
+  }
+
+  return (
+    repo.refs?.refs[repo.defaultBranch] ??
+    repo.payloads["xyz.radicle.project"]?.meta?.head
+  );
 }
 
 // Counts the releases a user can browse: the two unredacted buckets, or the
@@ -18,7 +25,7 @@ export function defaultBranch(repo: Repo): string {
 // node doesn't report releases at all, which is how the release API is
 // detected.
 export function visibleReleaseCount(repo: Repo): number | undefined {
-  const releases = repo.payloads["xyz.radicle.project"].meta.releases;
+  const releases = repo.cobs?.releases;
   if (releases === undefined) {
     return undefined;
   }
@@ -103,6 +110,15 @@ export function formatRepositoryId(id: string): string {
 
 export function truncateId(pubkey: string): string {
   return `${pubkey.substring(0, 6)}…${pubkey.slice(-6)}`;
+}
+
+// A repo only has a name if it carries a project payload. Fall back to the RID,
+// which every repo has.
+export function repoName(repo: Repo): string {
+  return (
+    repo.payloads["xyz.radicle.project"]?.data.name ??
+    formatRepositoryId(repo.rid)
+  );
 }
 
 // The URL path segment to use for a repo: its configured alias when the node

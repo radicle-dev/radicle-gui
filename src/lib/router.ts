@@ -298,7 +298,8 @@ function setTitle(loadedRoute: LoadedRoute) {
     loadedRoute.resource === "repo.patches" ||
     loadedRoute.resource === "repo.patch" ||
     loadedRoute.resource === "repo.releases" ||
-    loadedRoute.resource === "repo.release"
+    loadedRoute.resource === "repo.release" ||
+    loadedRoute.resource === "repo.sourceUnavailable"
   ) {
     title.push(...repoTitle(loadedRoute));
   } else if (loadedRoute.resource === "nodes") {

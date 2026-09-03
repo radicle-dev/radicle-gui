@@ -3,7 +3,7 @@
 
   import dompurify from "dompurify";
   import { markdown, sanitizeConfig } from "@app/lib/markdown";
-  import { formatRepositoryId, twemoji } from "@app/lib/utils";
+  import { formatRepositoryId, repoName, twemoji } from "@app/lib/utils";
 
   import Badge from "@app/components/Badge.svelte";
   import ContextRepo from "@app/views/repos/Sidebar/ContextRepo.svelte";
@@ -107,7 +107,10 @@
 
 <div class="header-layout">
   <div class="avatar">
-    <RepoAvatar name={project.data.name} rid={repo.rid} styleWidth="10rem" />
+    <RepoAvatar
+      name={project?.data.name ?? ""}
+      rid={repo.rid}
+      styleWidth="10rem" />
   </div>
   <div class="meta">
     <div class="title">
@@ -119,7 +122,7 @@
             node: baseUrl,
           }}>
           <span class="repo-name">
-            {project.data.name}
+            {repoName(repo)}
           </span>
         </Link>
       </span>
@@ -135,19 +138,23 @@
         {formatRepositoryId(repo.rid)}
       </Id>
     </div>
+    {#if project}
+      <div
+        class="description global-hide-on-mobile-down"
+        title={project.data.description}
+        use:twemoji>
+        {@html render(project.data.description)}
+      </div>
+    {/if}
+  </div>
+  {#if project}
     <div
-      class="description global-hide-on-mobile-down"
+      class="description mobile-description global-hide-on-small-desktop-up"
       title={project.data.description}
       use:twemoji>
       {@html render(project.data.description)}
     </div>
-  </div>
-  <div
-    class="description mobile-description global-hide-on-small-desktop-up"
-    title={project.data.description}
-    use:twemoji>
-    {@html render(project.data.description)}
-  </div>
+  {/if}
   <div class="info">
     <ContextRepo
       {baseUrl}

@@ -67,33 +67,70 @@ export type ReleaseCounts = z.infer<typeof releaseCountsSchema>;
 // delegate, or by anyone else.
 export type ReleaseScope = "trusted" | "untrusted";
 
+// Absent on nodes that don't report release counts, and a single count on
+// nodes that report one instead of the buckets.
+const releasesCountSchema = optional(union([releaseCountsSchema, number()]));
+
+// Repository-level COB counts. Each is absent when the node cannot determine
+// it — an unreadable COB cache, or a build without release support — so a
+// missing count never reads as zero.
+const cobCountsSchema = object({
+  patches: optional(
+    object({
+      open: number(),
+      draft: number(),
+      archived: number(),
+      merged: number(),
+    }),
+  ),
+  issues: optional(
+    object({
+      open: number(),
+      closed: number(),
+    }),
+  ),
+  releases: releasesCountSchema,
+});
+
+export type CobCounts = z.infer<typeof cobCountsSchema>;
+
+// The counts as older nodes report them, inside the project payload. Removed
+// from httpd in 0.30.0; drop this and the fallbacks below with it.
+const legacyMetaSchema = object({
+  head: string(),
+  patches: object({
+    open: number(),
+    draft: number(),
+    archived: number(),
+    merged: number(),
+  }),
+  issues: object({
+    open: number(),
+    closed: number(),
+  }),
+  releases: releasesCountSchema,
+});
+
 const repoSchema = object({
   rid: string(),
   payloads: object({
+    // Optional: a repo may declare its default branch in `xyz.radicle.crefs`
+    // instead, and carry no project payload at all.
     "xyz.radicle.project": object({
       data: object({
         name: string(),
         description: string(),
+        // Unqualified, unlike the top-level `defaultBranch`.
         defaultBranch: string(),
       }),
-      meta: object({
-        head: string(),
-        patches: object({
-          open: number(),
-          draft: number(),
-          archived: number(),
-          merged: number(),
-        }),
-        issues: object({
-          open: number(),
-          closed: number(),
-        }),
-        // Absent on older nodes that don't report release counts, and a
-        // single count on nodes that report one instead of the buckets.
-        releases: optional(union([releaseCountsSchema, number()])),
-      }),
-    }),
+      // Optional so this client survives the 0.30.0 contract.
+      meta: legacyMetaSchema.optional(),
+    }).optional(),
   }),
+  // Both absent on nodes older than 0.30.0, which report the counts inside the
+  // project payload and the default branch nowhere else.
+  cobs: optional(cobCountsSchema),
+  defaultBranch: optional(string()),
   delegates: array(authorSchema),
   threshold: number(),
   visibility: union([
@@ -106,6 +143,27 @@ const repoSchema = object({
     refs: record(string(), string()),
   }).optional(),
   alias: string().optional(),
+  // Adapt older nodes to one shape, so no consumer has to know which version
+  // answered. The legacy default branch is unqualified, so qualify it.
+}).transform(repo => {
+  const project = repo.payloads["xyz.radicle.project"];
+  const meta = project?.meta;
+
+  return {
+    ...repo,
+    cobs:
+      repo.cobs ??
+      (meta
+        ? {
+            patches: meta.patches,
+            issues: meta.issues,
+            releases: meta.releases,
+          }
+        : undefined),
+    defaultBranch:
+      repo.defaultBranch ??
+      (project ? `refs/heads/${project.data.defaultBranch}` : undefined),
+  };
 });
 const reposSchema = array(repoSchema);
 

@@ -47,10 +47,14 @@
 
   // The branch a patch is opened against, unqualified. The `delegates` target
   // leaves the repository default implied.
-  function resolveTargetBranch(patch: Patch, repo: Repo): string {
-    return patch.target === "delegates"
-      ? utils.defaultBranch(repo)
-      : utils.unqualifyBranch(patch.target.branch);
+  function resolveTargetBranch(patch: Patch, repo: Repo): string | undefined {
+    if (patch.target !== "delegates") {
+      return utils.unqualifyBranch(patch.target.branch);
+    }
+
+    return repo.defaultBranch
+      ? utils.unqualifyBranch(repo.defaultBranch)
+      : undefined;
   }
 
   // Nothing validates a patch's target when it is opened, so it can name a
@@ -58,7 +62,7 @@
   // such a branch, so it is shown without a link rather than one that errors.
   function isBrowsableBranch(branch: string, repo: Repo): boolean {
     return (
-      branch === utils.defaultBranch(repo) ||
+      `${utils.REFS_HEADS}${branch}` === repo.defaultBranch ||
       repo.refs?.refs[`${utils.REFS_HEADS}${branch}`] !== undefined
     );
   }
@@ -254,7 +258,8 @@
   ]);
   $: targetBranch = resolveTargetBranch(patch, repo);
   $: targetBranchCaption = `This patch merges into ${targetBranch}`;
-  $: targetBranchBrowsable = isBrowsableBranch(targetBranch, repo);
+  $: targetBranchBrowsable =
+    targetBranch !== undefined && isBrowsableBranch(targetBranch, repo);
   $: firstRevision = timelineTuple[0][0];
   $: latestRevision = patch.revisions[patch.revisions.length - 1];
 </script>
@@ -418,30 +423,34 @@
           <span class="code-chip">
             <Id id={patch.id} />
           </span>
-          <span class="global-flex-item" title={targetBranchCaption}>
-            <Icon name="arrow-right" />
-          </span>
-          <span class="code-chip">
-            {#if targetBranchBrowsable}
-              <Link
-                styleHoverState
-                title={targetBranchCaption}
-                route={{
-                  resource: "repo.source",
-                  repo: repoId,
-                  node: baseUrl,
-                  revision: targetBranch,
-                }}>
-                <Icon name="branch" />
-                <span class="txt-overflow">{targetBranch}</span>
-              </Link>
-            {:else}
-              <span title={targetBranchCaption}>
-                <Icon name="branch" />
-                <span class="txt-overflow">{targetBranch}</span>
-              </span>
-            {/if}
-          </span>
+          <!-- A `delegates` target implies the repository default, which a
+          repo without a default branch cannot name. -->
+          {#if targetBranch}
+            <span class="global-flex-item" title={targetBranchCaption}>
+              <Icon name="arrow-right" />
+            </span>
+            <span class="code-chip">
+              {#if targetBranchBrowsable}
+                <Link
+                  styleHoverState
+                  title={targetBranchCaption}
+                  route={{
+                    resource: "repo.source",
+                    repo: repoId,
+                    node: baseUrl,
+                    revision: targetBranch,
+                  }}>
+                  <Icon name="branch" />
+                  <span class="txt-overflow">{targetBranch}</span>
+                </Link>
+              {:else}
+                <span title={targetBranchCaption}>
+                  <Icon name="branch" />
+                  <span class="txt-overflow">{targetBranch}</span>
+                </span>
+              {/if}
+            </span>
+          {/if}
           <span title={utils.absoluteTimestamp(patch.revisions[0].timestamp)}>
             {utils.formatTimestamp(patch.revisions[0].timestamp)}
           </span>

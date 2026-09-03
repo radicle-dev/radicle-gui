@@ -26,6 +26,8 @@
   import type { Repo, Tree } from "@http-client";
   import type { ComponentProps } from "svelte";
 
+  import { unqualifyBranch } from "@app/lib/utils";
+
   import Button from "@app/components/Button.svelte";
   import CommitButton from "../components/CommitButton.svelte";
   import Icon from "@app/components/Icon.svelte";
@@ -96,20 +98,21 @@
   let selectedBranch: string | undefined;
   let commitButtonVariant: ComponentProps<CommitButton>["variant"] | undefined;
 
+  // Route revisions are unqualified, so compare against the short form.
+  $: defaultBranchName = repo.defaultBranch
+    ? unqualifyBranch(repo.defaultBranch)
+    : undefined;
+
   // Revision may be a commit ID, a branch name or `undefined` which means the
   // default branch. We assign `selectedBranch` accordingly.
   $: if (revision === lastCommit.id) {
     selectedBranch = undefined;
   } else {
-    selectedBranch =
-      revision || repo.payloads["xyz.radicle.project"].data.defaultBranch;
+    selectedBranch = revision || defaultBranchName;
   }
 
   $: lastCommit = tree.lastCommit;
-  $: onCanonical = Boolean(
-    !peer &&
-    selectedBranch === repo.payloads["xyz.radicle.project"].data.defaultBranch,
-  );
+  $: onCanonical = Boolean(!peer && selectedBranch === defaultBranchName);
   $: if (onCanonical) {
     commitButtonVariant = "right";
   } else if (!selectedBranch) {

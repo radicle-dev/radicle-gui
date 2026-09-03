@@ -12,14 +12,15 @@
   import PlatformBadges from "@app/marketing/PlatformBadges.svelte";
 
   import { renderRepoAvatar } from "@app/lib/avatar";
+  import { repoName } from "@app/lib/utils";
 
   interface CarouselRepo {
     name: string;
     description: string;
     rid: string;
     seeding: number;
-    issues: number;
-    patches: number;
+    issues: number | undefined;
+    patches: number | undefined;
     route: Route;
     avatar: string;
   }
@@ -66,21 +67,20 @@
       if (token !== loadToken) {
         return;
       }
-      repos = list
-        .filter(r => r.payloads["xyz.radicle.project"])
-        .map(r => {
-          const project = r.payloads["xyz.radicle.project"];
-          return {
-            name: project.data.name,
-            description: project.data.description,
-            rid: r.rid,
-            seeding: r.seeding,
-            issues: project.meta.issues.open,
-            patches: project.meta.patches.open,
-            route: { resource: "repo.source", repo: r.rid, node: seed },
-            avatar: renderRepoAvatar(project.data.name),
-          };
-        });
+      repos = list.map(r => {
+        const name = repoName(r);
+        return {
+          name,
+          description:
+            r.payloads["xyz.radicle.project"]?.data.description ?? "",
+          rid: r.rid,
+          seeding: r.seeding,
+          issues: r.cobs?.issues?.open,
+          patches: r.cobs?.patches?.open,
+          route: { resource: "repo.source", repo: r.rid, node: seed },
+          avatar: renderRepoAvatar(name),
+        };
+      });
     } catch (error) {
       if (token === loadToken && import.meta.env.DEV) {
         console.warn(
@@ -623,8 +623,12 @@
 
               <div class="meta-row">
                 <div class="stats txt-code-regular">
-                  <span class="stat">{repo.issues} issues</span>
-                  <span class="stat">{repo.patches} patches</span>
+                  {#if repo.issues !== undefined}
+                    <span class="stat">{repo.issues} issues</span>
+                  {/if}
+                  {#if repo.patches !== undefined}
+                    <span class="stat">{repo.patches} patches</span>
+                  {/if}
                 </div>
                 <span class="time txt-medium-14">{repo.seeding} seeds</span>
               </div>

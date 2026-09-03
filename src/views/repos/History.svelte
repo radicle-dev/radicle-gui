@@ -13,6 +13,7 @@
   import {
     baseUrlToString,
     formatQualifiedRefname,
+    repoName,
     safeDecodeURIComponent,
   } from "@app/lib/utils";
   import { groupCommits } from "@app/lib/commit";
@@ -32,6 +33,7 @@
   export let baseUrl: BaseUrl;
   export let seedingPolicy: SeedingPolicy;
   export let commit: string;
+  export let defaultBranch: string | undefined = undefined;
   export let commitHeaders: CommitHeader[];
   export let peer: string | undefined;
   export let repo: Repo;
@@ -45,9 +47,7 @@
   // and this refname reaches the user as part of the clone popover's archive
   // command.
   $: currentRefname = formatQualifiedRefname(
-    revision
-      ? safeDecodeURIComponent(revision)
-      : repo.payloads["xyz.radicle.project"].data.defaultBranch,
+    revision ? safeDecodeURIComponent(revision) : (defaultBranch ?? ""),
     peer,
   );
 
@@ -128,7 +128,7 @@
       {currentRefname}
       id={repo.rid}
       alias={repo.alias}
-      name={repo.payloads["xyz.radicle.project"].data.name} />
+      name={repoName(repo)} />
   </svelte:fragment>
   <RepoNameHeader {repo} {repoId} {baseUrl} {seedingPolicy} slot="header" />
 

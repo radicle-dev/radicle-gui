@@ -48,7 +48,7 @@
   export let revisionReactions: Comment["reactions"];
   export let revisionAuthor: Author;
   export let revisionDescription: string;
-  export let targetBranch: string;
+  export let targetBranch: string | undefined = undefined;
   export let timelines: Timeline[];
   export let previousRevBase: string | undefined = undefined;
   export let previousRevId: string | undefined = undefined;
@@ -496,11 +496,13 @@
 
               merged revision
               <Id id={element.inner.revision} />
-              into
-              <span class="target-branch">
-                <Icon name="branch" />
-                {targetBranch}
-              </span>
+              {#if targetBranch}
+                into
+                <span class="target-branch">
+                  <Icon name="branch" />
+                  {targetBranch}
+                </span>
+              {/if}
               at commit
               <Id id={element.inner.commit} />
               <span
