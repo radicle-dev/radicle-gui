@@ -135,6 +135,25 @@ mod routes {
                     }
                   }
                 },
+                "cobs": {
+                  "patches": {
+                    "open": 1,
+                    "draft": 0,
+                    "archived": 0,
+                    "merged": 0,
+                  },
+                  "issues": {
+                    "open": 1,
+                    "closed": 0,
+                  },
+                  "releases": {
+                    "delegate": 0,
+                    "delegateRedacted": 0,
+                    "other": 0,
+                    "otherRedacted": 0,
+                  },
+                },
+                "defaultBranch": "refs/heads/master",
                 "delegates": [
                   {
                     "id": DID,
@@ -173,6 +192,25 @@ mod routes {
                     }
                   }
                 },
+                "cobs": {
+                  "patches": {
+                    "open": 0,
+                    "draft": 0,
+                    "archived": 0,
+                    "merged": 0,
+                  },
+                  "issues": {
+                    "open": 0,
+                    "closed": 0,
+                  },
+                  "releases": {
+                    "delegate": 0,
+                    "delegateRedacted": 0,
+                    "other": 0,
+                    "otherRedacted": 0,
+                  },
+                },
+                "defaultBranch": "refs/heads/master",
                 "delegates": [
                   {
                     "id": DID,
@@ -233,6 +271,25 @@ mod routes {
                     }
                   }
                 },
+                "cobs": {
+                  "patches": {
+                    "open": 1,
+                    "draft": 0,
+                    "archived": 0,
+                    "merged": 0,
+                  },
+                  "issues": {
+                    "open": 1,
+                    "closed": 0,
+                  },
+                  "releases": {
+                    "delegate": 0,
+                    "delegateRedacted": 0,
+                    "other": 0,
+                    "otherRedacted": 0,
+                  },
+                },
+                "defaultBranch": "refs/heads/master",
                 "delegates": [
                   {
                     "id": DID,
@@ -271,6 +328,25 @@ mod routes {
                     }
                   }
                 },
+                "cobs": {
+                  "patches": {
+                    "open": 0,
+                    "draft": 0,
+                    "archived": 0,
+                    "merged": 0,
+                  },
+                  "issues": {
+                    "open": 0,
+                    "closed": 0,
+                  },
+                  "releases": {
+                    "delegate": 0,
+                    "delegateRedacted": 0,
+                    "other": 0,
+                    "otherRedacted": 0,
+                  },
+                },
+                "defaultBranch": "refs/heads/master",
                 "delegates": [
                   {
                     "id": DID,

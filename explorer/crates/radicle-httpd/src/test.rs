@@ -471,6 +471,50 @@ pub fn seed_multi_peer(dir: &Path) -> Context {
     ctx
 }
 
+/// Seed a repo whose default branch has no canonical head.
+///
+/// A second delegate is added and the threshold raised to 2, but only the
+/// first delegate has `master`. The top-level `master` is removed, so `HEAD`
+/// is unborn and the head must come from a quorum that cannot be reached.
+pub fn seed_no_quorum(dir: &Path) -> Context {
+    use radicle::identity::Identity;
+
+    let ctx = seed(dir);
+
+    let signer1 = SigningKey::from_seed(Seed::new([0xff; 32]));
+    let signer2 = SigningKey::from_seed(Seed::new([0xee; 32]));
+
+    let rid = radicle::identity::RepoId::from_str(RID).unwrap();
+    let repo = ctx.profile().storage.repository_mut(rid).unwrap();
+    let mut identity = Identity::load_mut(&repo, &signer1).unwrap();
+    let current_doc = repo.identity_doc().unwrap();
+
+    let new_doc = current_doc
+        .doc
+        .clone()
+        .with_edits(|raw| {
+            raw.delegates.push((*signer2.public_key()).into());
+            raw.threshold = 2;
+        })
+        .unwrap();
+
+    identity
+        .update(Title::new("Require two delegates").unwrap(), "", &new_doc)
+        .unwrap();
+
+    let new_head = repo.identity_head_of(signer1.public_key()).unwrap();
+    repo.set_identity_head_to(new_head).unwrap();
+    repo.sign_refs(&signer1).unwrap();
+
+    repo.raw()
+        .find_reference("refs/heads/master")
+        .unwrap()
+        .delete()
+        .unwrap();
+
+    ctx
+}
+
 /// A repository whose default branch tip is a merge commit.
 ///
 /// Returned by [`seed_merge`].

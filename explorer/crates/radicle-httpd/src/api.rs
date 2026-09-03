@@ -33,6 +33,9 @@ pub const RADICLE_VERSION: &str = env!("RADICLE_VERSION");
 // This version has to be updated on every breaking change to the radicle-httpd API.
 pub const API_VERSION: &str = "6.3.0";
 
+/// Prefix of a qualified branch reference.
+const REFS_HEADS: &str = "refs/heads/";
+
 /// Thread-safe wrapper around radicle's web configuration.
 ///
 /// This struct provides concurrent read/write access to web configuration
@@ -170,33 +173,80 @@ impl Context {
         let db = &self.profile.database()?;
         let seeding = db.count(&rid).unwrap_or_default();
 
+        // Heartwood resolves this from the `xyz.radicle.crefs` symbolic HEAD,
+        // falling back to the project payload, so it works for repos that have
+        // neither a name nor a description. Reported qualified, to match the
+        // crefs payload and the keys of `refs`.
+        //
+        // Only ever a branch: explorer is branch-shaped throughout, so a
+        // HEAD resolving elsewhere leaves the repo without a default branch
+        // rather than a tag rendered as a branch it is not.
+        let default_branch = doc
+            .default_branch()
+            .ok()
+            .filter(|branch| branch.as_str().starts_with(REFS_HEADS))
+            .map(|branch| branch.to_string());
+
+        // Counts are computed rather than declared, so they can differ between
+        // seeds. A count this node cannot determine is omitted: zero is a claim
+        // we would not be entitled to make.
+        let patches = self
+            .profile
+            .patches(repo)
+            .ok()
+            .and_then(|patches| patches.counts().ok());
+        let issues = self
+            .profile
+            .issues(repo)
+            .ok()
+            .and_then(|issues| issues.counts().ok());
+
+        let mut cobs = json!({});
+        if let Some(issues) = &issues {
+            cobs["issues"] = json!(issues);
+        }
+        if let Some(patches) = &patches {
+            cobs["patches"] = json!(patches);
+        }
+        add_releases_count(&mut cobs, repo, &self.profile);
+
+        // Compat: older clients read the counts and the head from inside the
+        // project payload. Server: remove this and the `head` below 6 months
+        // after release, see docs/api-changes.md.
+        //
+        // Those clients require every field of `meta`, so when one is missing
+        // `meta` is left out. The project payload is still sent, for newer
+        // clients to read the name and description from.
+        //
+        // `meta.releases` stays a single number, the releases a user can browse.
+        let head = repo.head().ok().map(|(_, oid)| oid);
+        let legacy_meta = match (head, &issues, &patches) {
+            (Some(head), Some(_), Some(_)) => {
+                let mut meta = cobs.clone();
+                meta["head"] = json!(head);
+                if let Some(releases) = cobs.get("releases") {
+                    let count = ["delegate", "other"]
+                        .iter()
+                        .filter_map(|bucket| releases[*bucket].as_u64())
+                        .sum::<u64>();
+                    meta["releases"] = json!(count);
+                }
+                Some(meta)
+            }
+            _ => None,
+        };
+
         let payloads: BTreeMap<PayloadId, Value> = doc
             .payload()
             .iter()
-            .filter_map(|(id, payload)| {
+            .map(|(id, payload)| {
+                let mut value = json!({ "data": payload });
                 if id == &PayloadId::project() {
-                    let (_, head) = repo.head().ok()?;
-                    let patches = self.profile.patches(repo).ok()?;
-                    let patches = patches.counts().ok()?;
-                    let issues = self.profile.issues(repo).ok()?;
-                    let issues = issues.counts().ok()?;
-                    let mut meta = json!({
-                        "head": head,
-                        "issues": issues,
-                        "patches": patches
-                    });
-                    add_releases_meta(&mut meta, repo, &self.profile);
-
-                    Some((
-                        id.clone(),
-                        json!({
-                            "data": payload,
-                            "meta": meta
-                        }),
-                    ))
-                } else {
-                    Some((id.clone(), json!({ "data": payload })))
+                    if let Some(meta) = &legacy_meta {
+                        value["meta"] = json!(meta);
+                    }
                 }
+                (id.clone(), value)
             })
             .collect();
 
@@ -206,6 +256,8 @@ impl Context {
 
         Ok(repo::Info {
             payloads,
+            cobs,
+            default_branch,
             delegates,
             threshold: doc.threshold(),
             visibility: doc.visibility().clone(),
@@ -242,21 +294,29 @@ impl Context {
     }
 }
 
-/// Add the count of releases a user can browse to a project payload's `meta`
-/// object: those not left with every artifact redacted by a trusted party.
+/// Add the bucketed release counts to a repo's `cobs` object. A count this
+/// node cannot determine is omitted, like the issue and patch counts.
 #[cfg(feature = "artifacts")]
-fn add_releases_meta(meta: &mut Value, repo: &Repository, profile: &Profile) {
-    let counts = Releases::open_cached(repo, cache_db_path(profile.cobs()))
+fn add_releases_count(cobs: &mut Value, repo: &Repository, profile: &Profile) {
+    let Some(counts) = Releases::open_cached(repo, cache_db_path(profile.cobs()))
         .ok()
         .and_then(|releases| releases.counts().ok())
-        .unwrap_or_default();
+    else {
+        return;
+    };
 
-    meta["releases"] = json!(counts.delegate + counts.other);
+    cobs["releases"] = json!({
+        "delegate": counts.delegate,
+        "delegateRedacted": counts.delegate_redacted,
+        "other": counts.other,
+        "otherRedacted": counts.other_redacted,
+    });
 }
 
 /// Without artifact support there is no release store, so the key is omitted.
+/// Its absence is how clients learn this node cannot serve releases.
 #[cfg(not(feature = "artifacts"))]
-fn add_releases_meta(_meta: &mut Value, _repo: &Repository, _profile: &Profile) {}
+fn add_releases_count(_cobs: &mut Value, _repo: &Repository, _profile: &Profile) {}
 
 /// Run a blocking closure on the blocking thread pool.
 ///
@@ -295,7 +355,13 @@ impl ReadCanonicalRefs for Repository {
     ) -> Result<Vec<(git::fmt::RefString, git::Oid)>, error::Error> {
         let mut refs = Vec::new();
         for r in self.backend.references_glob(pattern.as_str())? {
-            let r = r?;
+            let r = match r {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::warn!("skipping unreadable ref matching {pattern}: {e}");
+                    continue;
+                }
+            };
             let Some(refname) = r
                 .name()
                 .ok()
@@ -365,7 +431,14 @@ where
 {
     let mut canonical = repo::CanonicalReferences::default();
     for pattern in patterns {
-        for (refname, oid) in repo.find_by_pattern(pattern)? {
+        let matches = match repo.find_by_pattern(pattern) {
+            Ok(matches) => matches,
+            Err(e) => {
+                tracing::warn!("skipping canonical refs rule {pattern}: {e}");
+                continue;
+            }
+        };
+        for (refname, oid) in matches {
             if refname.as_str().starts_with("refs/tags/") {
                 match repo.resolve_tag(oid) {
                     Ok(tag) => {
@@ -544,6 +617,13 @@ mod repo {
     #[serde(rename_all = "camelCase")]
     pub struct Info {
         pub payloads: BTreeMap<PayloadId, Value>,
+        /// Repo-level COB counts. Each is absent when this node cannot
+        /// determine it; the object itself is always present.
+        pub cobs: Value,
+        /// The qualified default branch, resolved from either the canonical
+        /// refs or the project payload. Absent when neither names a branch.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub default_branch: Option<String>,
         pub delegates: Vec<Value>,
         pub threshold: usize,
         pub visibility: Visibility,
@@ -756,7 +836,7 @@ mod tests {
         }
 
         mod mock {
-            use std::collections::HashMap;
+            use std::collections::{HashMap, HashSet};
             use std::str::FromStr;
 
             use radicle::git;
@@ -770,6 +850,7 @@ mod tests {
 
             struct StubRepo {
                 refs: HashMap<String, Vec<(RefString, git::Oid)>>,
+                failing_patterns: HashSet<String>,
                 peel_errors: HashMap<git::Oid, String>,
                 annotated_tags: HashMap<git::Oid, (String, String, i64, String)>,
             }
@@ -779,6 +860,9 @@ mod tests {
                     &self,
                     pattern: &QualifiedPattern,
                 ) -> Result<Vec<(RefString, git::Oid)>, error::Error> {
+                    if self.failing_patterns.contains(pattern.as_str()) {
+                        return Err(error::Error::NotFound);
+                    }
                     Ok(self.refs.get(pattern.as_str()).cloned().unwrap_or_default())
                 }
             }
@@ -851,6 +935,7 @@ mod tests {
                             vec![(refname("refs/tags/v1"), tag)],
                         ),
                     ]),
+                    failing_patterns: HashSet::new(),
                     peel_errors: HashMap::new(),
                     annotated_tags: HashMap::new(),
                 };
@@ -874,6 +959,7 @@ mod tests {
                         pattern.as_str().to_owned(),
                         vec![(refname("refs/tags/v1"), tag)],
                     )]),
+                    failing_patterns: HashSet::new(),
                     peel_errors: HashMap::new(),
                     annotated_tags: HashMap::from([(
                         tag,
@@ -908,6 +994,7 @@ mod tests {
                             (refname("refs/heads/broken"), bad),
                         ],
                     )]),
+                    failing_patterns: HashSet::new(),
                     peel_errors: HashMap::from([(bad, "missing".to_owned())]),
                     annotated_tags: HashMap::new(),
                 };
@@ -918,9 +1005,30 @@ mod tests {
             }
 
             #[test]
+            fn skips_rules_whose_lookup_fails() {
+                let head = oid("1111111111111111111111111111111111111111");
+                let heads = pat("refs/heads/*");
+                let tags = pat("refs/tags/*");
+                let stub = StubRepo {
+                    refs: HashMap::from([(
+                        heads.as_str().to_owned(),
+                        vec![(refname("refs/heads/main"), head)],
+                    )]),
+                    failing_patterns: HashSet::from([tags.as_str().to_owned()]),
+                    peel_errors: HashMap::new(),
+                    annotated_tags: HashMap::new(),
+                };
+
+                let result = canonical_refs_for_patterns(&stub, [&tags, &heads]).unwrap();
+                assert_eq!(result.refs.get(&refname("refs/heads/main")), Some(&head));
+                assert!(result.tags.is_empty());
+            }
+
+            #[test]
             fn empty_patterns_yield_empty_result() {
                 let stub = StubRepo {
                     refs: HashMap::new(),
+                    failing_patterns: HashSet::new(),
                     peel_errors: HashMap::new(),
                     annotated_tags: HashMap::new(),
                 };
