@@ -2,6 +2,7 @@
   import type { GitInfo } from "@bindings/config/GitInfo";
   import type { ComponentProps } from "svelte";
 
+  import { desktopNotifications } from "@app/lib/desktopNotifications.svelte";
   import type { DiffOptions } from "@app/lib/diffOptions.svelte";
   import { diffOptions } from "@app/lib/diffOptions.svelte";
   import { hints } from "@app/lib/hints";
@@ -160,6 +161,18 @@
         <span class="row-description">Show unread count on the dock icon</span>
       </div>
       <BadgeCounterSwitch />
+    </div>
+    <div class="row">
+      <div class="row-label">
+        <span class="row-title">Desktop notifications</span>
+        <span class="row-description">
+          Show inbox activity in your system notifications
+        </span>
+      </div>
+      <UpdateSwitch
+        active={desktopNotifications.isEnabled}
+        disable={desktopNotifications.disable}
+        enable={desktopNotifications.enable} />
     </div>
     <div class="row">
       <div class="row-label">

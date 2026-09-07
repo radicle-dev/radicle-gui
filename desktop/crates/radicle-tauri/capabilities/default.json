@@ -20,6 +20,7 @@
     "deep-link:default",
     "dialog:default",
     "log:default",
+    "notification:default",
     "shell:allow-open"
   ]
 }

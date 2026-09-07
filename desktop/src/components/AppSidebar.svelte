@@ -8,6 +8,7 @@
   import { boolean } from "zod";
 
   import { checkRadicleCLI } from "@app/lib/checkRadicleCLI.svelte";
+  import { deliverNewNotifications } from "@app/lib/desktopNotifications.svelte";
   import { hints } from "@app/lib/hints";
   import { dynamicInterval } from "@app/lib/interval";
   import { modalStore, show } from "@app/lib/modal";
@@ -265,8 +266,25 @@
     }
 
     await refreshNotificationCount();
-    dynamicInterval("notificationCount", refreshNotificationCount, 3_000);
+
+    // Deliver whatever arrived while the app was closed. The poll below only
+    // reacts to the count growing, which it cannot observe across a restart:
+    // the inbox view has already seeded the count by the time it first runs.
+    await deliverNewNotifications();
+
+    dynamicInterval("notificationCount", updateNotificationCount, 3_000);
   });
+
+  async function updateNotificationCount() {
+    const previous = notificationCount.value;
+    await refreshNotificationCount();
+
+    // Only look for deliverable items when the inbox has actually grown, so
+    // the poll stays a single cheap count query the rest of the time.
+    if (notificationCount.value > previous) {
+      await deliverNewNotifications();
+    }
+  }
 
   $effect(() => {
     if (window.__TAURI_INTERNALS__) {
