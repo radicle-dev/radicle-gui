@@ -5,7 +5,8 @@
   import type { DiffOptions } from "@app/lib/diffOptions.svelte";
   import { diffOptions } from "@app/lib/diffOptions.svelte";
   import { hints } from "@app/lib/hints";
-  import { invoke } from "@app/lib/invoke";
+  import { cachedConfig, invoke } from "@app/lib/invoke";
+  import { nodePolicy, scopeClause } from "@app/lib/seedingPolicy";
   import { updateChecker } from "@app/lib/updateChecker.svelte";
   import { pluralize } from "@app/lib/utils";
 
@@ -33,6 +34,9 @@
   // Shown so that a user seeing the slower fallback can tell which git, if
   // any, was picked.
   const gitInfo = invoke<GitInfo>("git_info");
+  const config = cachedConfig();
+
+  const POLICY_KEY = "node.seedingPolicy.default";
 
   const diffStyleOptions: Option<DiffOptions["diffStyle"]>[] = [
     { value: "unified", icon: "diff-unified", title: "Unified" },
@@ -116,6 +120,12 @@
   }
   .git {
     overflow-wrap: anywhere;
+  }
+  .row-description code {
+    font: var(--txt-code-regular);
+    font-size: inherit;
+    background-color: var(--color-surface-subtle);
+    padding: 0.125rem 0.25rem;
   }
   .footer {
     padding: 4rem 1.5rem 1.5rem;
@@ -212,6 +222,38 @@
         {:catch}
           <span class="row-description">
             Could not tell which git is in use
+          </span>
+        {/await}
+      </div>
+    </div>
+    <div class="row">
+      <div class="row-label">
+        <span class="row-title">Default seeding policy</span>
+        {#await config}
+          <span class="row-description">Reading your node config…</span>
+        {:then config}
+          {@const policy = nodePolicy(config)}
+          <span class="row-description">
+            {#if policy.allowed}
+              Your node seeds every repo it comes across, from {scopeClause(
+                policy.scope,
+              )}. To only seed the repos you add yourself, set
+              <code>{POLICY_KEY}</code>
+              to
+              <code>block</code>
+              in your Radicle config.
+            {:else}
+              Your node only seeds repos you add yourself. To seed every repo it
+              comes across, set
+              <code>{POLICY_KEY}</code>
+              to
+              <code>allow</code>
+              in your Radicle config.
+            {/if}
+          </span>
+        {:catch}
+          <span class="row-description">
+            Could not read your node's seeding policy
           </span>
         {/await}
       </div>

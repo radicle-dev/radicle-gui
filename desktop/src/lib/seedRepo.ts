@@ -37,7 +37,7 @@ export const fetchingRepos = { subscribe: fetching.subscribe };
 export const setFetchingRepos = fetching.set;
 
 export async function seedRepo(rid: string): Promise<void> {
-  await invoke<null>("seed", { rid });
+  await invoke<null>("seed", { rid, scope: "all" });
   invalidateReposSummary();
   seeded.update(count => count + 1);
 }

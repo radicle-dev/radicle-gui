@@ -81,6 +81,7 @@
   async function seed(rid: string) {
     try {
       await invoke<null>("seed", {
+        scope: "all",
         rid: rid,
         opts: { announce: $nodeRunning && $announce },
       });

@@ -385,8 +385,17 @@ async fn seeded_not_replicated_handler(Ctx(ctx): Ctx) -> impl IntoResponse {
     Ok::<_, Error>(Json(rids))
 }
 
-async fn seed_handler(Ctx(ctx): Ctx, Json(RepoBody { rid }): Json<RepoBody>) -> impl IntoResponse {
-    ctx.seed(rid)?;
+#[derive(Serialize, Deserialize)]
+struct SeedBody {
+    pub rid: identity::RepoId,
+    pub scope: types::repo::SeedingScope,
+}
+
+async fn seed_handler(
+    Ctx(ctx): Ctx,
+    Json(SeedBody { rid, scope }): Json<SeedBody>,
+) -> impl IntoResponse {
+    ctx.seed(rid, scope)?;
 
     Ok::<_, Error>(Json(()))
 }

@@ -31,6 +31,7 @@ pub struct RepoSummary {
     /// False for a repository that is in storage but not seeded, which
     /// `rad ls --all` shows as "local".
     pub seeding: bool,
+    pub seeding_policy: SeedingPolicy,
 }
 
 #[derive(Serialize, TS)]
@@ -63,6 +64,60 @@ pub struct RepoInfo {
     pub seeded: bool,
     #[ts(type = "number")]
     pub last_commit_timestamp: i64,
+}
+
+/// What the local node does with a repository. Mirrors the policy and scope
+/// columns `rad seed` prints.
+#[derive(Serialize, TS)]
+#[serde(rename_all = "camelCase", tag = "type")]
+#[ts(export)]
+#[ts(export_to = "repo/")]
+pub enum SeedingPolicy {
+    /// The node fetches the repository and announces it to peers.
+    Allow { scope: SeedingScope },
+    /// The node neither fetches nor announces the repository.
+    Block,
+}
+
+impl From<node::policy::SeedingPolicy> for SeedingPolicy {
+    fn from(policy: node::policy::SeedingPolicy) -> Self {
+        match policy {
+            node::policy::SeedingPolicy::Allow { scope } => Self::Allow {
+                scope: scope.into(),
+            },
+            node::policy::SeedingPolicy::Block => Self::Block,
+        }
+    }
+}
+
+/// Which remotes of a seeded repository the node replicates.
+#[derive(Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+#[ts(export_to = "repo/")]
+pub enum SeedingScope {
+    /// The delegates, plus any node followed with `rad follow`.
+    Followed,
+    /// Every remote node.
+    All,
+}
+
+impl From<node::policy::Scope> for SeedingScope {
+    fn from(scope: node::policy::Scope) -> Self {
+        match scope {
+            node::policy::Scope::Followed => Self::Followed,
+            node::policy::Scope::All => Self::All,
+        }
+    }
+}
+
+impl From<SeedingScope> for node::policy::Scope {
+    fn from(scope: SeedingScope) -> Self {
+        match scope {
+            SeedingScope::Followed => Self::Followed,
+            SeedingScope::All => Self::All,
+        }
+    }
 }
 
 #[derive(Serialize, TS)]

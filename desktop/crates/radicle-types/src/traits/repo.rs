@@ -408,7 +408,8 @@ pub trait Repo: Profile {
         let mut entries = Vec::new();
 
         for RepositoryInfo { rid, doc, .. } in repos {
-            let seeding = policies.is_seeding(&rid)?;
+            let seed_policy = policies.seed_policy(&rid)?;
+            let seeding = seed_policy.policy.is_allow();
 
             if !seeding && show == Show::Seeded {
                 continue;
@@ -426,6 +427,7 @@ pub trait Repo: Profile {
                 name: data.name,
                 private: doc.is_private(),
                 seeding,
+                seeding_policy: seed_policy.policy.into(),
             });
         }
 
@@ -1092,11 +1094,13 @@ pub trait Repo: Profile {
         Ok(())
     }
 
-    fn seed(&self, rid: identity::RepoId) -> Result<(), Error> {
+    /// Seeding an already seeded repository updates its scope, so this is both
+    /// how a repository starts being seeded and how its scope is changed.
+    fn seed(&self, rid: identity::RepoId, scope: repo::SeedingScope) -> Result<(), Error> {
         let profile = self.profile();
         let mut node = radicle::Node::new(profile.home().socket_from_env());
 
-        profile.seed(rid, node::policy::Scope::All, &mut node)?;
+        profile.seed(rid, scope.into(), &mut node)?;
 
         // The policy alone only fetches once a seed next announces the repo,
         // which a quiet one may not do for a long time. Fetch now, like

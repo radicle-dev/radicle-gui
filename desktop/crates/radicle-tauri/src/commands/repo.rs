@@ -188,8 +188,12 @@ pub async fn repo_split_tree_path(
 }
 
 #[tauri::command]
-pub fn seed(ctx: tauri::State<'_, AppState>, rid: RepoId) -> Result<(), Error> {
-    ctx.seed(rid)
+pub fn seed(
+    ctx: tauri::State<'_, AppState>,
+    rid: RepoId,
+    scope: types::repo::SeedingScope,
+) -> Result<(), Error> {
+    ctx.seed(rid, scope)
 }
 
 #[tauri::command]

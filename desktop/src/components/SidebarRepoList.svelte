@@ -55,6 +55,7 @@
   import type { ReleaseCounts } from "@bindings/cob/release/ReleaseCounts";
   import type { Config } from "@bindings/config/Config";
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
+  import type { SeedingScope } from "@bindings/repo/SeedingScope";
   import type { CrossfadeParams } from "svelte/transition";
 
   import { onMount, untrack } from "svelte";
@@ -77,6 +78,11 @@
   import { show } from "@app/lib/modal";
   import { repoListScope } from "@app/lib/repoListScope";
   import * as router from "@app/lib/router";
+  import {
+    currentScope,
+    scopeLabel,
+    SEEDING_SCOPES,
+  } from "@app/lib/seedingPolicy";
   import { seededRepos, seedRepo, setFetchingRepos } from "@app/lib/seedRepo";
   import {
     ariaKeyShortcuts,
@@ -392,6 +398,18 @@
       cachedListReposSummary(repoListScope.value),
       invoke<string[]>("seeded_not_replicated"),
     ]);
+  }
+
+  // Seeding a repository that is already seeded just updates its scope, and
+  // the running node is told either way, so this is the whole of the change.
+  async function setScope(rid: string, scope: SeedingScope) {
+    closeContextMenu();
+    try {
+      await invoke<null>("seed", { rid, scope });
+      await reloadRepos();
+    } catch (error) {
+      console.error("Changing the seeding scope failed", error);
+    }
   }
 
   // The route loader already fetched the list for the scope in force, so the
@@ -953,6 +971,17 @@
     opacity: 1;
     transform: rotate(0);
   }
+  .menu-caption {
+    padding: 0.375rem 0.75rem 0.125rem;
+    font: var(--txt-body-s-regular);
+    color: var(--color-text-tertiary);
+  }
+  /* Holds the row's alignment whether or not this scope is the active one. */
+  .menu-check {
+    display: inline-flex;
+    width: 1rem;
+    flex-shrink: 0;
+  }
 </style>
 
 {#if seededNotReplicated.length > 0 && !sidebarCollapsed.value}
@@ -1329,6 +1358,20 @@
     </a>
     <div class="menu-separator"></div>
     {#if repo.seeding}
+      <div class="menu-caption">Seeding</div>
+      {#each SEEDING_SCOPES as scope}
+        <button
+          class="menu-item"
+          role="menuitem"
+          onclick={() => void setScope(repo.rid, scope)}>
+          <span class="menu-check">
+            {#if currentScope(repo.seedingPolicy) === scope}
+              <Icon name="checkmark" />
+            {/if}
+          </span>
+          {scopeLabel(scope)}
+        </button>
+      {/each}
       <button
         class="menu-item"
         role="menuitem"
