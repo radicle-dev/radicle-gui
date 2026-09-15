@@ -1,11 +1,40 @@
 use std::time::Duration;
 
-use tokio::process::Child;
+use tokio::process::{Child, Command};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 /// How long to wait for killed processes to be reaped.
 const REAP_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// A `git` command in its own process group, out of reach of signals sent to
+/// the daemon's group, e.g., Ctrl-C. The child is killed if it is dropped
+/// before it is reaped.
+pub fn git() -> Command {
+    let mut command = Command::new("git");
+    #[cfg(unix)]
+    command.process_group(0);
+    command.kill_on_drop(true);
+    command
+}
+
+/// Kill the child's process group, which includes the processes git spawns,
+/// e.g., `upload-pack` or `pack-objects`. The child is not reaped yet, so its
+/// pid still identifies the group.
+fn kill(child: &mut Child) {
+    #[cfg(unix)]
+    if let Some(pid) = child.id() {
+        // SAFETY: `killpg` has no memory-safety preconditions.
+        if unsafe { libc::killpg(pid as libc::pid_t, libc::SIGKILL) } == 0 {
+            return;
+        }
+        let e = std::io::Error::last_os_error();
+        tracing::warn!("Unable to kill git process group {pid}: {e}");
+    }
+    if let Err(e) = child.start_kill() {
+        tracing::warn!("Unable to kill git process: {e}");
+    }
+}
 
 /// The git processes still streaming into response bodies. Each is owned by a
 /// task that waits for it, so a response keeps streaming after its handler has
@@ -24,9 +53,8 @@ impl Children {
             tokio::select! {
                 _ = child.wait() => {}
                 _ = cancel.cancelled() => {
-                    if let Err(e) = child.kill().await {
-                        tracing::warn!("Unable to kill git process: {e}");
-                    }
+                    kill(&mut child);
+                    let _ = child.wait().await;
                 }
             }
         });

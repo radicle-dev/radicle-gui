@@ -48,6 +48,9 @@ tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
 url = { version = "2.5.4", features = ["serde"] }
 uuid = { version = "1.13.1", features = ["serde"] }
 
+[target.'cfg(unix)'.dependencies]
+libc = { version = "0.2" }
+
 [dev-dependencies]
 hyper = { version = "1.6", default-features = false, features = ["client"] }
 pretty_assertions = { version = "1.4.1" }

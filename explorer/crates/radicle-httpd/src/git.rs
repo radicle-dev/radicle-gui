@@ -19,7 +19,6 @@ use radicle::node::NodeId;
 use radicle::profile::Profile;
 use radicle::storage::{ReadRepository, ReadStorage};
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 use tokio_util::io::{ReaderStream, StreamReader};
 use tower_http::decompression::RequestDecompressionLayer;
 
@@ -118,7 +117,7 @@ async fn git_http_backend(
     tracing::debug!("method: {:?}", method.as_str());
     tracing::debug!("remote: {:?}", remote);
 
-    let mut cmd = Command::new("git");
+    let mut cmd = crate::children::git();
 
     if let Some(nid) = nid {
         cmd.env("GIT_NAMESPACE", nid.to_string());

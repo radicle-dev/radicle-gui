@@ -2768,6 +2768,7 @@ dependencies = [
  "hyper",
  "infer",
  "lexopt",
+ "libc",
  "lru",
  "mime_guess",
  "nonempty 0.12.0",

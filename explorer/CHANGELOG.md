@@ -13,6 +13,11 @@
   processes still streaming and exits with code 75, which the example systemd
   unit treats as success. New connections are refused during the drain, so a
   restart can take up to the timeout. The Unix socket file is removed on exit
+- **Git processes in their own process group**: A Ctrl-C or SIGTERM sent to
+  httpd's process group no longer kills streaming git processes before the drain
+  ends. A systemd unit needs `KillMode=mixed` or `KillMode=process`: under the
+  default `control-group`, systemd signals git directly. The example unit uses
+  `KillMode=mixed`
 
 ## radicle-httpd + radicle-search 0.31.0
 
