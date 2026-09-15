@@ -104,10 +104,7 @@ fn parse_options() -> anyhow::Result<httpd::Options> {
                                 }
                             }
                         }
-                        None => {
-                            tracing::error!("Provided socket address isn't a valid path.");
-                            process::exit(0);
-                        }
+                        None => bail!("--listen: unix socket address is not a valid path"),
                     }
                 }
 

@@ -21,6 +21,8 @@
 - **Errors for interrupted git responses**: An archive download cut short by a
   killed or failed `git archive`, or a clone whose `git http-backend` is killed,
   now ends in a transfer error instead of a complete-looking 200
+- **Exit code for a pathless Unix socket**: `--listen unix:` now exits 1 instead
+  of 0
 
 ## radicle-httpd + radicle-search 0.31.0
 
