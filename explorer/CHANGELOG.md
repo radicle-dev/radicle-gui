@@ -18,6 +18,9 @@
   ends. A systemd unit needs `KillMode=mixed` or `KillMode=process`: under the
   default `control-group`, systemd signals git directly. The example unit uses
   `KillMode=mixed`
+- **Errors for interrupted git responses**: An archive download cut short by a
+  killed or failed `git archive`, or a clone whose `git http-backend` is killed,
+  now ends in a transfer error instead of a complete-looking 200
 
 ## radicle-httpd + radicle-search 0.31.0
 

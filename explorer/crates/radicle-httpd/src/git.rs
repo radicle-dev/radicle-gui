@@ -19,10 +19,10 @@ use radicle::node::NodeId;
 use radicle::profile::Profile;
 use radicle::storage::{ReadRepository, ReadStorage};
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio_util::io::{ReaderStream, StreamReader};
+use tokio_util::io::StreamReader;
 use tower_http::decompression::RequestDecompressionLayer;
 
-use crate::children::Children;
+use crate::children::{Children, Truncated};
 use crate::error::GitError as Error;
 
 pub fn router(
@@ -200,8 +200,7 @@ async fn git_http_backend(
         .and_then(|values| values.first()?.split_whitespace().next()?.parse().ok())
         .unwrap_or(StatusCode::OK);
 
-    let body = Body::from_stream(ReaderStream::new(stdout));
-    children.supervise(child);
+    let body = children.stream(child, stdout, Truncated::OnSignal);
 
     Ok((status, headers, body))
 }

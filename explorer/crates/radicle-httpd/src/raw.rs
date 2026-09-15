@@ -18,11 +18,10 @@ use radicle::profile::Profile;
 use radicle::storage::{ReadRepository, ReadStorage};
 use radicle_surf::Repository;
 use tokio::io::BufReader;
-use tokio_util::io::ReaderStream;
 
 use crate::api::query::RawQuery;
 use crate::axum_extra::Path;
-use crate::children::Children;
+use crate::children::{Children, Truncated};
 use crate::error::RawError as Error;
 
 const MAX_BLOB_SIZE: usize = 10_485_760;
@@ -327,11 +326,9 @@ async fn archive_by_committish(
         .stdout(std::process::Stdio::piped())
         .spawn()?;
 
+    let stdout = child.stdout.take().expect("stdout was captured");
     let mut response = response;
-    *response.body_mut() = Body::from_stream(ReaderStream::new(BufReader::new(
-        child.stdout.take().expect("stdout was captured"),
-    )));
-    children.supervise(child);
+    *response.body_mut() = children.stream(child, BufReader::new(stdout), Truncated::OnFailure);
 
     Ok(response)
 }
