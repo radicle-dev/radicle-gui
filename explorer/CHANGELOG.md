@@ -7,6 +7,12 @@
 - **404 for missing repos and objects**: Raw, git and API routes return 404
   instead of 500 for repos the node doesn't have, missing commits, blobs and
   paths, and paths of the wrong type
+- **Graceful shutdown**: On SIGTERM or SIGINT, httpd stops accepting connections
+  and gives in-flight requests `--shutdown-timeout` seconds (default 30) to
+  finish. A second signal or the timeout cuts the drain short, kills the git
+  processes still streaming and exits with code 75, which the example systemd
+  unit treats as success. New connections are refused during the drain, so a
+  restart can take up to the timeout. The Unix socket file is removed on exit
 
 ## radicle-httpd + radicle-search 0.31.0
 

@@ -5,7 +5,7 @@ use std::str;
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::extract::{ConnectInfo, Path as AxumPath, RawQuery, Request, State};
+use axum::extract::{ConnectInfo, Extension, Path as AxumPath, RawQuery, Request, State};
 use axum::http::header::HeaderName;
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::IntoResponse;
@@ -23,14 +23,20 @@ use tokio::process::Command;
 use tokio_util::io::{ReaderStream, StreamReader};
 use tower_http::decompression::RequestDecompressionLayer;
 
+use crate::children::Children;
 use crate::error::GitError as Error;
 
-pub fn router(profile: Arc<Profile>, aliases: Arc<HashMap<String, RepoId>>) -> Router {
+pub fn router(
+    profile: Arc<Profile>,
+    aliases: Arc<HashMap<String, RepoId>>,
+    children: Children,
+) -> Router {
     Router::new()
         .route(
             "/{rid}/{*path}",
             any(git_handler).layer(RequestDecompressionLayer::new()),
         )
+        .layer(Extension(children))
         .with_state((profile, aliases))
 }
 
@@ -40,6 +46,7 @@ async fn git_handler(
     method: Method,
     headers: HeaderMap,
     ConnectInfo(remote): ConnectInfo<DualAddr>,
+    Extension(children): Extension<Children>,
     query: RawQuery,
     request: Request,
 ) -> impl IntoResponse {
@@ -58,7 +65,7 @@ async fn git_handler(
     };
 
     let (status, headers, body) = git_http_backend(
-        &profile, method, headers, request, remote, rid, nid, path, query,
+        &profile, method, headers, request, remote, rid, nid, path, query, &children,
     )
     .await?;
 
@@ -83,6 +90,7 @@ async fn git_http_backend(
     nid: Option<NodeId>,
     path: &str,
     query: String,
+    children: &Children,
 ) -> Result<(StatusCode, HashMap<String, Vec<String>>, Body), Error> {
     let git_dir = radicle::storage::git::paths::repository(&profile.storage, &id);
     let content_type = headers
@@ -194,6 +202,7 @@ async fn git_http_backend(
         .unwrap_or(StatusCode::OK);
 
     let body = Body::from_stream(ReaderStream::new(stdout));
+    children.supervise(child);
 
     Ok((status, headers, body))
 }
@@ -216,9 +225,15 @@ mod routes {
     async fn test_info_request() {
         let tmp = tempfile::tempdir().unwrap();
         let ctx = test::seed(tmp.path());
-        let app = super::router(ctx.profile().to_owned(), Arc::new(HashMap::new())).layer(
-            MockConnectInfo(DualAddr::Tcp(SocketAddr::from(([0, 0, 0, 0], 8080)))),
-        );
+        let app = super::router(
+            ctx.profile().to_owned(),
+            Arc::new(HashMap::new()),
+            Default::default(),
+        )
+        .layer(MockConnectInfo(DualAddr::Tcp(SocketAddr::from((
+            [0, 0, 0, 0],
+            8080,
+        )))));
 
         let response = get(&app, format!("/{RID}.git/info/refs")).await;
 
@@ -229,9 +244,15 @@ mod routes {
     async fn test_info_refs_advertises_protocol_v2() {
         let tmp = tempfile::tempdir().unwrap();
         let ctx = test::seed(tmp.path());
-        let app = super::router(ctx.profile().to_owned(), Arc::new(HashMap::new())).layer(
-            MockConnectInfo(DualAddr::Tcp(SocketAddr::from(([0, 0, 0, 0], 8080)))),
-        );
+        let app = super::router(
+            ctx.profile().to_owned(),
+            Arc::new(HashMap::new()),
+            Default::default(),
+        )
+        .layer(MockConnectInfo(DualAddr::Tcp(SocketAddr::from((
+            [0, 0, 0, 0],
+            8080,
+        )))));
 
         let response = get_with_headers(
             &app,
@@ -253,9 +274,15 @@ mod routes {
     async fn test_info_refs_defaults_to_protocol_v0() {
         let tmp = tempfile::tempdir().unwrap();
         let ctx = test::seed(tmp.path());
-        let app = super::router(ctx.profile().to_owned(), Arc::new(HashMap::new())).layer(
-            MockConnectInfo(DualAddr::Tcp(SocketAddr::from(([0, 0, 0, 0], 8080)))),
-        );
+        let app = super::router(
+            ctx.profile().to_owned(),
+            Arc::new(HashMap::new()),
+            Default::default(),
+        )
+        .layer(MockConnectInfo(DualAddr::Tcp(SocketAddr::from((
+            [0, 0, 0, 0],
+            8080,
+        )))));
 
         let response = get(
             &app,
@@ -276,9 +303,15 @@ mod routes {
     async fn test_info_refs_with_undecodable_protocol_header() {
         let tmp = tempfile::tempdir().unwrap();
         let ctx = test::seed(tmp.path());
-        let app = super::router(ctx.profile().to_owned(), Arc::new(HashMap::new())).layer(
-            MockConnectInfo(DualAddr::Tcp(SocketAddr::from(([0, 0, 0, 0], 8080)))),
-        );
+        let app = super::router(
+            ctx.profile().to_owned(),
+            Arc::new(HashMap::new()),
+            Default::default(),
+        )
+        .layer(MockConnectInfo(DualAddr::Tcp(SocketAddr::from((
+            [0, 0, 0, 0],
+            8080,
+        )))));
 
         let response = get_with_headers(
             &app,
@@ -306,6 +339,7 @@ mod routes {
                 String::from("heartwood"),
                 RepoId::from_str(RID).unwrap(),
             )])),
+            Default::default(),
         )
         .layer(MockConnectInfo(DualAddr::Tcp(SocketAddr::from((
             [0, 0, 0, 0],
@@ -323,9 +357,15 @@ mod routes {
     async fn test_info_refs_repo_not_in_storage() {
         let tmp = tempfile::tempdir().unwrap();
         let ctx = test::seed(tmp.path());
-        let app = super::router(ctx.profile().to_owned(), Arc::new(HashMap::new())).layer(
-            MockConnectInfo(DualAddr::Tcp(SocketAddr::from(([0, 0, 0, 0], 8080)))),
-        );
+        let app = super::router(
+            ctx.profile().to_owned(),
+            Arc::new(HashMap::new()),
+            crate::children::Children::default(),
+        )
+        .layer(MockConnectInfo(DualAddr::Tcp(SocketAddr::from((
+            [0, 0, 0, 0],
+            8080,
+        )))));
 
         let response = get(
             &app,

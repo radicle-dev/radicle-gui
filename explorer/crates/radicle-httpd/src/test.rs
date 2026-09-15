@@ -327,6 +327,7 @@ fn seed_with_signer(dir: &Path, profile: radicle::Profile, signer: &SigningKey) 
         aliases: std::collections::HashMap::new(),
         listen: axum_listener::DualAddr::Tcp(std::net::SocketAddr::from(([0, 0, 0, 0], 8080))),
         cache: Some(crate::DEFAULT_CACHE_SIZE),
+        shutdown_timeout: crate::DEFAULT_SHUTDOWN_TIMEOUT,
         search: None,
     };
 
@@ -675,6 +676,7 @@ pub fn seed_merge(dir: &Path) -> MergeFixture {
         aliases: std::collections::HashMap::new(),
         listen: axum_listener::DualAddr::Tcp(std::net::SocketAddr::from(([0, 0, 0, 0], 8080))),
         cache: Some(crate::DEFAULT_CACHE_SIZE),
+        shutdown_timeout: crate::DEFAULT_SHUTDOWN_TIMEOUT,
         search: None,
     };
     let web_config = crate::api::WebConfig::from_profile(&profile);

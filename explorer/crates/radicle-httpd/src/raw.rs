@@ -3,7 +3,7 @@ use std::str::FromStr;
 use std::sync::{Arc, LazyLock};
 
 use axum::body::Body;
-use axum::extract::{Query, State};
+use axum::extract::{Extension, Query, State};
 use axum::http::{header, HeaderValue, Method, Response, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::get;
@@ -23,6 +23,7 @@ use tokio_util::io::ReaderStream;
 
 use crate::api::query::RawQuery;
 use crate::axum_extra::Path;
+use crate::children::Children;
 use crate::error::RawError as Error;
 
 const MAX_BLOB_SIZE: usize = 10_485_760;
@@ -121,13 +122,18 @@ enum Committish<'a> {
     Ref(&'a str),
 }
 
-pub fn router(profile: Arc<Profile>, aliases: Arc<HashMap<String, RepoId>>) -> Router {
+pub fn router(
+    profile: Arc<Profile>,
+    aliases: Arc<HashMap<String, RepoId>>,
+    children: Children,
+) -> Router {
     Router::new()
         .route("/{rid}/{sha}", get(commit_handler))
         .route("/{rid}/{sha}/{*path}", get(file_by_commit_handler))
         .route("/{rid}/head/{*path}", get(file_by_canonical_head_handler))
         .route("/{rid}/archive/{*refname}", get(archive_by_refname_handler))
         .route("/{rid}/blobs/{oid}", get(file_by_oid_handler))
+        .layer(Extension(children))
         .with_state((profile, aliases))
 }
 
@@ -142,6 +148,7 @@ async fn commit_handler(
     Path((rid, sha)): Path<(String, String)>,
     Query(q): Query<PrefixQuery>,
     State((profile, aliases)): State<(Arc<Profile>, Arc<HashMap<String, RepoId>>)>,
+    Extension(children): Extension<Children>,
 ) -> Result<Response<Body>, Error> {
     let rid = resolve_rid(&rid, &aliases)?;
     let storage = &profile.storage;
@@ -160,7 +167,16 @@ async fn commit_handler(
         return Err(Error::BadRequest);
     };
 
-    archive_by_committish(method, rid, Committish::Oid(oid), q.prefix, format, profile).await
+    archive_by_committish(
+        method,
+        rid,
+        Committish::Oid(oid),
+        q.prefix,
+        format,
+        profile,
+        &children,
+    )
+    .await
 }
 
 async fn file_by_commit_handler(
@@ -190,6 +206,7 @@ async fn archive_by_refname_handler(
     Path((rid, refname)): Path<(String, String)>,
     Query(q): Query<PrefixQuery>,
     State((profile, aliases)): State<(Arc<Profile>, Arc<HashMap<String, RepoId>>)>,
+    Extension(children): Extension<Children>,
 ) -> Result<Response<Body>, Error> {
     let rid = resolve_rid(&rid, &aliases)?;
     let (refname, format) = ArchiveFormat::detect(&refname);
@@ -200,6 +217,7 @@ async fn archive_by_refname_handler(
         q.prefix,
         format.unwrap_or_default(),
         profile,
+        &children,
     )
     .await
 }
@@ -211,6 +229,7 @@ async fn archive_by_committish(
     use_prefix: bool,
     format: ArchiveFormat,
     profile: Arc<Profile>,
+    children: &Children,
 ) -> Result<Response<Body>, Error> {
     // Without zstd, git would stream an empty body after a 200 response.
     if matches!(format, ArchiveFormat::TarZst) && !*ZSTD_AVAILABLE {
@@ -313,6 +332,7 @@ async fn archive_by_committish(
     *response.body_mut() = Body::from_stream(ReaderStream::new(BufReader::new(
         child.stdout.take().expect("stdout was captured"),
     )));
+    children.supervise(child);
 
     Ok(response)
 }
@@ -404,7 +424,11 @@ mod routes {
     async fn test_file_handler() {
         let tmp = tempfile::tempdir().unwrap();
         let ctx = test::seed(tmp.path());
-        let app = super::router(ctx.profile().to_owned(), Arc::new(HashMap::new()));
+        let app = super::router(
+            ctx.profile().to_owned(),
+            Arc::new(HashMap::new()),
+            Default::default(),
+        );
 
         let response = get(&app, format!("/{RID}/head/dir1/README")).await;
 
@@ -425,7 +449,11 @@ mod routes {
     async fn test_file_handler_repo_not_in_storage() {
         let tmp = tempfile::tempdir().unwrap();
         let ctx = test::seed(tmp.path());
-        let app = super::router(ctx.profile().to_owned(), Arc::new(HashMap::new()));
+        let app = super::router(
+            ctx.profile().to_owned(),
+            Arc::new(HashMap::new()),
+            crate::children::Children::default(),
+        );
 
         let response = get(&app, format!("/{RID_NOT_IN_STORAGE}/head/README")).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -441,7 +469,11 @@ mod routes {
     async fn test_object_not_in_repo() {
         let tmp = tempfile::tempdir().unwrap();
         let ctx = test::seed(tmp.path());
-        let app = super::router(ctx.profile().to_owned(), Arc::new(HashMap::new()));
+        let app = super::router(
+            ctx.profile().to_owned(),
+            Arc::new(HashMap::new()),
+            crate::children::Children::default(),
+        );
         let missing = "1111111111111111111111111111111111111111";
 
         let response = get(&app, format!("/{RID}/{missing}/README")).await;
@@ -464,7 +496,11 @@ mod routes {
     async fn test_archive_tar_zst() {
         let tmp = tempfile::tempdir().unwrap();
         let ctx = test::seed(tmp.path());
-        let app = super::router(ctx.profile().to_owned(), Arc::new(HashMap::new()));
+        let app = super::router(
+            ctx.profile().to_owned(),
+            Arc::new(HashMap::new()),
+            crate::children::Children::default(),
+        );
 
         let response = get(&app, format!("/{RID}/archive/master.tar.zst")).await;
 
@@ -492,7 +528,11 @@ mod routes {
     async fn test_archive_unknown_ref() {
         let tmp = tempfile::tempdir().unwrap();
         let ctx = test::seed(tmp.path());
-        let app = super::router(ctx.profile().to_owned(), Arc::new(HashMap::new()));
+        let app = super::router(
+            ctx.profile().to_owned(),
+            Arc::new(HashMap::new()),
+            crate::children::Children::default(),
+        );
 
         let response = get(&app, format!("/{RID}/archive/master.tar.gz")).await;
         assert_eq!(response.status(), StatusCode::OK);
@@ -516,7 +556,7 @@ mod routes {
             "hello".to_string(),
             RID.parse().unwrap(),
         )]));
-        let app = super::router(ctx.profile().to_owned(), aliases);
+        let app = super::router(ctx.profile().to_owned(), aliases, Default::default());
 
         // The alias serves the same content as the RID.
         let response = get(&app, "/hello/head/dir1/README").await;

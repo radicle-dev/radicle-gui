@@ -1,4 +1,5 @@
 use std::num::NonZeroUsize;
+use std::time::Duration;
 use std::{collections::HashMap, process};
 
 use anyhow::bail;
@@ -28,6 +29,10 @@ Options
                                      e.g. heartwood and rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5 to produce https://seed.radicle.dev/heartwood.git
                                      Aliases work anywhere the RID is accepted: git clone, the JSON API and raw endpoints.
     --cache        <number>          Max amount of items in cache for /tree endpoints (default: 100)
+    --shutdown-timeout <seconds>     How long in-flight requests get to finish after a shutdown
+                                     signal, before the daemon exits anyway. Streaming clones and
+                                     archive downloads can take longer than the default. Exits
+                                     with code 75 if requests were still in flight. (default: 30)
     --version, -v                    Print program version
     --help, -h                       Print help
 
@@ -39,8 +44,7 @@ Environment
                                      Unrecognised values fall back to "text".
 "#;
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     // SAFETY: The logger is only initialized once.
     httpd::logger::init().unwrap();
     tracing::info!("starting http daemon..");
@@ -51,13 +55,22 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let options = parse_options()?;
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    let served = runtime.block_on(httpd::run(options));
 
-    match httpd::run(options).await {
-        Ok(()) => {}
-        Err(err) => {
-            tracing::error!("Fatal: {:#}", err);
-            process::exit(1);
+    // Do not wait for blocking tasks, e.g., repository reads, which can run
+    // for minutes after the drain.
+    runtime.shutdown_timeout(Duration::ZERO);
+
+    if let Err(err) = served {
+        if err.is::<httpd::DrainCutShort>() {
+            tracing::warn!("{err}");
+            process::exit(httpd::DRAIN_CUT_SHORT_EXIT_CODE);
         }
+        tracing::error!("Fatal: {:#}", err);
+        process::exit(1);
     }
     Ok(())
 }
@@ -70,6 +83,7 @@ fn parse_options() -> anyhow::Result<httpd::Options> {
     let mut listen = None;
     let mut aliases = HashMap::new();
     let mut cache = Some(httpd::DEFAULT_CACHE_SIZE);
+    let mut shutdown_timeout = httpd::DEFAULT_SHUTDOWN_TIMEOUT;
 
     while let Some(arg) = parser.next()? {
         match arg {
@@ -77,18 +91,23 @@ fn parse_options() -> anyhow::Result<httpd::Options> {
                 let addr: DualAddr = parser.value()?.parse()?;
 
                 #[cfg(unix)]
-                // Get socket path and remove it if existing
-                if let DualAddr::Uds(socket_path) = &addr {
-                    if let Some(path) = socket_path.as_pathname() {
-                        if path.exists() {
-                            tracing::info!("Removing existing socket path at {}", path.display());
-                            if let Err(e) = std::fs::remove_file(path) {
-                                tracing::error!("{e}");
+                if matches!(addr, DualAddr::Uds(_)) {
+                    match httpd::socket_path(&addr) {
+                        Some(path) => {
+                            if path.exists() {
+                                tracing::info!(
+                                    "Removing existing socket path at {}",
+                                    path.display()
+                                );
+                                if let Err(e) = std::fs::remove_file(path) {
+                                    tracing::error!("{e}");
+                                }
                             }
                         }
-                    } else {
-                        tracing::error!("Provided socket address isn't a valid path.");
-                        process::exit(0);
+                        None => {
+                            tracing::error!("Provided socket address isn't a valid path.");
+                            process::exit(0);
+                        }
                     }
                 }
 
@@ -111,6 +130,9 @@ fn parse_options() -> anyhow::Result<httpd::Options> {
                 let size = parser.value()?.parse()?;
                 cache = NonZeroUsize::new(size);
             }
+            Long("shutdown-timeout") => {
+                shutdown_timeout = parse_shutdown_timeout(&parser.value()?.string()?)?;
+            }
             Long("help") | Short('h') => {
                 println!("{HELP_MSG}");
                 process::exit(0);
@@ -122,8 +144,21 @@ fn parse_options() -> anyhow::Result<httpd::Options> {
         aliases,
         listen: listen.unwrap_or_else(|| DualAddr::Tcp(([0, 0, 0, 0], 8080).into())),
         cache,
+        shutdown_timeout,
         search: search_options_from_env()?,
     })
+}
+
+/// Parse `--shutdown-timeout` in seconds. Zero is rejected because it would cut
+/// every drain short.
+fn parse_shutdown_timeout(raw: &str) -> anyhow::Result<Duration> {
+    let seconds: u64 = raw
+        .parse()
+        .map_err(|_| anyhow::anyhow!("--shutdown-timeout {raw:?} is not a positive integer"))?;
+    if seconds == 0 {
+        bail!("--shutdown-timeout 0 is not allowed (would never let a request finish)");
+    }
+    Ok(Duration::from_secs(seconds))
 }
 
 /// Read the search backend configuration from the environment. Search is

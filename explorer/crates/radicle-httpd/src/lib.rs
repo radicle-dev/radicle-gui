@@ -5,13 +5,15 @@ pub mod error;
 
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
+#[cfg(unix)]
+use std::path::Path;
 use std::process::Command;
 use std::str;
 use std::sync::Arc;
 use std::time::Duration;
 
 #[cfg(unix)]
-use tokio::signal::unix::{signal, SignalKind};
+use tokio::signal::unix::{signal, Signal, SignalKind};
 
 use anyhow::Context as _;
 use axum::body::Body;
@@ -23,6 +25,7 @@ use axum_listener::{DualAddr, DualListener};
 use hyper::body::Body as _;
 use hyper::header::CONTENT_TYPE;
 use hyper::Method;
+use tokio_util::sync::CancellationToken;
 use tower_http::cors;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -37,6 +40,7 @@ use crate::tracing_extra::{log_response, tracing_middleware, RequestId, TracingI
 mod api;
 mod axum_extra;
 mod cache;
+mod children;
 mod git;
 pub mod logger;
 mod raw;
@@ -46,6 +50,18 @@ mod tracing_extra;
 
 /// Default cache HTTP size.
 pub const DEFAULT_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).unwrap();
+
+/// Default time in-flight requests get to finish after a shutdown signal.
+pub const DEFAULT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Exit code (`EX_TEMPFAIL`) when the drain is cut short with requests still
+/// in flight.
+pub const DRAIN_CUT_SHORT_EXIT_CODE: i32 = 75;
+
+/// The drain was cut short with requests still in flight.
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub struct DrainCutShort(String);
 
 /// Resolve a repo path segment to a [`RepoId`]. The segment may be either a
 /// canonical RID or one of the aliases configured via `--alias`. Returns
@@ -61,6 +77,8 @@ pub struct Options {
     pub aliases: HashMap<String, RepoId>,
     pub listen: DualAddr,
     pub cache: Option<NonZeroUsize>,
+    /// How long in-flight requests get to finish after a shutdown signal.
+    pub shutdown_timeout: Duration,
     /// Search backend configuration. `None` disables search at runtime and
     /// falls back to the built-in storage walk.
     pub search: Option<SearchOptions>,
@@ -92,14 +110,20 @@ pub async fn run(options: Options) -> anyhow::Result<()> {
         tracing::warn!("Unable to set open file limit: {e}");
     }
 
+    let termination = TerminationSignals::register()?;
+
     let listener = DualListener::bind(&options.listen).await?;
     tracing::info!("listening on {:?}", &options.listen);
+
+    #[cfg(unix)]
+    let _socket_guard = SocketGuard::new(&options.listen);
 
     let profile = Profile::load()?;
     let request_id = RequestId::new();
 
     tracing::info!("using radicle home at {}", profile.home().path().display());
 
+    let shutdown_timeout = options.shutdown_timeout;
     let web_config = api::WebConfig::from_profile(&profile);
     let profile = Arc::new(profile);
     let ctx = api::Context::new(profile.clone(), web_config.clone(), &options)?;
@@ -129,7 +153,8 @@ pub async fn run(options: Options) -> anyhow::Result<()> {
         }
     });
 
-    let app = router(options, profile, ctx)?
+    let children = children::Children::default();
+    let app = router(options, profile, ctx, children.clone())?
         .layer(middleware::from_fn(tracing_middleware))
         .layer(
             TraceLayer::new_for_http()
@@ -157,17 +182,154 @@ pub async fn run(options: Options) -> anyhow::Result<()> {
                 )
         ).into_make_service_with_connect_info::<DualAddr>();
 
-    axum::serve(listener, app)
-        .await
-        .map_err(anyhow::Error::from)
+    let drained = CancellationToken::new();
+    let server =
+        axum::serve(listener, app).with_graceful_shutdown(drained.clone().cancelled_owned());
+
+    let served = tokio::select! {
+        result = server => result.map_err(anyhow::Error::from),
+        reason = drain(termination, drained, shutdown_timeout) => Err(DrainCutShort(reason).into()),
+    };
+    children.kill_all().await;
+    served
+}
+
+/// Start the drain on the first termination signal. Resolves with the reason
+/// the drain was cut short: the timeout or a second signal.
+async fn drain(
+    mut termination: TerminationSignals,
+    drained: CancellationToken,
+    timeout: Duration,
+) -> String {
+    let first = termination.recv().await;
+    tracing::info!(
+        "Received {first}, draining in-flight requests for up to {timeout:?}; send SIGTERM or SIGINT (Ctrl-C) again to exit immediately"
+    );
+    drained.cancel();
+
+    tokio::select! {
+        _ = tokio::time::sleep(timeout) => {
+            format!("Drain timeout of {timeout:?} elapsed, exiting with requests still in flight")
+        }
+        second = termination.recv() => {
+            format!("Received {second} while draining, exiting with requests still in flight")
+        }
+    }
+}
+
+/// SIGTERM and SIGINT handlers. They are registered before the listener is
+/// bound, so that a signal during startup does not terminate the process, and
+/// kept for the whole drain, so that a second signal can cut it short.
+#[cfg(unix)]
+struct TerminationSignals {
+    sigterm: Signal,
+    sigint: Signal,
+}
+
+#[cfg(unix)]
+impl TerminationSignals {
+    fn register() -> anyhow::Result<Self> {
+        Ok(Self {
+            sigterm: signal(SignalKind::terminate())
+                .context("Unable to register SIGTERM handler")?,
+            sigint: signal(SignalKind::interrupt()).context("Unable to register SIGINT handler")?,
+        })
+    }
+
+    /// Wait for the next termination signal, yielding its name.
+    async fn recv(&mut self) -> &'static str {
+        tokio::select! {
+            _ = self.sigterm.recv() => "SIGTERM",
+            _ = self.sigint.recv() => "SIGINT",
+        }
+    }
+}
+
+#[cfg(not(unix))]
+struct TerminationSignals;
+
+#[cfg(not(unix))]
+impl TerminationSignals {
+    fn register() -> anyhow::Result<Self> {
+        Ok(Self)
+    }
+
+    async fn recv(&mut self) -> &'static str {
+        let _ = tokio::signal::ctrl_c().await;
+        "SIGINT"
+    }
+}
+
+/// The filesystem path a listen address binds, if it is a Unix socket.
+#[cfg(unix)]
+pub fn socket_path(listen: &DualAddr) -> Option<&Path> {
+    let DualAddr::Uds(addr) = listen else {
+        return None;
+    };
+    addr.as_pathname()
+}
+
+/// Removes the socket file when dropped, unless the path now holds a different
+/// inode, e.g., a socket bound by a replacement process.
+#[cfg(unix)]
+struct SocketGuard {
+    path: std::path::PathBuf,
+    dev: u64,
+    ino: u64,
+}
+
+#[cfg(unix)]
+impl SocketGuard {
+    fn new(listen: &DualAddr) -> Option<Self> {
+        use std::os::unix::fs::MetadataExt as _;
+
+        let path = socket_path(listen)?.to_path_buf();
+        let meta = std::fs::metadata(&path)
+            .inspect_err(|e| tracing::warn!("Unable to stat socket at {}: {e}", path.display()))
+            .ok()?;
+
+        Some(Self {
+            path,
+            dev: meta.dev(),
+            ino: meta.ino(),
+        })
+    }
+
+    fn holds_bound_inode(&self) -> bool {
+        use std::os::unix::fs::MetadataExt as _;
+
+        std::fs::metadata(&self.path)
+            .is_ok_and(|meta| meta.dev() == self.dev && meta.ino() == self.ino)
+    }
+}
+
+#[cfg(unix)]
+impl Drop for SocketGuard {
+    fn drop(&mut self) {
+        if !self.holds_bound_inode() {
+            tracing::warn!(
+                "Leaving socket at {}: no longer the inode this process bound",
+                self.path.display()
+            );
+            return;
+        }
+        if let Err(e) = std::fs::remove_file(&self.path) {
+            tracing::warn!("Unable to remove socket at {}: {e}", self.path.display());
+        }
+    }
 }
 
 /// Create a router consisting of other sub-routers.
-fn router(options: Options, profile: Arc<Profile>, ctx: api::Context) -> anyhow::Result<Router> {
+fn router(
+    options: Options,
+    profile: Arc<Profile>,
+    ctx: api::Context,
+    children: children::Children,
+) -> anyhow::Result<Router> {
     let api_router = api::router(ctx);
     let aliases = Arc::new(options.aliases);
-    let git_router = git::router(profile.clone(), aliases.clone());
-    let raw_router = raw::router(profile, aliases);
+    let git_router = git::router(profile.clone(), aliases.clone(), children.clone());
+    let raw_router = raw::router(profile, aliases, children);
 
     let app = Router::new()
         .route("/", get(root_index_handler))
@@ -240,13 +402,14 @@ mod routes {
             aliases: HashMap::new(),
             listen: DualAddr::Tcp(SocketAddr::from(([0, 0, 0, 0], 8080))),
             cache: None,
+            shutdown_timeout: super::DEFAULT_SHUTDOWN_TIMEOUT,
             search: None,
         };
         let profile = test::profile(tmp.path(), [0xff; 32]);
         let web_config = crate::api::WebConfig::from_profile(&profile);
         let profile = std::sync::Arc::new(profile);
         let ctx = crate::api::Context::new(profile.clone(), web_config, &options).unwrap();
-        let app = super::router(options, profile, ctx)
+        let app = super::router(options, profile, ctx, Default::default())
             .unwrap()
             .layer(MockConnectInfo(DualAddr::Tcp(SocketAddr::from((
                 [0, 0, 0, 0],

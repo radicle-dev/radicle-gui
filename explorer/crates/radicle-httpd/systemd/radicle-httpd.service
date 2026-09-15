@@ -16,6 +16,9 @@ Group=seed
 ExecStart=/usr/local/bin/radicle-httpd --listen 127.0.0.1:8080
 Environment=RAD_HOME=/home/seed/.radicle RUST_BACKTRACE=1 RUST_LOG=info
 KillMode=process
+# Exit code 75 means the drain was cut short with requests in flight.
+SuccessExitStatus=75
+# TimeoutStopSec (default 90s) must exceed --shutdown-timeout plus 2s.
 Restart=always
 RestartSec=1
 

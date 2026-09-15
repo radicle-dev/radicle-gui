@@ -40,8 +40,8 @@ radicle-surf = { workspace = true, features = ["serde"] }
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
 thiserror.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "process", "io-util"] }
-tokio-util = { version = "0.7.18", default-features = false, features = ["io"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "sync", "time", "process", "io-util"] }
+tokio-util = { version = "0.7.18", default-features = false, features = ["io", "rt"] }
 tower-http = { version = "0.6.6", default-features = false, features = ["trace", "cors", "set-header", "decompression-full"] }
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
