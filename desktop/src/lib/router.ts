@@ -198,6 +198,14 @@ function guideUrlToRoute(url: URL): { resource: "guide" } | undefined {
   }
 }
 
+function prototypeUrlToRoute(
+  url: URL,
+): { resource: "prototype.profile" } | undefined {
+  if (url.pathname === "/prototype/profile") {
+    return { resource: "prototype.profile" };
+  }
+}
+
 function urlToRoute(url: URL): Route | null {
   const segments = url.pathname.substring(1).split("/");
   const resource = segments.shift();
@@ -216,6 +224,11 @@ function urlToRoute(url: URL): Route | null {
     return guideRoute;
   }
 
+  const prototypeRoute = prototypeUrlToRoute(url);
+  if (prototypeRoute) {
+    return prototypeRoute;
+  }
+
   switch (resource) {
     case "repos": {
       return repoUrlToRoute(segments, url.searchParams);
@@ -231,6 +244,8 @@ export function routeToPath(route: Route): string {
     return "/inbox";
   } else if (route.resource === "guide") {
     return "/guide";
+  } else if (route.resource === "prototype.profile") {
+    return "/prototype/profile";
   } else if (
     route.resource === "repo.home" ||
     route.resource === "repo.commits" ||

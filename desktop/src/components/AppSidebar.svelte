@@ -41,10 +41,10 @@
   import { badgeCounter } from "@app/components/BadgeCounterSwitch.svelte";
   import Button from "@app/components/Button.svelte";
   import Icon from "@app/components/Icon.svelte";
-  import IdentityButton from "@app/components/IdentityButton.svelte";
   import NodeStatusButton from "@app/components/NodeStatusButton.svelte";
   import SidebarRepoList from "@app/components/SidebarRepoList.svelte";
   import SettingsView from "@app/modals/Settings.svelte";
+  import IdentityButton from "@app/views/prototype/profile/IdentityButton.svelte";
 
   interface Props {
     sidebarData: SidebarData;
@@ -286,6 +286,10 @@
 
   function isGuide(): boolean {
     return $activeRoute.resource === "guide";
+  }
+
+  function isPrototype(): boolean {
+    return $activeRoute.resource === "prototype.profile";
   }
 
   function isSettings(): boolean {
@@ -706,6 +710,16 @@
                 </div>
               {/if}
             {/if}
+            <Button
+              variant="naked"
+              title="Profiles prototype"
+              styleWidth={mini ? "2rem" : "100%"}
+              styleJustifyContent="flex-start"
+              active={isPrototype()}
+              onclick={() => router.push({ resource: "prototype.profile" })}>
+              <span class="icon"><Icon name="lightbulb" /></span>
+              <span class="label">Profiles (prototype)</span>
+            </Button>
             <Button
               variant="naked"
               title="Settings"

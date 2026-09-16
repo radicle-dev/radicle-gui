@@ -31,6 +31,12 @@ interface GuideRoute {
   resource: "guide";
 }
 
+// Click-through prototype for the Profiles feature. Backed by dummy state, not
+// by the node.
+interface PrototypeProfileRoute {
+  resource: "prototype.profile";
+}
+
 export interface SidebarData {
   config: Config;
   repos: RepoSummary[];
@@ -51,9 +57,19 @@ export interface LoadedGuideRoute {
   params: { sidebarData: SidebarData };
 }
 
-export type Route = BootingRoute | RepoRoute | InboxRoute | GuideRoute;
+export interface LoadedPrototypeProfileRoute {
+  resource: "prototype.profile";
+  params: { sidebarData: SidebarData };
+}
+
+export type Route =
+  BootingRoute | RepoRoute | InboxRoute | GuideRoute | PrototypeProfileRoute;
 export type LoadedRoute =
-  BootingRoute | LoadedRepoRoute | LoadedInboxRoute | LoadedGuideRoute;
+  | BootingRoute
+  | LoadedRepoRoute
+  | LoadedInboxRoute
+  | LoadedGuideRoute
+  | LoadedPrototypeProfileRoute;
 
 export function isLoadedRepoRoute(
   route: LoadedRoute,
@@ -88,6 +104,11 @@ export async function loadGuide(): Promise<LoadedGuideRoute> {
   return { resource: "guide", params: { sidebarData } };
 }
 
+export async function loadPrototypeProfile(): Promise<LoadedPrototypeProfileRoute> {
+  const sidebarData = await loadSidebarData();
+  return { resource: "prototype.profile", params: { sidebarData } };
+}
+
 export async function loadInbox(): Promise<LoadedInboxRoute> {
   const [sidebarData, notificationsByRepo] = await Promise.all([
     loadSidebarData(),
@@ -109,6 +130,8 @@ export async function loadRoute(
     return loadInbox();
   } else if (route.resource === "guide") {
     return loadGuide();
+  } else if (route.resource === "prototype.profile") {
+    return loadPrototypeProfile();
   } else if (route.resource === "repo.home") {
     return loadRepoHome(route);
   } else if (route.resource === "repo.commits") {
