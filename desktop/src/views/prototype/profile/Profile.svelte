@@ -376,10 +376,7 @@
               </div>
             </aside>
             <div class="form-column">
-              <EditProfile
-                bind:draft
-                config={sidebarData.config}
-                onproposed={showChanges} />
+              <EditProfile bind:draft onproposed={showChanges} />
             </div>
           </div>
         {:else}

@@ -129,7 +129,7 @@
     background-color: var(--color-surface-subtle);
   }
   .word {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+    font: var(--txt-code-regular);
     color: var(--color-text-primary);
   }
   .word span {

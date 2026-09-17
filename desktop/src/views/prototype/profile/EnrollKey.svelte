@@ -237,7 +237,7 @@
     color: var(--color-feedback-success-text);
   }
   .mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+    font: var(--txt-code-regular);
     color: var(--color-text-primary);
   }
   .check-label {

@@ -95,7 +95,6 @@ export interface Approval {
   id: string;
   kind: ApprovalKind;
   title: string;
-  summary: string;
   createdAt: number;
   createdBy: string;
   // Identity changes need a majority of controllers; a profile edit needs the
@@ -224,11 +223,13 @@ export function seed(publicKey: string, alias: string) {
   prototype.alias = alias;
   prototype.keys = defaultKeys(publicKey, alias);
   prototype.profile = { ...seededProfile(), displayName: alias };
+  seedHistory();
 }
 
 export function reset() {
   repoImages.length = 0;
   prototype.profile = { ...seededProfile(), displayName: prototype.alias };
+  seedHistory();
   prototype.keys = defaultKeys(prototype.thisKeyId, prototype.alias);
   prototype.approvals = [];
   prototype.threshold = 1;
@@ -238,6 +239,7 @@ export function reset() {
 // A node that has published nothing. Every field is genuinely empty.
 export function clearProfile() {
   repoImages.length = 0;
+  profileHistory.length = 0;
   prototype.hasProfile = false;
   // The display name starts as the node alias, because that is already the
   // name people see for this key. Everything else is genuinely empty.
@@ -303,14 +305,12 @@ function open(
   kind: ApprovalKind,
   quorum: "identity" | "profile",
   title: string,
-  summary: string,
 ): Approval {
   const approval: Approval = {
     id: id("approval"),
     kind,
     quorum,
     title,
-    summary,
     createdAt: Date.now(),
     createdBy: thisKeyAlias(),
     required: quorum === "identity" ? identityMajority() : prototype.threshold,
@@ -347,16 +347,7 @@ export function enrollKey(key: ActorKey): Approval | undefined {
     addKey(key);
     return undefined;
   }
-  const approval = open(
-    "enroll-key",
-    "identity",
-    `Enroll "${key.alias}"`,
-    key.controller && key.bound
-      ? `Adds ${key.alias} as a bound key and a controller.`
-      : key.controller
-        ? `Adds ${key.alias} as a controller only. It never acts as you.`
-        : `Adds ${key.alias} as a bound key. It cannot change your identity.`,
-  );
+  const approval = open("enroll-key", "identity", `Enroll "${key.alias}"`);
   pendingEnrollments.set(approval.id, key);
   return approval;
 }
@@ -366,12 +357,7 @@ export function revoke(key: ActorKey): Approval | undefined {
     removeKey(key.id);
     return undefined;
   }
-  const approval = open(
-    "revoke-key",
-    "identity",
-    `Revoke "${key.alias}"`,
-    `Removes ${key.alias} from your identity. It can no longer act as you.`,
-  );
+  const approval = open("revoke-key", "identity", `Revoke "${key.alias}"`);
   pendingRevocations.set(approval.id, key.id);
   return approval;
 }
@@ -380,16 +366,12 @@ export function revoke(key: ActorKey): Approval | undefined {
 // enough controllers advance their views to it.
 export function saveProfile(next: Profile): Approval | undefined {
   if (profileEditsApplyDirectly()) {
+    recordEdit(prototype.profile, next);
     prototype.profile = next;
     prototype.hasProfile = true;
     return undefined;
   }
-  const approval = open(
-    "profile-edit",
-    "profile",
-    "Update profile",
-    `Updates your profile details. Goes live once ${prototype.threshold} of your keys approve.`,
-  );
+  const approval = open("profile-edit", "profile", "Update profile");
   pendingProfiles.set(approval.id, next);
   return approval;
 }
@@ -421,6 +403,7 @@ function apply(approval: Approval) {
 
   const profile = pendingProfiles.get(approval.id);
   if (profile) {
+    recordEdit(prototype.profile, profile);
     prototype.profile = profile;
     prototype.hasProfile = true;
     pendingProfiles.delete(approval.id);
@@ -531,6 +514,75 @@ export function setPrototypeAction(id: string, label: string, run: () => void) {
 export function clearPrototypeAction(id: string) {
   const index = prototypeActions.findIndex(action => action.id === id);
   if (index >= 0) prototypeActions.splice(index, 1);
+}
+
+// Profile edits are ordinary commits on the actor repository's default
+// branch, so there is a history to look at. Recorded here so the prototype can
+// show one.
+export interface ProfileEdit {
+  id: string;
+  oid: string;
+  by: string;
+  at: number;
+  // Empty for the commit that first published the profile.
+  fields: string[];
+}
+
+export const profileHistory = $state<ProfileEdit[]>([]);
+
+const FIELD_NAMES: Record<keyof Profile, string> = {
+  version: "schema version",
+  displayName: "display name",
+  fullName: "full name",
+  pronouns: "pronouns",
+  bio: "bio",
+  location: "location",
+  timezone: "time zone",
+  avatar: "avatar",
+  banner: "banner",
+  links: "links",
+  readme: "about",
+};
+
+function fakeOid(): string {
+  const hex = "0123456789abcdef";
+  let out = "";
+  for (let i = 0; i < 40; i++) {
+    out += hex[Math.floor(Math.random() * hex.length)];
+  }
+  return out;
+}
+
+function changedFields(before: Profile, after: Profile): string[] {
+  return (Object.keys(FIELD_NAMES) as (keyof Profile)[])
+    .filter(key => JSON.stringify(before[key]) !== JSON.stringify(after[key]))
+    .map(key => FIELD_NAMES[key]);
+}
+
+function recordEdit(before: Profile, after: Profile) {
+  const fields = changedFields(before, after);
+  if (fields.length === 0) return;
+  profileHistory.unshift({
+    id: id("edit"),
+    oid: fakeOid(),
+    by: thisKeyAlias(),
+    at: Date.now(),
+    fields,
+  });
+}
+
+// One entry for the profile that already exists, dated when this key was
+// enrolled, so the view is not empty on a seeded profile.
+function seedHistory() {
+  profileHistory.length = 0;
+  const first = prototype.keys.find(key => key.thisKey);
+  profileHistory.push({
+    id: id("edit"),
+    oid: fakeOid(),
+    by: thisKeyAlias(),
+    at: first ? first.addedAt : Date.now(),
+    fields: [],
+  });
 }
 
 export function ago(timestamp: number): string {

@@ -13,7 +13,6 @@
 
   interface Props {
     label: string;
-    description: string;
     // A square avatar and a wide banner need different previews.
     shape?: "square" | "wide";
     // When set, an empty field falls back to the pattern generated from this
@@ -25,7 +24,6 @@
   /* eslint-disable prefer-const */
   let {
     label,
-    description,
     shape = "square",
     fallbackNodeId = undefined,
     value = $bindable(""),
@@ -85,9 +83,6 @@
   }
   .label {
     color: var(--color-text-primary);
-  }
-  .description {
-    color: var(--color-text-secondary);
   }
   .row {
     display: flex;
@@ -170,10 +165,6 @@
     color: var(--color-text-primary);
     font: var(--txt-code-regular);
   }
-  .source-kind {
-    flex-shrink: 0;
-    color: var(--color-text-tertiary);
-  }
   .actions {
     display: flex;
     align-items: center;
@@ -195,17 +186,10 @@
     flex: 1;
     min-width: 0;
   }
-  .warning {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    color: var(--color-feedback-warning-text);
-  }
 </style>
 
 <div class="field">
   <span class="label txt-body-m-medium">{label}</span>
-  <span class="description txt-body-m-regular">{description}</span>
 
   <div class="row">
     <button
@@ -241,16 +225,9 @@
       {:else if value}
         <div class="source">
           <span class="source-value">{value}</span>
-          <span class="source-kind txt-body-m-regular">
-            {external ? "external" : "in your repository"}
-          </span>
         </div>
         <div class="actions">
-          <span class="or txt-body-m-regular">or</span>
-          <Button variant="outline" bordered onclick={startUrl}>
-            Use a URL
-          </Button>
-          <Button variant="naked" onclick={clear}>Remove</Button>
+          <Button variant="outline" bordered onclick={clear}>Remove</Button>
         </div>
       {:else}
         <div class="actions">
@@ -259,13 +236,6 @@
             Use a URL
           </Button>
         </div>
-      {/if}
-
-      {#if mode === "idle" && external}
-        <span class="warning txt-body-s-regular">
-          <Icon name="warning" />
-          Fetched through the proxy and not replicated with your repository.
-        </span>
       {/if}
     </div>
   </div>

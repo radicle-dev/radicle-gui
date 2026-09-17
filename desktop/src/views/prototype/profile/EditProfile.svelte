@@ -1,8 +1,7 @@
 <script lang="ts">
   import type { Profile, ProfileLink } from "./store.svelte";
-  import type { Config } from "@bindings/config/Config";
 
-  import { explorerHost } from "@app/lib/utils";
+  import { show } from "@app/lib/modal";
 
   import Button from "@app/components/Button.svelte";
   import Icon from "@app/components/Icon.svelte";
@@ -10,6 +9,8 @@
   import TextInput from "@app/components/TextInput.svelte";
 
   import ImagePicker from "./ImagePicker.svelte";
+  import ProfileHistory from "./ProfileHistory.svelte";
+  import PronounsPicker from "./PronounsPicker.svelte";
   import {
     LIMITS,
     PROFILE_PATH,
@@ -18,15 +19,15 @@
     README_PATH,
     saveProfile,
   } from "./store.svelte";
+  import TimezonePicker from "./TimezonePicker.svelte";
 
   interface Props {
     draft: Profile;
-    config: Config;
     onproposed: () => void;
   }
 
   /* eslint-disable prefer-const */
-  let { draft = $bindable(), config, onproposed }: Props = $props();
+  let { draft = $bindable(), onproposed }: Props = $props();
   /* eslint-enable prefer-const */
 
   const changed = $derived(
@@ -56,26 +57,6 @@
       : undefined,
   );
   const canAddLink = $derived(draft.links.length < LIMITS.links);
-
-  const zones = $derived.by(() => {
-    const common = [
-      "Europe/Berlin",
-      "Europe/London",
-      "America/New_York",
-      "America/Los_Angeles",
-      "Asia/Tokyo",
-      "UTC",
-    ];
-    let detected: string | undefined;
-    try {
-      detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    } catch {
-      detected = undefined;
-    }
-    return detected
-      ? [detected, ...common.filter(z => z !== detected)]
-      : common;
-  });
 
   let nextLinkId = 100;
 
@@ -120,6 +101,18 @@
     background-color: var(--color-surface-subtle);
     color: var(--color-text-secondary);
   }
+  .history-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-text-secondary);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .history-link:hover {
+    color: var(--color-text-primary);
+  }
   .permanence-icon {
     display: flex;
     flex-shrink: 0;
@@ -146,14 +139,20 @@
     flex-direction: column;
     gap: 0.375rem;
   }
+  .picker {
+    min-width: 0;
+  }
   .field-label {
     display: flex;
     align-items: baseline;
     gap: 0.375rem;
     color: var(--color-text-primary);
   }
-  .required {
-    color: var(--color-text-tertiary);
+  /* Drawn rather than marked up, so reformatting cannot put a space between
+     the asterisk and the word it marks. */
+  .required::after {
+    content: "*";
+    color: var(--color-text-quaternary);
   }
   .field-hint {
     color: var(--color-text-secondary);
@@ -185,6 +184,11 @@
     flex: 1;
     min-width: 0;
   }
+  /* Sized to its dropdown rather than taking an equal third. */
+  .row > .compact {
+    flex: 0 0 auto;
+    max-width: 14rem;
+  }
   .links {
     display: flex;
     flex-direction: column;
@@ -202,27 +206,6 @@
   .link-label-field {
     width: 9rem;
     flex-shrink: 0;
-  }
-  .zones {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.375rem;
-  }
-  .zone {
-    padding: 0.25rem 0.5rem;
-    border: 1px solid var(--color-border-subtle);
-    border-radius: var(--border-radius-sm);
-    background-color: var(--color-surface-canvas);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-  }
-  .zone:hover {
-    background-color: var(--color-surface-subtle);
-  }
-  .zone.active {
-    background-color: var(--color-surface-brand-subtle);
-    border-color: var(--color-border-brand);
-    color: var(--color-text-brand);
   }
   .footer {
     display: flex;
@@ -253,23 +236,15 @@
 
   <ImagePicker
     label="Avatar"
-    description="Shown wherever you appear, cropped to a square."
     fallbackNodeId={prototype.thisKeyId}
     bind:value={draft.avatar} />
 
-  <ImagePicker
-    label="Banner"
-    description="A wide image across the top of your profile. Only shown on {explorerHost(
-      config,
-    )}."
-    shape="wide"
-    bind:value={draft.banner} />
+  <ImagePicker label="Banner" shape="wide" bind:value={draft.banner} />
 
   <div class="row">
     <div class="field">
       <span class="field-label txt-body-m-medium">
-        Display name
-        <span class="required" aria-label="required">*</span>
+        <span class="required">Display name</span>
       </span>
       <TextInput
         bind:value={draft.displayName}
@@ -281,26 +256,31 @@
         </span>
       {/if}
       <span class="field-hint txt-body-s-regular">
-        Shown wherever you appear. Not unique.
+        How you appear across devices, not unique to you.
       </span>
     </div>
     <div class="field">
       <span class="field-label txt-body-m-medium">Full name</span>
       <TextInput bind:value={draft.fullName} />
-      <span class="field-hint txt-body-s-regular">
-        Shown under your display name.
-      </span>
+    </div>
+    <div class="field compact">
+      <span class="field-label txt-body-m-medium">Pronouns</span>
+      <div class="picker">
+        <PronounsPicker bind:value={draft.pronouns} />
+      </div>
     </div>
   </div>
 
   <div class="row">
     <div class="field">
-      <span class="field-label txt-body-m-medium">Pronouns</span>
-      <TextInput bind:value={draft.pronouns} />
-    </div>
-    <div class="field">
       <span class="field-label txt-body-m-medium">Location</span>
       <TextInput bind:value={draft.location} />
+    </div>
+    <div class="field">
+      <span class="field-label txt-body-m-medium">Time zone</span>
+      <div class="picker">
+        <TimezonePicker bind:value={draft.timezone} />
+      </div>
     </div>
   </div>
 
@@ -318,9 +298,6 @@
         {bioError}
       </span>
     {/if}
-    <span class="field-hint txt-body-s-regular">
-      A one-line summary shown under your name.
-    </span>
   </div>
 
   <div class="field">
@@ -335,22 +312,6 @@
       styleMinHeight="6rem"
       placeholder="# About me"
       submit={save} />
-  </div>
-
-  <div class="field">
-    <span class="field-label txt-body-m-medium">Time zone</span>
-    <div class="zones">
-      {#each zones as zone (zone)}
-        <button
-          type="button"
-          class="zone txt-body-m-regular"
-          class:active={draft.timezone === zone}
-          onclick={() =>
-            (draft.timezone = draft.timezone === zone ? "" : zone)}>
-          {zone}
-        </button>
-      {/each}
-    </div>
   </div>
 
   <div class="field">
@@ -395,8 +356,14 @@
     <span class="permanence-icon"><Icon name="warning" /></span>
     <span class="txt-body-m-regular">
       Everything here is published to {PROFILE_PATH} and replicated across the network.
-      Past values stay in the repository's history even after you change them, so
-      treat a full name or a location as permanent once written.
+      Past values stay in the repository's history even after you change or remove
+      them, so treat anything you write as permanent.
+      <button
+        type="button"
+        class="history-link"
+        onclick={() => show({ component: ProfileHistory, props: {} })}>
+        See what you have published
+      </button>
     </span>
   </div>
 

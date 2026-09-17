@@ -21,13 +21,6 @@
     rejected: "Withdrawn",
   };
 
-  // What the signatures are counted against differs by quorum, and saying so
-  // is the point of showing them separately.
-  const quorumNote: Record<Approval["quorum"], string> = {
-    identity: "Changes your keys, so a majority of them has to approve.",
-    profile: "Your profile only updates once enough of your keys approve.",
-  };
-
   const sorted = $derived(
     [...prototype.approvals].sort((a, b) => {
       if (a.status === b.status) return b.createdAt - a.createdAt;
@@ -80,10 +73,6 @@
   }
   .title {
     color: var(--color-text-primary);
-  }
-  .summary,
-  .quorum-note {
-    color: var(--color-text-secondary);
   }
   .byline {
     color: var(--color-text-tertiary);
@@ -173,6 +162,9 @@
     margin-right: auto;
     color: var(--color-text-tertiary);
   }
+  .mono {
+    font: var(--txt-code-regular);
+  }
 </style>
 
 {#if sorted.length > 0}
@@ -187,7 +179,6 @@
           <span class="head-icon"><Icon name={kindIcon[approval.kind]} /></span>
           <div class="head-text">
             <span class="title txt-body-m-medium">{approval.title}</span>
-            <span class="summary txt-body-m-regular">{approval.summary}</span>
             <span class="byline txt-body-m-regular">
               Proposed by {approval.createdBy}
               {ago(approval.createdAt)}
@@ -215,10 +206,6 @@
             </div>
           </div>
 
-          <span class="quorum-note txt-body-m-regular">
-            {quorumNote[approval.quorum]}
-          </span>
-
           <div class="signers">
             {#each approval.signatures as signature (signature.keyId)}
               <div class="signer txt-body-m-regular">
@@ -244,9 +231,12 @@
         {#if approval.status === "pending"}
           <div class="actions">
             <span class="actions-hint txt-body-m-regular">
-              {approval.quorum === "identity"
-                ? "Run rad actor approve on your other controllers."
-                : "Ignoring this leaves your profile as it is."}
+              {#if approval.quorum === "identity"}
+                Run <span class="mono">rad actor approve</span>
+                on your other controllers.
+              {:else}
+                Ignoring this leaves your profile as it is.
+              {/if}
             </span>
             <Button
               variant="outline"
