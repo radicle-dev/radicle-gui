@@ -154,6 +154,16 @@
     }
   }
 
+  // Callers that move the caret imperatively, rather than through the `focus`
+  // prop, use this to put the cursor back where they left it.
+  export function focusInput(): void {
+    void tick().then(() => {
+      if (!element) return;
+      element.focus();
+      element.setSelectionRange(selectionStart, selectionEnd);
+    });
+  }
+
   function handleKeydown(event: KeyboardEvent) {
     if (interceptKeydown?.(event)) {
       event.preventDefault();

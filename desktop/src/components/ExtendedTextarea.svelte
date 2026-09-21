@@ -98,6 +98,8 @@
   }: Props = $props();
   /* eslint-enable prefer-const */
 
+  let textarea = $state<ReturnType<typeof Textarea> | undefined>();
+
   const attachEnabled = $derived(attachDisabled === false);
   const attachDisabledReason = $derived(
     typeof attachDisabled === "string" ? attachDisabled : undefined,
@@ -162,6 +164,11 @@
     body = preBody + inserted + afterBody;
     selectionStart = preBody.length + inserted.length;
     selectionEnd = selectionStart;
+    // Attaching happens through a file dialog or a drop, both of which take
+    // focus away from the textarea. Without this the caret we just placed
+    // after the embed isn't where typing goes, and the editing shortcuts act
+    // on the page instead of on the line.
+    textarea?.focusInput();
   }
 
   function saveByPath(path: string) {
@@ -443,6 +450,7 @@
       </div>
     {:else}
       <Textarea
+        bind:this={textarea}
         size={textAreaSize}
         styleAlignItems="flex-start"
         {draggingOver}
