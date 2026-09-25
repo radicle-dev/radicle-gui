@@ -19,10 +19,11 @@ use radicle::cob::{issue::cache::Issues as _, patch::cache::Patches as _};
 use radicle::git::fmt::{Qualified, RefString};
 use radicle::node::{Alias, NodeId};
 use radicle::storage::{ReadRepository, RemoteRepository};
-use radicle_search::query::CobKind;
+use radicle_search::query::{CobKind, Hit};
 
 use crate::api;
 use crate::api::error::Error;
+use crate::api::json::matches;
 use crate::api::query::{
     cob_filter, search_query, CobsQuery, CobsSearchQuery, PaginationQuery, RepoQuery, MAX_PER_PAGE,
     MAX_QUERY_LEN,
@@ -1572,23 +1573,47 @@ fn cob_from_doc<T: serde::de::DeserializeOwned>(
     Ok((oid, cob))
 }
 
+pub(crate) fn insert_matches(
+    value: &mut serde_json::Value,
+    formatted: Option<&radicle_search::query::Formatted>,
+    kind: matches::Kind,
+) {
+    let Some(found) = formatted.and_then(|f| matches::matches_json(f, kind)) else {
+        return;
+    };
+    if let Some(object) = value.as_object_mut() {
+        object.insert("matches".to_string(), found);
+    }
+}
+
 async fn issues_from_docs(
     backend: &crate::api::backend::Backend,
-    docs: Vec<radicle_search::index::cob::Document>,
+    hits: Vec<Hit<radicle_search::index::cob::Document>>,
 ) -> Result<Vec<serde_json::Value>, Error> {
-    let issues: Vec<(Oid, radicle::issue::Issue)> = docs
-        .iter()
-        .filter_map(|d| cob_from_doc("issue", d).ok())
+    let issues: Vec<(
+        Oid,
+        radicle::issue::Issue,
+        Option<radicle_search::query::Formatted>,
+    )> = hits
+        .into_iter()
+        .filter_map(|h| {
+            let (oid, issue) = cob_from_doc("issue", &h.doc).ok()?;
+            Some((oid, issue, h.formatted))
+        })
         .collect();
     let nids = api::unique_nids(
         issues
             .iter()
-            .flat_map(|(_, issue)| api::json::cobs::issue_participants(issue)),
+            .flat_map(|(_, issue, _)| api::json::cobs::issue_participants(issue)),
     );
     let aliases = backend.get_aliases(&nids).await?;
     Ok(issues
         .iter()
-        .map(|(oid, issue)| api::json::cobs::Issue::new(issue).as_json((*oid).into(), &aliases))
+        .map(|(oid, issue, formatted)| {
+            let mut value = api::json::cobs::Issue::new(issue).as_json((*oid).into(), &aliases);
+            insert_matches(&mut value, formatted.as_ref(), matches::Kind::Cob);
+            value
+        })
         .collect())
 }
 
@@ -1596,16 +1621,23 @@ async fn patches_from_docs(
     ctx: Context,
     backend: &crate::api::backend::Backend,
     rid: radicle::identity::RepoId,
-    docs: Vec<radicle_search::index::cob::Document>,
+    hits: Vec<Hit<radicle_search::index::cob::Document>>,
 ) -> Result<Vec<serde_json::Value>, Error> {
-    let patches: Vec<(Oid, radicle::patch::Patch)> = docs
-        .iter()
-        .filter_map(|d| cob_from_doc("patch", d).ok())
+    let patches: Vec<(
+        Oid,
+        radicle::patch::Patch,
+        Option<radicle_search::query::Formatted>,
+    )> = hits
+        .into_iter()
+        .filter_map(|h| {
+            let (oid, patch) = cob_from_doc("patch", &h.doc).ok()?;
+            Some((oid, patch, h.formatted))
+        })
         .collect();
     let nids = api::unique_nids(
         patches
             .iter()
-            .flat_map(|(_, patch)| api::json::cobs::patch_participants(patch)),
+            .flat_map(|(_, patch, _)| api::json::cobs::patch_participants(patch)),
     );
     let aliases = backend.get_aliases(&nids).await?;
     api::blocking(move || {
@@ -1613,8 +1645,11 @@ async fn patches_from_docs(
         Ok::<_, Error>(
             patches
                 .iter()
-                .map(|(oid, patch)| {
-                    api::json::cobs::Patch::new(patch).as_json((*oid).into(), &repo, &aliases)
+                .map(|(oid, patch, formatted)| {
+                    let mut value =
+                        api::json::cobs::Patch::new(patch).as_json((*oid).into(), &repo, &aliases);
+                    insert_matches(&mut value, formatted.as_ref(), matches::Kind::Cob);
+                    value
                 })
                 .collect::<Vec<_>>(),
         )
@@ -1653,7 +1688,14 @@ async fn issues_handler(
                     per_page,
                 )
                 .await?;
-            issues_from_docs(backend, docs).await?
+            let hits = docs
+                .into_iter()
+                .map(|doc| Hit {
+                    doc,
+                    formatted: None,
+                })
+                .collect();
+            issues_from_docs(backend, hits).await?
         }
         crate::Source::Sqlite => {
             api::blocking(move || {
@@ -1793,7 +1835,14 @@ async fn patches_handler(
                     per_page,
                 )
                 .await?;
-            patches_from_docs(ctx, &backend, rid, docs).await?
+            let hits = docs
+                .into_iter()
+                .map(|doc| Hit {
+                    doc,
+                    formatted: None,
+                })
+                .collect();
+            patches_from_docs(ctx, &backend, rid, hits).await?
         }
         crate::Source::Sqlite => {
             api::blocking(move || {
@@ -4070,6 +4119,68 @@ mod routes {
 
         let response = get(&app, format!("/repos/{RID}/patches/search?assignee={DID}")).await;
         assert_eq!(response.json().await, json!([]));
+    }
+
+    #[tokio::test]
+    async fn test_issues_search_returns_match_segments() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, format!("/repos/{RID}/issues/search?q=Issue")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.json().await;
+        assert_eq!(
+            body[0]["matches"]["title"],
+            json!([
+                { "text": "Issue", "match": true },
+                { "text": " #1", "match": false },
+            ])
+        );
+
+        let response = get(&app, format!("/repos/{RID}/issues/search?q=everyone")).await;
+        let body = response.json().await;
+        assert_eq!(body[0]["matches"].get("title"), None);
+        assert_eq!(body[0]["matches"]["context"]["field"], json!("description"));
+
+        let response = get(&app, format!("/repos/{RID}/issues")).await;
+        assert_eq!(response.json().await[0].get("matches"), None);
+    }
+
+    #[tokio::test]
+    async fn test_issues_search_reports_comment_context() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, format!("/repos/{RID}/issues/search?q=gizmo")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.json().await;
+        assert_eq!(body.as_array().unwrap().len(), 1);
+        assert!(body[0]["matches"].get("title").is_none());
+        assert_eq!(body[0]["matches"]["context"]["field"], json!("comments"));
+        let segments = body[0]["matches"]["context"]["segments"]
+            .as_array()
+            .unwrap();
+        assert!(segments.iter().any(|s| s["match"] == json!(true)));
+    }
+
+    #[tokio::test]
+    async fn test_patches_search_returns_match_segments() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, format!("/repos/{RID}/patches/search?q=README")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.json().await;
+        assert_eq!(body[0]["matches"]["context"]["field"], json!("description"));
+
+        let response = get(&app, format!("/repos/{RID}/patches")).await;
+        assert_eq!(response.json().await[0].get("matches"), None);
     }
 
     #[tokio::test]

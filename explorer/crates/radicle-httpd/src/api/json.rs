@@ -9,6 +9,7 @@ use radicle::node::AliasStore;
 pub(crate) mod cobs;
 pub(crate) mod commit;
 pub(crate) mod diff;
+pub(crate) mod matches;
 pub(crate) mod thread;
 
 /// Returns JSON for a `reaction`.

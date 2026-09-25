@@ -11,7 +11,7 @@ use radicle::storage::git::Repository;
 
 use radicle_artifact::{cache_db_path, Artifact, Cid, Release, ReleaseId, Releases};
 use radicle_search::index::release;
-use radicle_search::query::ReleaseView;
+use radicle_search::query::{Hit, ReleaseView};
 
 use crate::api;
 use crate::api::error::Error;
@@ -138,13 +138,13 @@ fn from_doc(doc: &release::Document) -> Result<(ReleaseId, Release), Error> {
 pub(crate) async fn serialize_docs(
     ctx: &Context,
     rid: RepoId,
-    docs: Vec<release::Document>,
+    hits: Vec<Hit<release::Document>>,
     view: Option<ReleaseView>,
 ) -> Result<Vec<Value>, Error> {
     let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
     let nids = api::unique_nids(
-        docs.iter()
-            .flat_map(|d| d.dids.iter().map(|did| *did.as_key())),
+        hits.iter()
+            .flat_map(|h| h.doc.dids.iter().map(|did| *did.as_key())),
     );
     let aliases = backend.get_aliases(&nids).await?;
     let delegates = {
@@ -155,13 +155,25 @@ pub(crate) async fn serialize_docs(
         })
         .await?
     };
-    Ok(docs
+    Ok(hits
         .into_iter()
-        .filter_map(|d| {
-            let (id, release) = from_doc(&d).ok()?;
-            Some(release_json(
-                id, &release, d.title, d.tag_name, &aliases, &delegates, view,
-            ))
+        .filter_map(|h| {
+            let (id, release) = from_doc(&h.doc).ok()?;
+            let mut value = release_json(
+                id,
+                &release,
+                h.doc.title.clone(),
+                h.doc.tag_name.clone(),
+                &aliases,
+                &delegates,
+                view,
+            );
+            super::insert_matches(
+                &mut value,
+                h.formatted.as_ref(),
+                crate::api::json::matches::Kind::Release,
+            );
+            Some(value)
         })
         .collect())
 }
@@ -195,7 +207,14 @@ pub(super) async fn list_handler(
             let docs = backend
                 .list_releases(rid, view, page.saturating_mul(per_page), per_page)
                 .await?;
-            serialize_docs(&ctx, rid, docs, Some(view)).await?
+            let hits = docs
+                .into_iter()
+                .map(|doc| Hit {
+                    doc,
+                    formatted: None,
+                })
+                .collect();
+            serialize_docs(&ctx, rid, hits, Some(view)).await?
         }
         crate::Source::Sqlite => {
             api::blocking(move || {
@@ -251,7 +270,11 @@ pub(super) async fn get_handler(
                 .await?
                 .ok_or(Error::NotFound)?;
             from_doc(&doc)?;
-            let mut releases = serialize_docs(&ctx, rid, vec![doc], None).await?;
+            let hit = Hit {
+                doc,
+                formatted: None,
+            };
+            let mut releases = serialize_docs(&ctx, rid, vec![hit], None).await?;
             releases.pop().ok_or(Error::NotFound)?
         }
         crate::Source::Sqlite => {
@@ -751,6 +774,25 @@ mod routes {
 
         let response = get(&app, format!("/repos/{RID}/releases/search?q=windows")).await;
         assert_eq!(response.json().await, json!([]));
+    }
+
+    #[tokio::test]
+    async fn test_releases_search_returns_match_segments() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, ids) = seed_meili_releases(tmp.path(), &[DELEGATE_SEED]);
+        let app = app(ctx);
+
+        let response = get(&app, format!("/repos/{RID}/releases/search?q=folder")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.json().await;
+        assert_eq!(body[0]["id"], json!(ids[0]));
+        assert_eq!(
+            body[0]["matches"]["title"],
+            json!([
+                { "text": "Add another ", "match": false },
+                { "text": "folder", "match": true },
+            ])
+        );
     }
 
     #[tokio::test]

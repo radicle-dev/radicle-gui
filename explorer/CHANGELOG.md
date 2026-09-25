@@ -35,6 +35,11 @@
   seven** indexes are rebuilt by radicle-search's bootstrap rescan; a
   Meilisearch-mode httpd answers 503 with `Retry-After` on every derived route
   until that rescan completes — deploy radicle-search first)
+- **Search-result highlighting**: the issue, patch and release search routes add
+  an optional `matches` object to each result, carrying the matched runs of the
+  title and one line of matching context from the description, a comment, the
+  tag name or an artifact name. Meilisearch does the marking and cropping; list
+  routes are unchanged
 
 ## radicle-httpd + radicle-search 0.30.0
 

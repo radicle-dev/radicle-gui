@@ -5,8 +5,10 @@ use radicle::node::policy::{SeedPolicy, SeedingPolicy};
 use radicle::node::{Alias, NodeId};
 use radicle_search::index::{cob, node, release, repo};
 use radicle_search::query::{
-    CobFilter, CobKind, ReleaseView, SearchClient, SearchError, SortField,
+    CobFilter, CobKind, Hit, ReleaseView, SearchClient, SearchError, SortField,
 };
+#[cfg(test)]
+use radicle_search::query::{Formatted, MARK_CLOSE, MARK_OPEN};
 
 /// The search backend httpd reads from. In production this is always the
 /// Meilisearch client; tests substitute an in-memory fake so handlers can
@@ -116,7 +118,7 @@ impl Backend {
         filter: CobFilter<'_>,
         offset: usize,
         limit: usize,
-    ) -> Result<Vec<cob::Document>, SearchError> {
+    ) -> Result<Vec<Hit<cob::Document>>, SearchError> {
         match self {
             Self::Meili(c) => c.search_cobs(kind, rid, q, filter, offset, limit).await,
             #[cfg(test)]
@@ -181,7 +183,7 @@ impl Backend {
         view: ReleaseView,
         offset: usize,
         limit: usize,
-    ) -> Result<Vec<release::Document>, SearchError> {
+    ) -> Result<Vec<Hit<release::Document>>, SearchError> {
         match self {
             Self::Meili(c) => c.search_releases(rid, q, view, offset, limit).await,
             #[cfg(test)]
@@ -319,6 +321,80 @@ pub(crate) mod fake {
             fields
         }
 
+        fn mark(text: &str, q: &str) -> String {
+            let needle = q.trim().to_lowercase();
+            let hay = text.to_lowercase();
+            if needle.is_empty() || hay.len() != text.len() {
+                return text.to_string();
+            }
+            let mut out = String::new();
+            let mut cursor = 0;
+            while let Some(found) = hay[cursor..].find(&needle) {
+                let start = cursor + found;
+                let end = start + needle.len();
+                if !text.is_char_boundary(start) || !text.is_char_boundary(end) {
+                    return text.to_string();
+                }
+                out.push_str(&text[cursor..start]);
+                out.push_str(MARK_OPEN);
+                out.push_str(&text[start..end]);
+                out.push_str(MARK_CLOSE);
+                cursor = end;
+            }
+            out.push_str(&text[cursor..]);
+            out
+        }
+
+        fn formatted_cob(doc: &cob::Document, q: &str) -> Option<Formatted> {
+            if q.trim().is_empty() {
+                return None;
+            }
+            let mut map = serde_json::Map::new();
+            map.insert(
+                "title".to_string(),
+                serde_json::json!(Self::mark(&doc.title, q)),
+            );
+            map.insert(
+                "description".to_string(),
+                serde_json::json!(Self::mark(&doc.description, q)),
+            );
+            map.insert(
+                "comments".to_string(),
+                serde_json::json!(doc
+                    .comments
+                    .iter()
+                    .map(|c| Self::mark(c, q))
+                    .collect::<Vec<_>>()),
+            );
+            Some(Formatted::new(map))
+        }
+
+        fn formatted_release(doc: &release::Document, q: &str) -> Option<Formatted> {
+            if q.trim().is_empty() {
+                return None;
+            }
+            let mut map = serde_json::Map::new();
+            if let Some(title) = doc.title.as_deref() {
+                map.insert("title".to_string(), serde_json::json!(Self::mark(title, q)));
+            }
+            if let Some(tag) = doc.tag_name.as_deref() {
+                map.insert("tagName".to_string(), serde_json::json!(Self::mark(tag, q)));
+            }
+            map.insert(
+                "description".to_string(),
+                serde_json::json!(Self::mark(&doc.description, q)),
+            );
+            map.insert(
+                "artifactNames".to_string(),
+                serde_json::json!(doc
+                    .artifact_names
+                    .iter()
+                    .map(|n| Self::mark(n, q))
+                    .collect::<Vec<_>>()),
+            );
+            Some(Formatted::new(map))
+        }
+
         pub fn search_cobs(
             &self,
             kind: CobKind,
@@ -327,7 +403,7 @@ pub(crate) mod fake {
             filter: CobFilter<'_>,
             offset: usize,
             limit: usize,
-        ) -> Vec<cob::Document> {
+        ) -> Vec<Hit<cob::Document>> {
             self.list_cobs(kind, rid, filter.state, 0, usize::MAX)
                 .into_iter()
                 .filter(|d| filter.author.is_none_or(|a| d.author_did == a))
@@ -339,6 +415,10 @@ pub(crate) mod fake {
                 })
                 .skip(offset)
                 .take(limit)
+                .map(|doc| Hit {
+                    formatted: Self::formatted_cob(&doc, q),
+                    doc,
+                })
                 .collect()
         }
 
@@ -381,7 +461,7 @@ pub(crate) mod fake {
             view: ReleaseView,
             offset: usize,
             limit: usize,
-        ) -> Vec<release::Document> {
+        ) -> Vec<Hit<release::Document>> {
             self.list_releases(rid, view, 0, usize::MAX)
                 .into_iter()
                 .filter(|d| {
@@ -390,6 +470,10 @@ pub(crate) mod fake {
                 })
                 .skip(offset)
                 .take(limit)
+                .map(|doc| Hit {
+                    formatted: Self::formatted_release(&doc, q),
+                    doc,
+                })
                 .collect()
         }
     }
@@ -491,7 +575,7 @@ pub(crate) mod fake {
 
             let hits = fake.search_releases(rid, "BIN-AA", ReleaseView::default(), 0, 10);
             assert_eq!(hits.len(), 1);
-            assert_eq!(hits[0].cob_id, "aa");
+            assert_eq!(hits[0].doc.cob_id, "aa");
             assert!(fake
                 .search_releases(rid, "bin-bb", ReleaseView::default(), 0, 10)
                 .is_empty());
@@ -561,8 +645,9 @@ pub(crate) mod fake {
                 ],
                 ..Default::default()
             };
-            let ids =
-                |docs: Vec<cob::Document>| docs.into_iter().map(|d| d.cob_id).collect::<Vec<_>>();
+            let ids = |docs: Vec<Hit<cob::Document>>| {
+                docs.into_iter().map(|d| d.doc.cob_id).collect::<Vec<_>>()
+            };
 
             assert_eq!(
                 ids(fake.search_cobs(
@@ -636,8 +721,9 @@ pub(crate) mod fake {
                 ],
                 ..Default::default()
             };
-            let ids =
-                |docs: Vec<cob::Document>| docs.into_iter().map(|d| d.cob_id).collect::<Vec<_>>();
+            let ids = |docs: Vec<Hit<cob::Document>>| {
+                docs.into_iter().map(|d| d.doc.cob_id).collect::<Vec<_>>()
+            };
             let by = |f: CobFilter<'_>| ids(fake.search_cobs(CobKind::Issues, rid, "", f, 0, 10));
 
             assert_eq!(
@@ -682,6 +768,47 @@ pub(crate) mod fake {
                     10
                 )),
                 vec!["bb"]
+            );
+        }
+
+        #[test]
+        fn fake_search_marks_matches_in_the_formatted_payload() {
+            let rid = RepoId::from_str("rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp").unwrap();
+            let fake = Fake {
+                issues: vec![cob_doc(
+                    "aa",
+                    1,
+                    "open",
+                    "Crash on start",
+                    "segfault in main",
+                    did(1),
+                    vec![],
+                    vec!["bug"],
+                )],
+                ..Default::default()
+            };
+
+            let hits = fake.search_cobs(CobKind::Issues, rid, "CRASH", CobFilter::default(), 0, 10);
+            assert_eq!(hits.len(), 1);
+            let formatted = hits[0].formatted.as_ref().expect("formatted");
+            assert_eq!(
+                formatted.text("title"),
+                Some("\u{E000}Crash\u{E001} on start")
+            );
+            assert_eq!(formatted.text("description"), Some("segfault in main"));
+
+            let listed = fake.search_cobs(CobKind::Issues, rid, "", CobFilter::default(), 0, 10);
+            assert!(listed[0].formatted.is_none());
+        }
+
+        #[test]
+        fn fake_mark_never_slices_inside_a_character() {
+            let tricky = "\u{212A}\u{0130}\u{0130}";
+            assert_eq!(Fake::mark(tricky, "i"), tricky);
+            assert_eq!(Fake::mark("İstanbul", "stan"), "İstanbul");
+            assert_eq!(
+                Fake::mark("Crash on start", "on"),
+                format!("Crash {MARK_OPEN}on{MARK_CLOSE} start")
             );
         }
     }

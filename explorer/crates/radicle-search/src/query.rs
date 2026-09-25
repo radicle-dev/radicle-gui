@@ -87,6 +87,51 @@ pub(crate) fn eq_filter(field: &str, value: impl std::fmt::Display) -> String {
     format!("{field} = \"{value}\"")
 }
 
+/// Marker Meilisearch wraps around matched terms. A private-use character rather than
+/// markup, so it survives JSON transport and is unlikely to appear in document text
+/// (private-use code points are used by icon fonts such as Nerd Fonts).
+pub const MARK_OPEN: &str = "\u{E000}";
+/// Closing counterpart of [`MARK_OPEN`].
+pub const MARK_CLOSE: &str = "\u{E001}";
+/// Marker Meilisearch puts at a cropped edge.
+pub const CROP_MARKER: &str = "…";
+
+const CROP_LENGTH: usize = 40;
+
+/// Meilisearch's `_formatted` payload for one hit: the requested fields with
+/// matches wrapped in [`MARK_OPEN`]/[`MARK_CLOSE`] and cropped fields already
+/// windowed.
+#[derive(Debug, Clone)]
+pub struct Formatted(serde_json::Map<String, serde_json::Value>);
+
+impl Formatted {
+    pub fn new(map: serde_json::Map<String, serde_json::Value>) -> Self {
+        Self(map)
+    }
+
+    pub fn text(&self, field: &str) -> Option<&str> {
+        self.0.get(field)?.as_str()
+    }
+
+    pub fn array(&self, field: &str) -> Option<Vec<&str>> {
+        Some(
+            self.0
+                .get(field)?
+                .as_array()?
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect(),
+        )
+    }
+}
+
+/// A search hit: the stored document plus Meilisearch's formatted view of it.
+#[derive(Debug, Clone)]
+pub struct Hit<T> {
+    pub doc: T,
+    pub formatted: Option<Formatted>,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CobFilter<'a> {
     pub state: Option<&'a str>,
@@ -330,13 +375,22 @@ impl SearchClient {
         filter: CobFilter<'_>,
         offset: usize,
         limit: usize,
-    ) -> Result<Vec<cob::Document>, SearchError> {
+    ) -> Result<Vec<Hit<cob::Document>>, SearchError> {
         let index = self.cob_index(kind);
         let filter = cob_search_filter(rid, &filter);
         let sort = ["timestamp:desc"];
+        let highlight = ["title", "description", "comments"];
+        let crop: [(&str, Option<usize>); 2] = [("description", None), ("comments", None)];
         let mut query = index.search();
         if !q.is_empty() {
-            query.with_query(q);
+            query
+                .with_query(q)
+                .with_attributes_to_highlight(Selectors::Some(&highlight))
+                .with_highlight_pre_tag(MARK_OPEN)
+                .with_highlight_post_tag(MARK_CLOSE)
+                .with_attributes_to_crop(Selectors::Some(&crop))
+                .with_crop_length(CROP_LENGTH)
+                .with_crop_marker(CROP_MARKER);
         }
         query
             .with_filter(&filter)
@@ -347,7 +401,13 @@ impl SearchClient {
         result
             .hits
             .into_iter()
-            .map(|hit| ensure_v(hit.result.v).map(|()| hit.result))
+            .map(|hit| {
+                ensure_v(hit.result.v)?;
+                Ok(Hit {
+                    doc: hit.result,
+                    formatted: hit.formatted_result.map(Formatted::new),
+                })
+            })
             .collect()
     }
 
@@ -359,18 +419,22 @@ impl SearchClient {
         offset: usize,
         limit: usize,
     ) -> Result<Vec<cob::Document>, SearchError> {
-        self.search_cobs(
-            kind,
-            rid,
-            "",
-            CobFilter {
-                state,
-                ..Default::default()
-            },
-            offset,
-            limit,
-        )
-        .await
+        Ok(self
+            .search_cobs(
+                kind,
+                rid,
+                "",
+                CobFilter {
+                    state,
+                    ..Default::default()
+                },
+                offset,
+                limit,
+            )
+            .await?
+            .into_iter()
+            .map(|hit| hit.doc)
+            .collect())
     }
 
     pub async fn get_cob(
@@ -426,12 +490,23 @@ impl SearchClient {
         view: ReleaseView,
         offset: usize,
         limit: usize,
-    ) -> Result<Vec<release::Document>, SearchError> {
+    ) -> Result<Vec<Hit<release::Document>>, SearchError> {
         let filter = release_filter(rid, view);
         let sort = ["timestamp:desc"];
+        let highlight = ["title", "tagName", "description", "artifactNames"];
+        let crop: [(&str, Option<usize>); 2] = [("description", None), ("artifactNames", None)];
         let mut query = self.releases.search();
+        if !q.is_empty() {
+            query
+                .with_query(q)
+                .with_attributes_to_highlight(Selectors::Some(&highlight))
+                .with_highlight_pre_tag(MARK_OPEN)
+                .with_highlight_post_tag(MARK_CLOSE)
+                .with_attributes_to_crop(Selectors::Some(&crop))
+                .with_crop_length(CROP_LENGTH)
+                .with_crop_marker(CROP_MARKER);
+        }
         query
-            .with_query(q)
             .with_filter(&filter)
             .with_sort(&sort)
             .with_offset(offset)
@@ -440,7 +515,13 @@ impl SearchClient {
         result
             .hits
             .into_iter()
-            .map(|hit| ensure_v(hit.result.v).map(|()| hit.result))
+            .map(|hit| {
+                ensure_v(hit.result.v)?;
+                Ok(Hit {
+                    doc: hit.result,
+                    formatted: hit.formatted_result.map(Formatted::new),
+                })
+            })
             .collect()
     }
 
@@ -665,5 +746,43 @@ mod tests {
             ),
             base
         );
+    }
+
+    #[test]
+    fn formatted_reads_text_and_array_fields() {
+        let mut map = serde_json::Map::new();
+        map.insert(
+            "title".to_string(),
+            serde_json::json!("a \u{E000}b\u{E001} c"),
+        );
+        map.insert(
+            "comments".to_string(),
+            serde_json::json!(["first", "\u{E000}second\u{E001}"]),
+        );
+        map.insert("count".to_string(), serde_json::json!(7));
+        let formatted = Formatted::new(map);
+
+        assert_eq!(formatted.text("title"), Some("a \u{E000}b\u{E001} c"));
+        assert_eq!(
+            formatted.array("comments"),
+            Some(vec!["first", "\u{E000}second\u{E001}"])
+        );
+        assert_eq!(formatted.text("missing"), None);
+        assert_eq!(formatted.text("count"), None);
+        assert_eq!(formatted.array("title"), None);
+    }
+
+    #[test]
+    fn sentinels_are_private_use_characters() {
+        assert_eq!(MARK_OPEN.chars().count(), 1);
+        assert_eq!(MARK_CLOSE.chars().count(), 1);
+        assert_ne!(MARK_OPEN, MARK_CLOSE);
+        for s in [MARK_OPEN, MARK_CLOSE] {
+            let c = s.chars().next().unwrap();
+            assert!(
+                ('\u{E000}'..='\u{F8FF}').contains(&c),
+                "{c:?} not private use"
+            );
+        }
     }
 }

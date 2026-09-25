@@ -14,7 +14,10 @@ use crate::index::repo::DocumentKey;
 use crate::index::{Indexes, cob, release, repo};
 use crate::indexer::Indexer;
 use crate::indexer::build;
-use crate::query::{CobFilter, CobKind, ReleaseView, SearchClient, SearchError, SortField};
+use crate::query::{
+    CROP_MARKER, CobFilter, CobKind, MARK_CLOSE, MARK_OPEN, ReleaseView, SearchClient, SearchError,
+    SortField,
+};
 
 struct LiveMeili {
     child: Child,
@@ -319,7 +322,19 @@ async fn live_filters_and_reads() {
         .await
         .unwrap();
     assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0].title, "Issue #1");
+    assert_eq!(hits[0].doc.title, "Issue #1");
+
+    let typo = client
+        .search_cobs(CobKind::Issues, rid, "hallo", CobFilter::default(), 0, 10)
+        .await
+        .unwrap();
+    assert_eq!(typo.len(), 1);
+    let formatted = typo[0].formatted.as_ref().expect("formatted payload");
+    let description = formatted.text("description").expect("description");
+    assert!(
+        description.contains(MARK_OPEN) && description.contains(MARK_CLOSE),
+        "no sentinels in {description:?}"
+    );
 
     let phrase = client
         .search_cobs(
@@ -430,6 +445,113 @@ async fn live_filters_and_reads() {
 
 #[tokio::test]
 #[ignore]
+async fn live_formatted_arrays_and_crop() {
+    let meili = LiveMeili::spawn();
+    let (_tmp, profile, rid, client) = seeded_client(&meili).await;
+    let config = config_with(&meili.url);
+    let indexes = Indexes::connect(&config).expect("connect to meilisearch");
+
+    let did = Did::from(profile.public_key);
+    let title = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do \
+        quokka eiusmod tempor incididunt ut labore et dolore magna aliqua ut \
+        enim ad minim veniam quis nostrud exercitation ullamco laboris nisi \
+        ut aliquip ex ea commodo consequat duis aute irure dolor in \
+        reprehenderit voluptate velit"
+        .to_string();
+    let commented = "lorem ipsum dolor sit amet consectetur adipiscing elit sed \
+        do eiusmod tempor incididunt ut labore et dolore magna aliqua ut enim \
+        ad quokka minim veniam quis nostrud exercitation ullamco laboris nisi \
+        ut aliquip ex ea commodo consequat duis aute irure dolor in \
+        reprehenderit voluptate velit"
+        .to_string();
+    assert!(title.split_whitespace().count() > 40);
+    assert!(commented.split_whitespace().count() > 40);
+
+    let doc = cob::Document {
+        v: crate::index::SCHEMA_VERSION,
+        id: cob::doc_id(rid, "quokka-fixture"),
+        rid,
+        cob_id: "quokka-fixture".to_string(),
+        state: "open".to_string(),
+        timestamp: crate::test::TIMESTAMP as i64,
+        title,
+        description: "A short description with no unusual terms at all.".to_string(),
+        comments: vec![
+            "Just a plain first comment with nothing special.".to_string(),
+            commented,
+        ],
+        dids: vec![did],
+        author_did: did,
+        assignee_dids: vec![],
+        labels: vec![],
+        cob: "{}".to_string(),
+    };
+    indexes
+        .issues
+        .upsert(std::slice::from_ref(&doc), cob::Document::PRIMARY_KEY)
+        .await
+        .expect("upsert quokka fixture");
+
+    let ready = poll_until(Duration::from_secs(10), || {
+        let client = client.clone();
+        async move {
+            matches!(
+                client
+                    .search_cobs(CobKind::Issues, rid, "quokka", CobFilter::default(), 0, 10)
+                    .await,
+                Ok(hits) if hits.len() == 1
+            )
+        }
+    })
+    .await;
+    assert!(ready, "quokka fixture did not become searchable within 10s");
+
+    let hits = client
+        .search_cobs(CobKind::Issues, rid, "quokka", CobFilter::default(), 0, 10)
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    let formatted = hits[0].formatted.as_ref().expect("formatted payload");
+
+    let comments = formatted.array("comments").expect("comments array");
+    assert_eq!(comments.len(), 2);
+    assert!(
+        !comments[0].contains(MARK_OPEN) && !comments[0].contains(MARK_CLOSE),
+        "unexpected sentinel in {:?}",
+        comments[0]
+    );
+    assert!(
+        comments[1].contains(MARK_OPEN) && comments[1].contains(MARK_CLOSE),
+        "no sentinels in {:?}",
+        comments[1]
+    );
+    assert!(
+        comments[1].contains(CROP_MARKER),
+        "no crop marker in {:?}",
+        comments[1]
+    );
+
+    let title = formatted.text("title").expect("formatted title");
+    assert!(
+        title.contains(MARK_OPEN) && title.contains(MARK_CLOSE),
+        "no sentinels in {title:?}"
+    );
+    assert!(
+        !title.contains(CROP_MARKER),
+        "unexpected crop marker in {title:?}"
+    );
+
+    let description = formatted
+        .text("description")
+        .expect("formatted description");
+    assert!(
+        !description.contains(MARK_OPEN) && !description.contains(MARK_CLOSE),
+        "unexpected sentinel in {description:?}"
+    );
+}
+
+#[tokio::test]
+#[ignore]
 async fn live_release_reads() {
     let meili = LiveMeili::spawn();
     let (_tmp, profile, rid, client) = seeded_client(&meili).await;
@@ -471,7 +593,7 @@ async fn live_release_reads() {
         .await
         .unwrap();
     assert_eq!(empty_q.len(), 1);
-    assert_eq!(empty_q[0].cob_id, listed[0].cob_id);
+    assert_eq!(empty_q[0].doc.cob_id, listed[0].cob_id);
 }
 
 #[tokio::test]

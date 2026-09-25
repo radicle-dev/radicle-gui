@@ -157,7 +157,7 @@ pub fn seed_meili_with(
         timestamp: issue.timestamp().as_secs() as i64,
         title: issue.title().to_string(),
         description: issue.description().to_string(),
-        comments: vec![],
+        comments: vec!["Attached a gizmo screenshot for the reviewers to check.".to_string()],
         dids: vec![radicle::identity::Did::from(nid)],
         author_did: radicle::identity::Did::from(nid),
         assignee_dids: vec![],
