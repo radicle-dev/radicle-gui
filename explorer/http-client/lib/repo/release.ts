@@ -1,7 +1,7 @@
 import type { ZodSchema } from "zod";
 import * as z from "zod";
 
-import { authorSchema } from "../shared.js";
+import { authorSchema, matchesSchema } from "../shared.js";
 
 export const locationSchema = z.object({
   user: authorSchema,
@@ -41,6 +41,7 @@ export const releaseSchema = z.object({
   createdAt: z.number(),
   creator: authorSchema,
   artifacts: z.array(artifactSchema),
+  matches: matchesSchema.optional(),
 });
 
 export type Release = z.infer<typeof releaseSchema>;

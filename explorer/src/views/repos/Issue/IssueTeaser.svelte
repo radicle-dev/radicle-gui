@@ -37,6 +37,7 @@
     display: flex;
     flex-direction: column;
     flex: 1;
+    min-width: 0;
   }
   .subtitle {
     display: flex;
@@ -50,6 +51,18 @@
     align-items: flex-start;
     gap: 0.5rem;
     word-break: break-word;
+  }
+  .match-context {
+    font: var(--txt-body-s-regular);
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .match-context mark {
+    background-color: var(--color-surface-alpha-mid);
+    color: inherit;
+    border-radius: var(--border-radius-xs);
   }
   .right {
     display: flex;
@@ -96,7 +109,10 @@
           {#if !issue.title}
             <span style:color="var(--color-text-tertiary)">No title</span>
           {:else}
-            <InlineTitle fontSize="body-m-regular" content={issue.title} />
+            <InlineTitle
+              fontSize="body-m-regular"
+              content={issue.title}
+              segments={issue.matches?.title} />
           {/if}
         </Link>
       </span>
@@ -113,6 +129,14 @@
         {/if}
       </div>
     </div>
+    {#if issue.matches?.context}
+      <div class="match-context">
+        {#each issue.matches.context.segments as segment}
+          <!-- prettier-ignore -->
+          {#if segment.match}<mark>{segment.text}</mark>{:else}{segment.text}{/if}
+        {/each}
+      </div>
+    {/if}
     <div class="subtitle">
       {#if issue.labels.length > 0}
         <div

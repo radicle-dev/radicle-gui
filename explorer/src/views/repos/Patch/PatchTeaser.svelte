@@ -40,6 +40,7 @@
     gap: 0.5rem;
     display: flex;
     flex-direction: column;
+    min-width: 0;
   }
   .subtitle {
     display: flex;
@@ -53,6 +54,18 @@
     align-items: flex-start;
     gap: 0.5rem;
     word-break: break-word;
+  }
+  .match-context {
+    font: var(--txt-body-s-regular);
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .match-context mark {
+    background-color: var(--color-surface-alpha-mid);
+    color: inherit;
+    border-radius: var(--border-radius-xs);
   }
   .right {
     margin-left: auto;
@@ -116,7 +129,10 @@
           node: baseUrl,
           patch: patch.id,
         }}>
-        <InlineTitle fontSize="body-m-regular" content={patch.title} />
+        <InlineTitle
+          fontSize="body-m-regular"
+          content={patch.title}
+          segments={patch.matches?.title} />
       </Link>
       {#if patch.labels.length > 0}
         <span
@@ -134,6 +150,14 @@
         </div>
       </div>
     </div>
+    {#if patch.matches?.context}
+      <div class="match-context">
+        {#each patch.matches.context.segments as segment}
+          <!-- prettier-ignore -->
+          {#if segment.match}<mark>{segment.text}</mark>{:else}{segment.text}{/if}
+        {/each}
+      </div>
+    {/if}
     <div class="summary">
       <span class="subtitle">
         {#if patch.labels.length > 0}

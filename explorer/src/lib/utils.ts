@@ -2,6 +2,7 @@ import type { Author, BaseUrl, Repo } from "@http-client";
 
 import md5 from "md5";
 import bs58 from "bs58";
+import escape from "lodash/escape.js";
 import twemojiModule from "twemoji";
 
 export const REFS_HEADS = "refs/heads/";
@@ -25,6 +26,18 @@ export async function toClipboard(text: string): Promise<void> {
 
 export function formatInlineTitle(input: string): string {
   return input.replaceAll(/`([^`]+)`/g, "<code>$1</code>");
+}
+
+export function highlightSegments(
+  segments: { text: string; match: boolean }[],
+): string {
+  return segments
+    .map(segment =>
+      segment.match
+        ? `<mark>${escape(segment.text)}</mark>`
+        : escape(segment.text),
+    )
+    .join("");
 }
 
 export function parseNodeId(

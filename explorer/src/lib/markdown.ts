@@ -88,6 +88,18 @@ export const sanitizeConfig: Config = {
   /* eslint-enable @typescript-eslint/naming-convention */
 };
 
+/**
+ * Sanitizer for inline titles that may carry search highlighting. Identical to
+ * `sanitizeConfig` plus `mark`, so highlighting never widens what is allowed in
+ * READMEs and comments.
+ */
+export const titleSanitizeConfig: Config = {
+  ...sanitizeConfig,
+  /* eslint-disable @typescript-eslint/naming-convention */
+  ALLOWED_TAGS: [...(sanitizeConfig.ALLOWED_TAGS ?? []), "mark"],
+  /* eslint-enable @typescript-eslint/naming-convention */
+};
+
 export class Renderer extends BaseRenderer {
   #route: Route;
 

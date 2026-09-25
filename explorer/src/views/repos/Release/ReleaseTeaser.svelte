@@ -34,6 +34,7 @@
     display: flex;
     flex-direction: column;
     flex: 1;
+    min-width: 0;
   }
   .subtitle {
     display: flex;
@@ -47,6 +48,18 @@
     align-items: flex-start;
     gap: 0.5rem;
     word-break: break-word;
+  }
+  .match-context {
+    font: var(--txt-body-s-regular);
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .match-context mark {
+    background-color: var(--color-surface-alpha-mid);
+    color: inherit;
+    border-radius: var(--border-radius-xs);
   }
   .icon {
     justify-self: center;
@@ -86,7 +99,10 @@
             release: release.id,
             allAuthors,
           }}>
-          <InlineTitle fontSize="body-m-regular" content={title} />
+          <InlineTitle
+            fontSize="body-m-regular"
+            content={title}
+            segments={release.matches?.title} />
         </Link>
       </span>
       <div class="right">
@@ -96,6 +112,14 @@
         </span>
       </div>
     </div>
+    {#if release.matches?.context}
+      <div class="match-context">
+        {#each release.matches.context.segments as segment}
+          <!-- prettier-ignore -->
+          {#if segment.match}<mark>{segment.text}</mark>{:else}{segment.text}{/if}
+        {/each}
+      </div>
+    {/if}
     <div class="subtitle">
       <div
         style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">

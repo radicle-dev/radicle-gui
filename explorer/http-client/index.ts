@@ -15,8 +15,10 @@ import type {
 import type {
   Author,
   Config,
-  SeedingPolicy,
   DefaultSeedingPolicy,
+  Matches,
+  MatchSegment,
+  SeedingPolicy,
 } from "./lib/shared.js";
 import type { Comment, Embed, Reaction } from "./lib/repo/comment.js";
 import type {
@@ -88,6 +90,8 @@ export type {
   Job,
   LifecycleState,
   Location,
+  Matches,
+  MatchSegment,
   Merge,
   MergeTarget,
   Patch,

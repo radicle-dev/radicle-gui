@@ -12,7 +12,7 @@ import {
   tuple,
   union,
 } from "zod";
-import { authorSchema } from "../shared.js";
+import { authorSchema, matchesSchema } from "../shared.js";
 
 export type PatchState = z.infer<typeof patchStateSchema>;
 
@@ -101,6 +101,7 @@ export const patchSchema = object({
   merges: array(mergeSchema),
   assignees: array(authorSchema),
   revisions: array(revisionSchema),
+  matches: matchesSchema.optional(),
 });
 
 export type Patch = z.infer<typeof patchSchema>;

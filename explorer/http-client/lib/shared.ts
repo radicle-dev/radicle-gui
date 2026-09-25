@@ -123,3 +123,21 @@ export const authorSchema = z.object({
   id: z.string(),
   alias: z.string().optional(),
 });
+
+export const matchSegmentSchema = z.object({
+  text: z.string(),
+  match: z.boolean(),
+});
+
+export const matchesSchema = z.object({
+  title: z.array(matchSegmentSchema).optional(),
+  context: z
+    .object({
+      field: z.string(),
+      segments: z.array(matchSegmentSchema),
+    })
+    .optional(),
+});
+
+export type MatchSegment = z.infer<typeof matchSegmentSchema>;
+export type Matches = z.infer<typeof matchesSchema>;

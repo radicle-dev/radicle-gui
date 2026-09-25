@@ -2,7 +2,7 @@ import type { ZodSchema } from "zod";
 import * as z from "zod";
 
 import { commentSchema } from "./comment.js";
-import { authorSchema } from "../shared.js";
+import { authorSchema, matchesSchema } from "../shared.js";
 
 export type IssueState =
   { status: "open" } | { status: "closed"; reason: "other" | "solved" };
@@ -23,6 +23,7 @@ export const issueSchema = z.object({
   discussion: z.array(commentSchema),
   labels: z.array(z.string()),
   assignees: z.array(authorSchema),
+  matches: matchesSchema.optional(),
 });
 
 export type Issue = z.infer<typeof issueSchema>;
