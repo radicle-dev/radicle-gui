@@ -28,6 +28,13 @@
   title, description, comments and participant DIDs, with the same
   `status`/`page`/`perPage` parameters as the list routes. Meilisearch mode only
   — a sqlite-mode node answers `501 Not Implemented`
+- **Issue and patch filters**: `GET /repos/{rid}/issues/search` and
+  `/patches/search` accept `author`, `assignee` (`did:key:…` or a bare node id)
+  and `label`; radicle-search indexes `authorDid`, `assigneeDids` and `labels`
+  on issue and patch documents (the shared document schema moves to v2, so **all
+  seven** indexes are rebuilt by radicle-search's bootstrap rescan; a
+  Meilisearch-mode httpd answers 503 with `Retry-After` on every derived route
+  until that rescan completes — deploy radicle-search first)
 
 ## radicle-httpd + radicle-search 0.30.0
 

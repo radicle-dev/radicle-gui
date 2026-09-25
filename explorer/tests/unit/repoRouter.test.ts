@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
+  currentCobFilters,
+  hasCobFilters,
+  parseCobFilters,
   patchesSearch,
   repoRouteToPath,
   resolveRepoRoute,
@@ -41,13 +44,66 @@ describe("repo alias in routes", () => {
 });
 
 describe("patchesSearch", () => {
-  test("carries the query alongside the status", () => {
-    expect(patchesSearch("open", "hello world")).toEqual(
-      "status=open&q=hello+world",
+  test("carries every filter alongside the status", () => {
+    expect(
+      patchesSearch("open", {
+        q: "hello world",
+        author: "did:key:z6Mk",
+        assignee: "z6Mk",
+        label: "bug",
+      }),
+    ).toEqual(
+      "status=open&q=hello+world&author=did%3Akey%3Az6Mk&assignee=z6Mk&label=bug",
     );
   });
 
-  test("omits an absent query", () => {
-    expect(patchesSearch("draft", undefined)).toEqual("status=draft");
+  test("omits absent filters", () => {
+    expect(patchesSearch("draft", {})).toEqual("status=draft");
+    expect(patchesSearch("draft", { label: "bug" })).toEqual(
+      "status=draft&label=bug",
+    );
+  });
+});
+
+describe("parseCobFilters", () => {
+  test("reads the four keys and drops blanks", () => {
+    const params = new URLSearchParams(
+      "q=+hello+&author=&assignee=z6Mk&label=bug&status=open",
+    );
+    expect(parseCobFilters(params)).toEqual({
+      q: "hello",
+      author: undefined,
+      assignee: "z6Mk",
+      label: "bug",
+    });
+  });
+
+  test("hasCobFilters is false for an empty set", () => {
+    expect(hasCobFilters({})).toBe(false);
+    expect(hasCobFilters({ q: undefined, label: undefined })).toBe(false);
+    expect(hasCobFilters({ label: "bug" })).toBe(true);
+  });
+});
+
+describe("currentCobFilters", () => {
+  test("reads the filters from the live location", () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/repo/issues?status=open&q=hello&label=bug",
+    );
+    expect(currentCobFilters()).toEqual({
+      q: "hello",
+      author: undefined,
+      assignee: undefined,
+      label: "bug",
+    });
+    window.history.replaceState({}, "", "/");
+    expect(currentCobFilters()).toEqual({
+      q: undefined,
+      author: undefined,
+      assignee: undefined,
+      label: undefined,
+    });
   });
 });

@@ -92,8 +92,9 @@ export interface FetchParams {
   path?: string;
   // Object that is serialized into JSON and sent as the data.
   body?: unknown;
-  // Query parameters to be serialized with URLSearchParams.
-  query?: Record<string, string | number | boolean>;
+  // Query parameters to be serialized with URLSearchParams. Entries whose
+  // value is `undefined` are left out of the URL.
+  query?: Record<string, string | number | boolean | undefined>;
   options?: RequestOptions;
   headers?: Record<string, string>;
 }
@@ -167,8 +168,16 @@ export class Fetcher {
     let url = `${this.#baseUrl.scheme}://${this.#baseUrl.hostname}:${this.#baseUrl.port}/api/v1${pathSegment}`;
 
     if (query) {
-      const searchparams = new URLSearchParams(query as Record<string, string>);
-      url = `${url}?${searchparams.toString()}`;
+      const searchparams = new URLSearchParams();
+      for (const [key, value] of Object.entries(query)) {
+        if (value !== undefined) {
+          searchparams.set(key, String(value));
+        }
+      }
+      const serialized = searchparams.toString();
+      if (serialized) {
+        url = `${url}?${serialized}`;
+      }
     }
     return globalThis.fetch(url, {
       method,

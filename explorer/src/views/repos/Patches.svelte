@@ -1,13 +1,21 @@
 <script lang="ts">
   import type { BaseUrl, Patch, PatchState, Repo } from "@http-client";
+  import type { CobFilters } from "./router";
 
   import { HttpdClient } from "@http-client";
 
-  import { PATCHES_PER_PAGE, fetchPatchesPage, patchesSearch } from "./router";
-  import { replace } from "@app/lib/router";
+  import {
+    PATCHES_PER_PAGE,
+    currentCobFilters,
+    fetchPatchesPage,
+    hasCobFilters,
+    patchesSearch,
+  } from "./router";
+  import { push, replace } from "@app/lib/router";
   import { baseUrlToString } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
+  import CobFilterRow from "./CobFilterRow.svelte";
   import CobSearch from "./CobSearch.svelte";
   import ErrorMessage from "@app/components/ErrorMessage.svelte";
   import Icon from "@app/components/Icon.svelte";
@@ -26,7 +34,7 @@
   export let status: PatchState["status"];
   export let nodeId: string;
   export let nodeAvatarUrl: string | undefined;
-  export let q: string | undefined = undefined;
+  export let filters: CobFilters;
   export let searchAvailable: boolean;
 
   let loading = false;
@@ -34,6 +42,12 @@
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let error: any;
   let allPatches: Patch[];
+  let filtersOpen = false;
+
+  $: filtersActive = Boolean(
+    filters.author || filters.assignee || filters.label,
+  );
+  $: showFilterRow = searchAvailable && (filtersOpen || filtersActive);
 
   $: {
     allPatches = patches;
@@ -46,7 +60,13 @@
     loading = true;
     page += 1;
     try {
-      const response = await fetchPatchesPage(api, repo.rid, status, q, page);
+      const response = await fetchPatchesPage(
+        api,
+        repo.rid,
+        status,
+        filters,
+        page,
+      );
       allPatches = [...allPatches, ...response];
     } catch (e) {
       error = e;
@@ -60,19 +80,34 @@
       resource: "repo.patches",
       repo: repoId,
       node: baseUrl,
-      search: patchesSearch(status, event.detail),
+      search: patchesSearch(status, {
+        ...currentCobFilters(),
+        q: event.detail,
+      }),
+    });
+  }
+
+  function applyFilters(event: CustomEvent<Omit<CobFilters, "q">>) {
+    void push({
+      resource: "repo.patches",
+      repo: repoId,
+      node: baseUrl,
+      search: patchesSearch(status, {
+        ...currentCobFilters(),
+        ...event.detail,
+      }),
     });
   }
 
   $: totalForStatus = repo.payloads["xyz.radicle.project"].meta.patches[status];
-  $: showEmpty = q
+  $: showEmpty = hasCobFilters(filters)
     ? allPatches.length === 0 && !loading && !error
     : totalForStatus === 0;
 
   $: showMoreButton =
     !loading &&
     !error &&
-    (q
+    (hasCobFilters(filters)
       ? allPatches.length === (page + 1) * PATCHES_PER_PAGE
       : allPatches.length < totalForStatus);
 </script>
@@ -144,7 +179,7 @@
         resource: "repo.patches",
         repo: repoId,
         node: baseUrl,
-        search: patchesSearch("open", q),
+        search: patchesSearch("open", filters),
       }}>
       <Button variant={status === "open" ? "gray" : "background"}>
         <Icon name="patch" />
@@ -161,7 +196,7 @@
         resource: "repo.patches",
         repo: repoId,
         node: baseUrl,
-        search: patchesSearch("draft", q),
+        search: patchesSearch("draft", filters),
       }}>
       <Button variant={status === "draft" ? "gray" : "background"}>
         <Icon name="patch-draft" />
@@ -178,7 +213,7 @@
         resource: "repo.patches",
         repo: repoId,
         node: baseUrl,
-        search: patchesSearch("archived", q),
+        search: patchesSearch("archived", filters),
       }}>
       <Button variant={status === "archived" ? "gray" : "background"}>
         <Icon name="patch-archived" />
@@ -195,7 +230,7 @@
         resource: "repo.patches",
         repo: repoId,
         node: baseUrl,
-        search: patchesSearch("merged", q),
+        search: patchesSearch("merged", filters),
       }}>
       <Button variant={status === "merged" ? "gray" : "background"}>
         <Icon name="patch-merged" />
@@ -208,7 +243,23 @@
       </Button>
     </Link>
     {#if searchAvailable}
-      <CobSearch value={q} placeholder="Search patches…" on:search={search} />
+      <CobSearch
+        value={filters.q}
+        placeholder="Search patches…"
+        on:search={search} />
+      <Button
+        variant={showFilterRow ? "gray" : "background"}
+        disabled={filtersActive}
+        on:click={() => (filtersOpen = !filtersOpen)}>
+        <Icon name="filter" />
+        Filter
+      </Button>
+    {/if}
+  </div>
+
+  <div slot="subheader">
+    {#if showFilterRow}
+      <CobFilterRow {filters} on:change={applyFilters} />
     {/if}
   </div>
 
@@ -228,7 +279,9 @@
     <div class="placeholder">
       <Placeholder
         iconName="patch"
-        caption={q ? "No patches match" : `No ${status} patches`} />
+        caption={hasCobFilters(filters)
+          ? "No patches match"
+          : `No ${status} patches`} />
     </div>
   {/if}
 

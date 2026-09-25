@@ -1,12 +1,19 @@
 <script lang="ts">
   import type { BaseUrl, Issue, IssueState, Repo } from "@http-client";
+  import type { CobFilters } from "./router";
 
   import { HttpdClient } from "@http-client";
-  import { ISSUES_PER_PAGE, fetchIssuesPage } from "./router";
-  import { replace } from "@app/lib/router";
+  import {
+    ISSUES_PER_PAGE,
+    currentCobFilters,
+    fetchIssuesPage,
+    hasCobFilters,
+  } from "./router";
+  import { push, replace } from "@app/lib/router";
   import { baseUrlToString } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
+  import CobFilterRow from "./CobFilterRow.svelte";
   import CobSearch from "./CobSearch.svelte";
   import ErrorMessage from "@app/components/ErrorMessage.svelte";
   import Icon from "@app/components/Icon.svelte";
@@ -25,7 +32,7 @@
   export let status: IssueState["status"];
   export let nodeId: string;
   export let nodeAvatarUrl: string | undefined;
-  export let q: string | undefined = undefined;
+  export let filters: CobFilters;
   export let searchAvailable: boolean;
 
   let loading = false;
@@ -33,6 +40,12 @@
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let error: any;
   let allIssues: Issue[];
+  let filtersOpen = false;
+
+  $: filtersActive = Boolean(
+    filters.author || filters.assignee || filters.label,
+  );
+  $: showFilterRow = searchAvailable && (filtersOpen || filtersActive);
 
   $: {
     allIssues = issues;
@@ -45,7 +58,13 @@
     loading = true;
     page += 1;
     try {
-      const response = await fetchIssuesPage(api, repo.rid, status, q, page);
+      const response = await fetchIssuesPage(
+        api,
+        repo.rid,
+        status,
+        filters,
+        page,
+      );
       allIssues = [...allIssues, ...response];
     } catch (e) {
       error = e;
@@ -60,19 +79,31 @@
       repo: repoId,
       node: baseUrl,
       status,
+      ...currentCobFilters(),
       q: event.detail,
     });
   }
 
+  function applyFilters(event: CustomEvent<Omit<CobFilters, "q">>) {
+    void push({
+      resource: "repo.issues",
+      repo: repoId,
+      node: baseUrl,
+      status,
+      ...currentCobFilters(),
+      ...event.detail,
+    });
+  }
+
   $: totalForStatus = repo.payloads["xyz.radicle.project"].meta.issues[status];
-  $: showEmpty = q
+  $: showEmpty = hasCobFilters(filters)
     ? allIssues.length === 0 && !loading && !error
     : totalForStatus === 0;
 
   $: showMoreButton =
     !loading &&
     !error &&
-    (q
+    (hasCobFilters(filters)
       ? allIssues.length === (page + 1) * ISSUES_PER_PAGE
       : allIssues.length < totalForStatus);
 </script>
@@ -142,7 +173,7 @@
         repo: repoId,
         node: baseUrl,
         status: "open",
-        q,
+        ...filters,
       }}>
       <Button variant={status === "open" ? "gray" : "background"}>
         <Icon name="issue" />
@@ -160,7 +191,7 @@
         repo: repoId,
         node: baseUrl,
         status: "closed",
-        q,
+        ...filters,
       }}>
       <Button variant={status === "closed" ? "gray" : "background"}>
         <Icon name="issue-closed" />
@@ -173,7 +204,23 @@
       </Button>
     </Link>
     {#if searchAvailable}
-      <CobSearch value={q} placeholder="Search issues…" on:search={search} />
+      <CobSearch
+        value={filters.q}
+        placeholder="Search issues…"
+        on:search={search} />
+      <Button
+        variant={showFilterRow ? "gray" : "background"}
+        disabled={filtersActive}
+        on:click={() => (filtersOpen = !filtersOpen)}>
+        <Icon name="filter" />
+        Filter
+      </Button>
+    {/if}
+  </div>
+
+  <div slot="subheader">
+    {#if showFilterRow}
+      <CobFilterRow {filters} on:change={applyFilters} />
     {/if}
   </div>
 
@@ -193,7 +240,9 @@
     <div class="placeholder">
       <Placeholder
         iconName="issue"
-        caption={q ? "No issues match" : `No ${status} issues`} />
+        caption={hasCobFilters(filters)
+          ? "No issues match"
+          : `No ${status} issues`} />
     </div>
   {/if}
 

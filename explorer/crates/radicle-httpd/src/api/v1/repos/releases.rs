@@ -16,7 +16,7 @@ use radicle_search::query::ReleaseView;
 use crate::api;
 use crate::api::error::Error;
 use crate::api::json::Author;
-use crate::api::query::{ReleasesQuery, ReleasesSearchQuery, MAX_PER_PAGE, MAX_QUERY_LEN};
+use crate::api::query::{search_query, ReleasesQuery, ReleasesSearchQuery, MAX_PER_PAGE};
 use crate::api::Context;
 use crate::axum_extra::{Path, Query};
 
@@ -294,11 +294,7 @@ pub(super) async fn search_handler(
         return Err(Error::SearchNotSupported);
     }
     let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
-    let q: String =
-        qs.q.unwrap_or_default()
-            .chars()
-            .take(MAX_QUERY_LEN)
-            .collect();
+    let q = search_query(qs.q);
     let page = qs.page.unwrap_or(0);
     let per_page = qs.per_page.unwrap_or(DEFAULT_PER_PAGE).min(MAX_PER_PAGE);
     let view = view_from(qs.all_authors, qs.show_redacted);

@@ -550,6 +550,9 @@ export class Client {
     query: {
       q?: string;
       status?: string;
+      author?: string;
+      assignee?: string;
+      label?: string;
       page?: number;
       perPage?: number;
     },
@@ -606,6 +609,9 @@ export class Client {
     query: {
       q?: string;
       status?: string;
+      author?: string;
+      assignee?: string;
+      label?: string;
       page?: number;
       perPage?: number;
     },

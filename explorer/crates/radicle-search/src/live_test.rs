@@ -311,6 +311,7 @@ async fn live_filters_and_reads() {
             "everyone",
             CobFilter {
                 state: Some("open"),
+                ..Default::default()
             },
             0,
             10,
@@ -346,6 +347,7 @@ async fn live_filters_and_reads() {
             "",
             CobFilter {
                 state: Some("open"),
+                ..Default::default()
             },
             0,
             10,
@@ -353,6 +355,64 @@ async fn live_filters_and_reads() {
         .await
         .unwrap();
     assert_eq!(listed.len(), open.len());
+
+    let other = Did::from_str("did:key:z6MkkfM3tPXNPrPevKr3uSiQtHPuwnNhu2yUVjgd2jXVsVz5").unwrap();
+    let by_author = |author: Did| CobFilter {
+        author: Some(author),
+        ..Default::default()
+    };
+    let by_assignee = |assignee: Did| CobFilter {
+        assignee: Some(assignee),
+        ..Default::default()
+    };
+    let by_label = |label: &'static str| CobFilter {
+        label: Some(label),
+        ..Default::default()
+    };
+
+    let hits = client
+        .search_cobs(CobKind::Issues, rid, "", by_author(did), 0, 10)
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    let hits = client
+        .search_cobs(CobKind::Issues, rid, "", by_author(other), 0, 10)
+        .await
+        .unwrap();
+    assert!(hits.is_empty());
+
+    let hits = client
+        .search_cobs(CobKind::Issues, rid, "", by_assignee(did), 0, 10)
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    let hits = client
+        .search_cobs(CobKind::Issues, rid, "", by_assignee(other), 0, 10)
+        .await
+        .unwrap();
+    assert!(hits.is_empty());
+
+    let hits = client
+        .search_cobs(CobKind::Issues, rid, "", by_label("bug"), 0, 10)
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    let hits = client
+        .search_cobs(CobKind::Patches, rid, "", by_label("bug"), 0, 10)
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    let hits = client
+        .search_cobs(CobKind::Issues, rid, "", by_label("feature"), 0, 10)
+        .await
+        .unwrap();
+    assert!(hits.is_empty());
+
+    let hits = client
+        .search_cobs(CobKind::Issues, rid, "zzz", by_author(did), 0, 10)
+        .await
+        .unwrap();
+    assert!(hits.is_empty());
 
     let aliases = client.get_aliases(&[profile.public_key]).await.unwrap();
     assert_eq!(

@@ -330,6 +330,9 @@ pub(crate) mod fake {
         ) -> Vec<cob::Document> {
             self.list_cobs(kind, rid, filter.state, 0, usize::MAX)
                 .into_iter()
+                .filter(|d| filter.author.is_none_or(|a| d.author_did == a))
+                .filter(|d| filter.assignee.is_none_or(|a| d.assignee_dids.contains(&a)))
+                .filter(|d| filter.label.is_none_or(|l| d.labels.iter().any(|x| x == l)))
                 .filter(|d| {
                     let fields = Self::cob_text_fields(d);
                     release::text_matches(q, fields.iter().map(String::as_str))
@@ -500,6 +503,9 @@ pub(crate) mod fake {
             state: &str,
             title: &str,
             description: &str,
+            author: Did,
+            assignees: Vec<Did>,
+            labels: Vec<&str>,
         ) -> cob::Document {
             let rid = RepoId::from_str("rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp").unwrap();
             cob::Document {
@@ -513,14 +519,18 @@ pub(crate) mod fake {
                 description: description.to_string(),
                 comments: vec!["follow-up comment".to_string()],
                 dids: vec![],
-                author_did: Did::from_str(
-                    "did:key:z6MkkfM3tPXNPrPevKr3uSiQtHPuwnNhu2yUVjgd2jXVsVz5",
-                )
-                .unwrap(),
-                assignee_dids: vec![],
-                labels: vec![],
+                author_did: author,
+                assignee_dids: assignees,
+                labels: labels.into_iter().map(str::to_string).collect(),
                 cob: "{}".to_string(),
             }
+        }
+
+        fn did(seed: u8) -> Did {
+            use radicle::crypto::Signer as _;
+            let key =
+                radicle::crypto::SigningKey::from_seed(radicle::crypto::Seed::new([seed; 32]));
+            Did::from(*key.public_key())
         }
 
         #[test]
@@ -528,8 +538,26 @@ pub(crate) mod fake {
             let rid = RepoId::from_str("rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp").unwrap();
             let fake = Fake {
                 issues: vec![
-                    cob_doc("aa", 1, "open", "Crash on start", "segfault in main"),
-                    cob_doc("bb", 2, "closed", "Typo", "fix the readme"),
+                    cob_doc(
+                        "aa",
+                        1,
+                        "open",
+                        "Crash on start",
+                        "segfault in main",
+                        did(1),
+                        vec![],
+                        vec![],
+                    ),
+                    cob_doc(
+                        "bb",
+                        2,
+                        "closed",
+                        "Typo",
+                        "fix the readme",
+                        did(1),
+                        vec![],
+                        vec![],
+                    ),
                 ],
                 ..Default::default()
             };
@@ -553,7 +581,8 @@ pub(crate) mod fake {
                     rid,
                     "readme",
                     CobFilter {
-                        state: Some("open")
+                        state: Some("open"),
+                        ..Default::default()
                     },
                     0,
                     10
@@ -574,6 +603,85 @@ pub(crate) mod fake {
             assert_eq!(
                 ids(fake.search_cobs(CobKind::Issues, rid, "", CobFilter::default(), 0, 10)),
                 vec!["bb", "aa"]
+            );
+        }
+
+        #[test]
+        fn fake_cob_search_applies_author_assignee_and_label() {
+            let rid = RepoId::from_str("rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp").unwrap();
+            let alice = did(1);
+            let bob = did(2);
+            let fake = Fake {
+                issues: vec![
+                    cob_doc(
+                        "aa",
+                        1,
+                        "open",
+                        "Crash",
+                        "segfault",
+                        alice,
+                        vec![bob],
+                        vec!["bug"],
+                    ),
+                    cob_doc(
+                        "bb",
+                        2,
+                        "open",
+                        "Typo",
+                        "readme",
+                        bob,
+                        vec![],
+                        vec!["docs", "bug"],
+                    ),
+                ],
+                ..Default::default()
+            };
+            let ids =
+                |docs: Vec<cob::Document>| docs.into_iter().map(|d| d.cob_id).collect::<Vec<_>>();
+            let by = |f: CobFilter<'_>| ids(fake.search_cobs(CobKind::Issues, rid, "", f, 0, 10));
+
+            assert_eq!(
+                by(CobFilter {
+                    author: Some(alice),
+                    ..Default::default()
+                }),
+                vec!["aa"]
+            );
+            assert_eq!(
+                by(CobFilter {
+                    assignee: Some(bob),
+                    ..Default::default()
+                }),
+                vec!["aa"]
+            );
+            assert_eq!(
+                by(CobFilter {
+                    label: Some("bug"),
+                    ..Default::default()
+                }),
+                vec!["bb", "aa"]
+            );
+            assert_eq!(
+                by(CobFilter {
+                    label: Some("docs"),
+                    author: Some(alice),
+                    ..Default::default()
+                }),
+                Vec::<String>::new()
+            );
+            assert_eq!(
+                ids(fake.search_cobs(
+                    CobKind::Issues,
+                    rid,
+                    "readme",
+                    CobFilter {
+                        label: Some("bug"),
+                        ..Default::default()
+                    },
+                    0,
+                    10
+                )),
+                vec!["bb"]
             );
         }
     }

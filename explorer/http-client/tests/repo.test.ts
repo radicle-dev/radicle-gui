@@ -126,7 +126,12 @@ describe("repo", () => {
     "#searchIssues(rid, { q }) answers 501 in sqlite mode",
     async () => {
       await expect(
-        api.repo.searchIssues(cobRid, { q: "hello" }),
+        api.repo.searchIssues(cobRid, {
+          q: "hello",
+          author: "did:key:z6MkkfM3tPXNPrPevKr3uSiQtHPuwnNhu2yUVjgd2jXVsVz5",
+          assignee: "z6MkkfM3tPXNPrPevKr3uSiQtHPuwnNhu2yUVjgd2jXVsVz5",
+          label: "bug",
+        }),
       ).rejects.toMatchObject({ status: 501 });
     },
   );
@@ -135,7 +140,12 @@ describe("repo", () => {
     "#searchPatches(rid, { q }) answers 501 in sqlite mode",
     async () => {
       await expect(
-        api.repo.searchPatches(cobRid, { q: "hello" }),
+        api.repo.searchPatches(cobRid, {
+          q: "hello",
+          author: "did:key:z6MkkfM3tPXNPrPevKr3uSiQtHPuwnNhu2yUVjgd2jXVsVz5",
+          assignee: "z6MkkfM3tPXNPrPevKr3uSiQtHPuwnNhu2yUVjgd2jXVsVz5",
+          label: "bug",
+        }),
       ).rejects.toMatchObject({ status: 501 });
     },
   );

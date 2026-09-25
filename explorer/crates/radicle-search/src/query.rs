@@ -90,12 +90,24 @@ pub(crate) fn eq_filter(field: &str, value: impl std::fmt::Display) -> String {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CobFilter<'a> {
     pub state: Option<&'a str>,
+    pub author: Option<Did>,
+    pub assignee: Option<Did>,
+    pub label: Option<&'a str>,
 }
 
 pub(crate) fn cob_search_filter(rid: RepoId, filter: &CobFilter<'_>) -> String {
     let mut clauses = vec![eq_filter("rid", rid)];
     if let Some(state) = filter.state {
         clauses.push(eq_filter("state", state));
+    }
+    if let Some(author) = filter.author {
+        clauses.push(eq_filter("authorDid", author));
+    }
+    if let Some(assignee) = filter.assignee {
+        clauses.push(eq_filter("assigneeDids", assignee));
+    }
+    if let Some(label) = filter.label {
+        clauses.push(eq_filter("labels", label));
     }
     clauses.join(" AND ")
 }
@@ -347,8 +359,18 @@ impl SearchClient {
         offset: usize,
         limit: usize,
     ) -> Result<Vec<cob::Document>, SearchError> {
-        self.search_cobs(kind, rid, "", CobFilter { state }, offset, limit)
-            .await
+        self.search_cobs(
+            kind,
+            rid,
+            "",
+            CobFilter {
+                state,
+                ..Default::default()
+            },
+            offset,
+            limit,
+        )
+        .await
     }
 
     pub async fn get_cob(
@@ -519,7 +541,10 @@ mod tests {
     fn ensure_v_accepts_current_and_rejects_others() {
         assert!(ensure_v(crate::index::SCHEMA_VERSION).is_ok());
         assert!(matches!(ensure_v(0), Err(SearchError::SchemaMismatch)));
-        assert!(matches!(ensure_v(2), Err(SearchError::SchemaMismatch)));
+        assert!(matches!(
+            ensure_v(crate::index::SCHEMA_VERSION + 1),
+            Err(SearchError::SchemaMismatch)
+        ));
     }
 
     #[test]
@@ -531,21 +556,67 @@ mod tests {
     }
 
     #[test]
-    fn cob_search_filter_composes_state() {
+    fn cob_search_filter_composes_every_option() {
         use std::str::FromStr;
         let rid = radicle::identity::RepoId::from_str("rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp").unwrap();
+        let did =
+            Did::from_str("did:key:z6MkkfM3tPXNPrPevKr3uSiQtHPuwnNhu2yUVjgd2jXVsVz5").unwrap();
+        let rid_clause = "rid = \"rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp\"";
+
+        assert_eq!(cob_search_filter(rid, &CobFilter::default()), rid_clause);
         assert_eq!(
-            cob_search_filter(rid, &CobFilter::default()),
-            "rid = \"rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp\""
+            cob_search_filter(
+                rid,
+                &CobFilter {
+                    state: Some("open"),
+                    ..Default::default()
+                }
+            ),
+            format!("{rid_clause} AND state = \"open\"")
         );
         assert_eq!(
             cob_search_filter(
                 rid,
                 &CobFilter {
-                    state: Some("open")
+                    author: Some(did),
+                    ..Default::default()
                 }
             ),
-            "rid = \"rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp\" AND state = \"open\""
+            format!("{rid_clause} AND authorDid = \"{did}\"")
+        );
+        assert_eq!(
+            cob_search_filter(
+                rid,
+                &CobFilter {
+                    assignee: Some(did),
+                    ..Default::default()
+                }
+            ),
+            format!("{rid_clause} AND assigneeDids = \"{did}\"")
+        );
+        assert_eq!(
+            cob_search_filter(
+                rid,
+                &CobFilter {
+                    label: Some("good first issue"),
+                    ..Default::default()
+                }
+            ),
+            format!("{rid_clause} AND labels = \"good first issue\"")
+        );
+        assert_eq!(
+            cob_search_filter(
+                rid,
+                &CobFilter {
+                    state: Some("closed"),
+                    author: Some(did),
+                    assignee: Some(did),
+                    label: Some("bug"),
+                }
+            ),
+            format!(
+                "{rid_clause} AND state = \"closed\" AND authorDid = \"{did}\" AND assigneeDids = \"{did}\" AND labels = \"bug\""
+            )
         );
     }
 

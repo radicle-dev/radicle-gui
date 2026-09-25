@@ -129,6 +129,19 @@ describe("route invariant when parsed", () => {
     });
   });
 
+  test("repos.issues with every filter", () => {
+    expectParsingInvariant({
+      resource: "repo.issues",
+      node,
+      repo: "REPO",
+      status: "closed",
+      q: "hello world",
+      author: "did:key:z6MkkfM3tPXNPrPevKr3uSiQtHPuwnNhu2yUVjgd2jXVsVz5",
+      assignee: "z6MkkfM3tPXNPrPevKr3uSiQtHPuwnNhu2yUVjgd2jXVsVz5",
+      label: "good first issue",
+    });
+  });
+
   test("repos.issue", () => {
     expectParsingInvariant({
       resource: "repo.issue",

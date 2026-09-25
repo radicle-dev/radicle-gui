@@ -45,14 +45,52 @@ export const PATCHES_PER_PAGE = 10;
 export const ISSUES_PER_PAGE = 10;
 export const RELEASES_PER_PAGE = 30;
 
+export interface CobFilters {
+  q?: string;
+  author?: string;
+  assignee?: string;
+  label?: string;
+}
+
+const COB_FILTER_KEYS = ["q", "author", "assignee", "label"] as const;
+
+function nonEmpty(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+export function parseCobFilters(params: URLSearchParams): CobFilters {
+  return {
+    q: nonEmpty(params.get("q")),
+    author: nonEmpty(params.get("author")),
+    assignee: nonEmpty(params.get("assignee")),
+    label: nonEmpty(params.get("label")),
+  };
+}
+
+export function hasCobFilters(filters: CobFilters): boolean {
+  return COB_FILTER_KEYS.some(key => Boolean(filters[key]));
+}
+
+export function currentCobFilters(): CobFilters {
+  return parseCobFilters(new URLSearchParams(window.location.search));
+}
+
+function setCobFilters(params: URLSearchParams, filters: CobFilters): void {
+  for (const key of COB_FILTER_KEYS) {
+    const value = filters[key];
+    if (value) {
+      params.set(key, value);
+    }
+  }
+}
+
 export function patchesSearch(
   status: PatchState["status"],
-  q: string | undefined,
+  filters: CobFilters,
 ): string {
   const params = new URLSearchParams({ status });
-  if (q) {
-    params.set("q", q);
-  }
+  setCobFilters(params, filters);
   return params.toString();
 }
 
@@ -60,12 +98,12 @@ export function fetchIssuesPage(
   api: HttpdClient,
   rid: string,
   status: IssueState["status"],
-  q: string | undefined,
+  filters: CobFilters,
   page: number,
 ): Promise<Issue[]> {
   const query = { status, page, perPage: ISSUES_PER_PAGE };
-  return q
-    ? api.repo.searchIssues(rid, { ...query, q })
+  return hasCobFilters(filters)
+    ? api.repo.searchIssues(rid, { ...query, ...filters })
     : api.repo.getAllIssues(rid, query);
 }
 
@@ -73,12 +111,12 @@ export function fetchPatchesPage(
   api: HttpdClient,
   rid: string,
   status: PatchState["status"],
-  q: string | undefined,
+  filters: CobFilters,
   page: number,
 ): Promise<Patch[]> {
   const query = { status, page, perPage: PATCHES_PER_PAGE };
-  return q
-    ? api.repo.searchPatches(rid, { ...query, q })
+  return hasCobFilters(filters)
+    ? api.repo.searchPatches(rid, { ...query, ...filters })
     : api.repo.getAllPatches(rid, query);
 }
 
@@ -95,11 +133,6 @@ export function fetchReleasesPage(
     : api.repo.getAllReleases(rid, query);
 }
 
-function searchQuery(params: URLSearchParams): string | undefined {
-  const q = params.get("q")?.trim();
-  return q ? q : undefined;
-}
-
 async function cobSearchAvailable(api: HttpdClient): Promise<boolean> {
   try {
     const info = await api.getInfo();
@@ -109,13 +142,15 @@ async function cobSearchAvailable(api: HttpdClient): Promise<boolean> {
   }
 }
 
-function whenSearchable<T>(
+function whenSearchable<T, F>(
   searchAvailable: Promise<boolean>,
-  q: string | undefined,
-  fetchPage: (q: string | undefined) => Promise<T>,
+  filters: F | undefined,
+  fetchPage: (filters: F | undefined) => Promise<T>,
 ): Promise<T> {
-  return q
-    ? searchAvailable.then(available => fetchPage(available ? q : undefined))
+  return filters
+    ? searchAvailable.then(available =>
+        fetchPage(available ? filters : undefined),
+      )
     : fetchPage(undefined);
 }
 
@@ -174,12 +209,11 @@ export type RepoRoute =
   | RepoReleasesRoute
   | RepoReleaseRoute;
 
-interface RepoIssuesRoute {
+interface RepoIssuesRoute extends CobFilters {
   resource: "repo.issues";
   node: BaseUrl;
   repo: string;
   status?: "open" | "closed";
-  q?: string;
 }
 
 interface RepoReleasesRoute {
@@ -323,7 +357,7 @@ export type RepoLoadedRoute =
         repoId: string;
         issues: Issue[];
         status: IssueState["status"];
-        q: string | undefined;
+        filters: CobFilters;
         searchAvailable: boolean;
         nodeId: string;
         nodeAvatarUrl: string | undefined;
@@ -337,7 +371,7 @@ export type RepoLoadedRoute =
         repoId: string;
         patches: Patch[];
         status: PatchState["status"];
-        q: string | undefined;
+        filters: CobFilters;
         searchAvailable: boolean;
         nodeId: string;
         nodeAvatarUrl: string | undefined;
@@ -517,12 +551,15 @@ async function loadPatchesView(
   const api = new HttpdClient(route.node);
   const searchParams = new URLSearchParams(route.search || "");
   const status = (searchParams.get("status") as PatchState["status"]) || "open";
+  const requested = parseCobFilters(searchParams);
   const searchAvailablePromise = cobSearchAvailable(api);
 
   const [repo, patches, node, searchAvailable] = await Promise.all([
     api.repo.getByRid(route.repo),
-    whenSearchable(searchAvailablePromise, searchQuery(searchParams), q =>
-      fetchPatchesPage(api, route.repo, status, q, 0),
+    whenSearchable(
+      searchAvailablePromise,
+      hasCobFilters(requested) ? requested : undefined,
+      filters => fetchPatchesPage(api, route.repo, status, filters ?? {}, 0),
     ),
     api.getNode(),
     searchAvailablePromise,
@@ -535,7 +572,7 @@ async function loadPatchesView(
       repoId: route.repo,
       patches,
       status,
-      q: searchAvailable ? searchQuery(searchParams) : undefined,
+      filters: searchAvailable ? requested : {},
       searchAvailable,
       repo,
       nodeId: node.id,
@@ -549,12 +586,20 @@ async function loadIssuesView(
 ): Promise<RepoLoadedRoute> {
   const api = new HttpdClient(route.node);
   const status = route.status || "open";
+  const requested: CobFilters = {
+    q: route.q,
+    author: route.author,
+    assignee: route.assignee,
+    label: route.label,
+  };
   const searchAvailablePromise = cobSearchAvailable(api);
 
   const [repo, issues, node, searchAvailable] = await Promise.all([
     api.repo.getByRid(route.repo),
-    whenSearchable(searchAvailablePromise, route.q, q =>
-      fetchIssuesPage(api, route.repo, status, q, 0),
+    whenSearchable(
+      searchAvailablePromise,
+      hasCobFilters(requested) ? requested : undefined,
+      filters => fetchIssuesPage(api, route.repo, status, filters ?? {}, 0),
     ),
     api.getNode(),
     searchAvailablePromise,
@@ -567,7 +612,7 @@ async function loadIssuesView(
       repoId: route.repo,
       issues,
       status,
-      q: searchAvailable ? route.q : undefined,
+      filters: searchAvailable ? requested : {},
       searchAvailable,
       repo,
       nodeId: node.id,
@@ -1253,7 +1298,7 @@ export function resolveRepoRoute(
         node,
         repo,
         status,
-        q: searchQuery(searchParams),
+        ...parseCobFilters(searchParams),
       };
     }
   } else if (content === "patches") {
@@ -1276,7 +1321,7 @@ export function resolveRepoRoute(
         node,
         repo,
         allAuthors,
-        q: searchQuery(searchParams),
+        q: parseCobFilters(searchParams).q,
       };
     }
   } else {
@@ -1386,9 +1431,7 @@ export function repoRouteToPath(route: RepoRoute): string {
     if (route.status) {
       searchParams.set("status", route.status);
     }
-    if (route.q) {
-      searchParams.set("q", route.q);
-    }
+    setCobFilters(searchParams, route);
     if (searchParams.size > 0) {
       url += `?${searchParams}`;
     }

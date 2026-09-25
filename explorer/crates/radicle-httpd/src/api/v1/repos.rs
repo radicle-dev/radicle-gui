@@ -19,12 +19,13 @@ use radicle::cob::{issue::cache::Issues as _, patch::cache::Patches as _};
 use radicle::git::fmt::{Qualified, RefString};
 use radicle::node::{Alias, NodeId};
 use radicle::storage::{ReadRepository, RemoteRepository};
-use radicle_search::query::{CobFilter, CobKind};
+use radicle_search::query::CobKind;
 
 use crate::api;
 use crate::api::error::Error;
 use crate::api::query::{
-    CobsQuery, CobsSearchQuery, PaginationQuery, RepoQuery, MAX_PER_PAGE, MAX_QUERY_LEN,
+    cob_filter, search_query, CobsQuery, CobsSearchQuery, PaginationQuery, RepoQuery, MAX_PER_PAGE,
+    MAX_QUERY_LEN,
 };
 use crate::api::search::SearchQueryString;
 use crate::api::Context;
@@ -1621,14 +1622,6 @@ async fn patches_from_docs(
     .await
 }
 
-fn search_query(q: Option<String>) -> String {
-    q.unwrap_or_default()
-        .trim()
-        .chars()
-        .take(MAX_QUERY_LEN)
-        .collect()
-}
-
 /// Get repo issues list.
 /// `GET /repos/:rid/issues`
 async fn issues_handler(
@@ -1706,18 +1699,19 @@ async fn issues_search_handler(
     let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
     let repo_ctx = ctx.clone();
     api::blocking(move || repo_ctx.repo(rid).map(|_| ())).await?;
-    let q = search_query(qs.q);
     let page = qs.page.unwrap_or(0);
     let per_page = qs.per_page.unwrap_or(10).min(MAX_PER_PAGE);
-    let status = qs.status.unwrap_or_default();
+    let status = qs.status.clone().unwrap_or_default();
+    let Some(filter) = cob_filter(status.as_state_filter(), &qs) else {
+        return Ok::<_, Error>(Json(Vec::<serde_json::Value>::new()));
+    };
+    let q = search_query(qs.q.clone());
     let docs = backend
         .search_cobs(
             CobKind::Issues,
             rid,
             &q,
-            CobFilter {
-                state: status.as_state_filter(),
-            },
+            filter,
             page.saturating_mul(per_page),
             per_page,
         )
@@ -1844,18 +1838,19 @@ async fn patches_search_handler(
         return Err(Error::SearchNotSupported);
     }
     let backend = ctx.search().ok_or(Error::SearchUnavailable)?.clone();
-    let q = search_query(qs.q);
     let page = qs.page.unwrap_or(0);
     let per_page = qs.per_page.unwrap_or(10).min(MAX_PER_PAGE);
-    let status = qs.status.unwrap_or_default();
+    let status = qs.status.clone().unwrap_or_default();
+    let Some(filter) = cob_filter(status.as_state_filter(), &qs) else {
+        return Ok::<_, Error>(Json(Vec::<serde_json::Value>::new()));
+    };
+    let q = search_query(qs.q.clone());
     let docs = backend
         .search_cobs(
             CobKind::Patches,
             rid,
             &q,
-            CobFilter {
-                state: status.as_state_filter(),
-            },
+            filter,
             page.saturating_mul(per_page),
             per_page,
         )
@@ -4004,6 +3999,76 @@ mod routes {
         assert_eq!(response.json().await, json!([]));
 
         let response = get(&app, format!("/repos/{RID}/patches/search?q=zzz")).await;
+        assert_eq!(response.json().await, json!([]));
+    }
+
+    fn seed_meili_with_filter_fields(dir: &std::path::Path) -> crate::api::Context {
+        crate::test::seed_meili_with(dir, |fake, _doc| {
+            let me = fake.issues[0].author_did;
+            fake.issues[0].assignee_dids = vec![me];
+            fake.issues[0].labels = vec!["bug".to_string(), "ui".to_string()];
+            fake.patches[0].labels = vec!["bug".to_string()];
+        })
+    }
+
+    #[tokio::test]
+    async fn test_issues_search_filters_meili_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = seed_meili_with_filter_fields(tmp.path());
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+        let nid = DID.trim_start_matches("did:key:");
+
+        for query in [
+            format!("author={DID}"),
+            format!("author={nid}"),
+            format!("assignee={DID}"),
+            "label=bug".to_string(),
+            "label=ui".to_string(),
+            format!("q=everyone&label=bug&author={DID}"),
+        ] {
+            let response = get(&app, format!("/repos/{RID}/issues/search?{query}")).await;
+            assert_eq!(response.status(), StatusCode::OK, "{query}");
+            let body = response.json().await;
+            assert_eq!(body.as_array().unwrap().len(), 1, "{query}");
+            assert_eq!(body[0]["id"], json!(ISSUE_ID), "{query}");
+        }
+
+        for query in [
+            "author=did:key:z6MkkfM3tPXNPrPevKr3uSiQtHPuwnNhu2yUVjgd2jXVsVz5",
+            "assignee=z6MkkfM3tPXNPrPevKr3uSiQtHPuwnNhu2yUVjgd2jXVsVz5",
+            "label=feature",
+            "author=alice",
+            "label=a%22b",
+            "label=a%5Cb",
+            "q=zzz&label=bug",
+        ] {
+            let response = get(&app, format!("/repos/{RID}/issues/search?{query}")).await;
+            assert_eq!(response.status(), StatusCode::OK, "{query}");
+            assert_eq!(response.json().await, json!([]), "{query}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_patches_search_filters_meili_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = seed_meili_with_filter_fields(tmp.path());
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, format!("/repos/{RID}/patches/search?label=bug")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.json().await;
+        assert_eq!(body.as_array().unwrap().len(), 1);
+        assert_eq!(body[0]["id"], json!(PATCH_ID));
+
+        let response = get(&app, format!("/repos/{RID}/patches/search?author={DID}")).await;
+        assert_eq!(response.json().await.as_array().unwrap().len(), 1);
+
+        let response = get(&app, format!("/repos/{RID}/patches/search?label=ui")).await;
+        assert_eq!(response.json().await, json!([]));
+
+        let response = get(&app, format!("/repos/{RID}/patches/search?assignee={DID}")).await;
         assert_eq!(response.json().await, json!([]));
     }
 
