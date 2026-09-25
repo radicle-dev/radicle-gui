@@ -96,3 +96,8 @@ pub(crate) fn orphans(
 ) -> Vec<DocumentKey> {
     in_index.difference(&seeded).copied().collect()
 }
+
+/// Ids present in the index but absent from the freshly built set.
+pub(crate) fn orphan_ids(current: &HashSet<String>, in_index: &HashSet<String>) -> Vec<String> {
+    in_index.difference(current).cloned().collect()
+}

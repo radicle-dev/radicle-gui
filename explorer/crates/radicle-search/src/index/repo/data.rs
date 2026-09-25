@@ -51,9 +51,26 @@ impl<'de> Deserialize<'de> for DocumentKey {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueCounts {
+    pub open: usize,
+    pub closed: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchCounts {
+    pub open: usize,
+    pub draft: usize,
+    pub archived: usize,
+    pub merged: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
+    pub v: u32,
     pub id: DocumentKey,
     pub rid: RepoId,
     pub name: String,
@@ -61,12 +78,22 @@ pub struct Document {
     pub default_branch: git::fmt::RefString,
     pub delegates: doc::Delegates,
     pub seeding_count: u64,
+    pub issue_counts: IssueCounts,
+    pub patch_counts: PatchCounts,
     #[serde(flatten)]
     pub activity: Activity,
 }
 
 impl Document {
-    pub(crate) const PRIMARY_KEY: &str = "id";
+    pub const PRIMARY_KEY: &str = "id";
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn repo_document_carries_schema_version() {
+        assert_eq!(crate::index::SCHEMA_VERSION, 1);
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,7 +116,7 @@ impl Activity {
 
 impl Document {
     /// Construct a new [`RepoDocument`] for the given [`RepoId`], [`Doc`],
-    /// [`Activity`], and seeding count.
+    /// [`Activity`], seeding count, and issue and patch counts.
     ///
     /// If the [`Doc::visibility`] is not public or the [`Doc::project`] fails
     /// to resolve, then `None` is returned.
@@ -98,6 +125,8 @@ impl Document {
         doc: &Doc,
         activity: Activity,
         seeding_count: u64,
+        issue_counts: IssueCounts,
+        patch_counts: PatchCounts,
     ) -> Option<Self> {
         if !doc.visibility().is_public() {
             return None;
@@ -112,6 +141,7 @@ impl Document {
         };
 
         Some(Self {
+            v: crate::index::SCHEMA_VERSION,
             id: DocumentKey::new(rid),
             rid,
             name: project.name().to_string(),
@@ -119,6 +149,8 @@ impl Document {
             default_branch: project.default_branch().clone(),
             delegates: doc.delegates().clone(),
             seeding_count,
+            issue_counts,
+            patch_counts,
             activity,
         })
     }

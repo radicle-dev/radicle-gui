@@ -2,7 +2,7 @@ mod bootstrap;
 mod build;
 mod event;
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -11,19 +11,29 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use radicle::Profile;
 use radicle::identity::RepoId;
-use radicle::node::{Event, Handle as _};
+use radicle::node::{Event, Handle as _, NodeId};
 use radicle::storage::{ReadRepository, ReadStorage};
 use tokio::sync::{RwLock, mpsc, watch};
 
 use crate::config::Config;
-use crate::index::repo;
+use crate::index::{Indexes, cob, repo};
 
 const UPSERT_BATCH: usize = 100;
 const EVENT_CHANNEL_CAPACITY: usize = 1024;
 
+struct BootstrapPayload {
+    repo_docs: Vec<repo::Document>,
+    seeded: HashSet<repo::DocumentKey>,
+    issue_docs: Vec<cob::Document>,
+    patch_docs: Vec<cob::Document>,
+    node_docs: Vec<crate::index::node::Document>,
+    policy_docs: Vec<crate::index::policy::Document>,
+    inventory_docs: Vec<crate::index::inventory::Document>,
+}
+
 pub struct Indexer {
     profile: Arc<Profile>,
-    index: Arc<repo::Index>,
+    indexes: Arc<Indexes>,
     config: Config,
     seeded: Seeded,
 }
@@ -73,10 +83,10 @@ impl Seeded {
 }
 
 impl Indexer {
-    pub fn new(profile: Arc<Profile>, index: Arc<repo::Index>, config: Config) -> Self {
+    pub fn new(profile: Arc<Profile>, indexes: Arc<Indexes>, config: Config) -> Self {
         Self {
             profile,
-            index,
+            indexes,
             config,
             seeded: Seeded::new(),
         }
@@ -88,61 +98,121 @@ impl Indexer {
         let previous_seeded = self.seeded.as_inner().await;
 
         let handler = bootstrap::Bootstrap::new(previous_seeded.clone());
-        let (docs, seeded) = tokio::task::spawn_blocking(
-            move || -> Result<(Vec<repo::Document>, HashSet<repo::DocumentKey>)> {
-                let policies = profile.policies()?;
-                let db = profile.database()?;
-                let repos = profile.storage.repositories()?;
+        let BootstrapPayload {
+            repo_docs,
+            seeded,
+            issue_docs,
+            patch_docs,
+            node_docs,
+            policy_docs,
+            inventory_docs,
+        } = tokio::task::spawn_blocking(move || -> Result<BootstrapPayload> {
+            use radicle::node::routing::Store as _;
 
-                let seeds = repos
-                    .iter()
-                    .filter(|info| info.doc.visibility().is_public())
-                    .map(|info| {
-                        let seeding_policy = match policies.is_seeding(&info.rid) {
-                            Ok(true) => bootstrap::SeedingPolicy::IsSeeding,
-                            Ok(false) => bootstrap::SeedingPolicy::NotSeeding,
+            let policies = profile.policies()?;
+            let db = profile.database()?;
+            let repos = profile.storage.repositories()?;
+
+            let seeds = repos
+                .iter()
+                .filter(|info| info.doc.visibility().is_public())
+                .map(|info| {
+                    let seeding_policy = match policies.is_seeding(&info.rid) {
+                        Ok(true) => bootstrap::SeedingPolicy::IsSeeding,
+                        Ok(false) => bootstrap::SeedingPolicy::NotSeeding,
+                        Err(e) => {
+                            tracing::warn!(
+                                "policy lookup for {} failed: {e:#}; preserving prior state",
+                                info.rid
+                            );
+                            bootstrap::SeedingPolicy::LookupFailure
+                        }
+                    };
+                    bootstrap::RepoSeed {
+                        rid: info.rid,
+                        seeding_policy,
+                    }
+                });
+
+            let plan = handler.plan(seeds);
+
+            let mut docs = Vec::with_capacity(plan.to_index.len());
+            let mut issue_docs: Vec<cob::Document> = Vec::new();
+            let mut patch_docs: Vec<cob::Document> = Vec::new();
+            let mut remote_nids: BTreeSet<NodeId> = BTreeSet::new();
+            for info in repos
+                .iter()
+                .filter(|info| plan.to_index.contains(&info.rid))
+            {
+                match build::document(&profile, &db, info.rid, &info.doc) {
+                    Ok(Some(doc)) => {
+                        let repo = match profile.storage.repository(info.rid) {
+                            Ok(r) => r,
                             Err(e) => {
-                                tracing::warn!(
-                                    "policy lookup for {} failed: {e:#}; preserving prior state",
-                                    info.rid
-                                );
-                                bootstrap::SeedingPolicy::LookupFailure
+                                tracing::warn!("skipping {}: {e:#}", info.rid);
+                                continue;
                             }
                         };
-                        bootstrap::RepoSeed {
-                            rid: info.rid,
-                            seeding_policy,
+                        match repo.remotes() {
+                            Ok(remotes) => {
+                                remote_nids.extend(
+                                    remotes
+                                        .filter_map(|r| {
+                                            r.inspect_err(|e| {
+                                                tracing::warn!(
+                                                    "{}: skipping unreadable remote: {e:#}",
+                                                    info.rid
+                                                )
+                                            })
+                                            .ok()
+                                        })
+                                        .map(|(id, _)| id),
+                                );
+                            }
+                            Err(e) => {
+                                tracing::warn!("{}: reading remotes failed: {e:#}", info.rid);
+                            }
                         }
-                    });
-
-                let plan = handler.plan(seeds);
-
-                let mut docs = Vec::with_capacity(plan.to_index.len());
-                for info in repos
-                    .iter()
-                    .filter(|info| plan.to_index.contains(&info.rid))
-                {
-                    match build::document(&profile, &db, info.rid, &info.doc) {
-                        Ok(Some(doc)) => docs.push(doc),
-                        Ok(None) => {}
-                        Err(e) => tracing::warn!("skipping {}: {e:#}", info.rid),
+                        let cob_docs = build_cob_docs(&profile, &repo, info.rid);
+                        issue_docs.extend(cob_docs.issues);
+                        patch_docs.extend(cob_docs.patches);
+                        docs.push(doc);
                     }
+                    Ok(None) => {}
+                    Err(e) => tracing::warn!("skipping {}: {e:#}", info.rid),
                 }
+            }
 
-                Ok((docs, plan.seeded))
-            },
-        )
+            let node_docs = build::node_documents(&profile, &db, remote_nids)?;
+            let policy_docs = build::policy_documents(&profile)?;
+            let inventory_docs = build::inventory_documents(db.entries()?);
+
+            Ok(BootstrapPayload {
+                repo_docs: docs,
+                seeded: plan.seeded,
+                issue_docs,
+                patch_docs,
+                node_docs,
+                policy_docs,
+                inventory_docs,
+            })
+        })
         .await
         .context("bootstrap blocking task panicked")??;
 
-        let total = docs.len();
+        let total = repo_docs.len();
         tracing::info!("indexing {total} repositories");
-        for chunk in docs.chunks(UPSERT_BATCH) {
+        for chunk in repo_docs.chunks(UPSERT_BATCH) {
             // A batch that still fails after the enqueue retries is logged and
             // skipped rather than aborting the whole rescan (which would
             // propagate to the fatal exit in main and crash-loop the daemon).
             // The next periodic rescan reconciles whatever was missed.
-            if let Err(e) = self.index.upsert(chunk).await {
+            if let Err(e) = self
+                .indexes
+                .repos
+                .upsert(chunk, repo::Document::PRIMARY_KEY)
+                .await
+            {
                 tracing::warn!(
                     "indexing a batch of {} repositories failed: {e:#}; \
                      skipping it (next rescan will reconcile)",
@@ -150,16 +220,111 @@ impl Indexer {
                 );
             }
         }
+
+        let issue_ids: HashSet<String> = issue_docs.iter().map(|d| d.id.clone()).collect();
+        let patch_ids: HashSet<String> = patch_docs.iter().map(|d| d.id.clone()).collect();
+        let node_ids: HashSet<String> = node_docs.iter().map(|d| d.id.clone()).collect();
+        let policy_ids: HashSet<String> = policy_docs.iter().map(|d| d.id.to_string()).collect();
+        let inventory_ids: HashSet<String> = inventory_docs.iter().map(|d| d.id.clone()).collect();
+
+        for chunk in issue_docs.chunks(UPSERT_BATCH) {
+            if let Err(e) = self
+                .indexes
+                .issues
+                .upsert(chunk, cob::Document::PRIMARY_KEY)
+                .await
+            {
+                tracing::warn!(
+                    "indexing a batch of {} issues failed: {e:#}; \
+                     skipping it (next rescan will reconcile)",
+                    chunk.len()
+                );
+            }
+        }
+        for chunk in patch_docs.chunks(UPSERT_BATCH) {
+            if let Err(e) = self
+                .indexes
+                .patches
+                .upsert(chunk, cob::Document::PRIMARY_KEY)
+                .await
+            {
+                tracing::warn!(
+                    "indexing a batch of {} patches failed: {e:#}; \
+                     skipping it (next rescan will reconcile)",
+                    chunk.len()
+                );
+            }
+        }
+        for chunk in node_docs.chunks(UPSERT_BATCH) {
+            if let Err(e) = self
+                .indexes
+                .nodes
+                .upsert(chunk, crate::index::node::Document::PRIMARY_KEY)
+                .await
+            {
+                tracing::warn!(
+                    "indexing a batch of {} nodes failed: {e:#}; \
+                     skipping it (next rescan will reconcile)",
+                    chunk.len()
+                );
+            }
+        }
+        for chunk in policy_docs.chunks(UPSERT_BATCH) {
+            if let Err(e) = self
+                .indexes
+                .policies
+                .upsert(chunk, crate::index::policy::Document::PRIMARY_KEY)
+                .await
+            {
+                tracing::warn!(
+                    "indexing a batch of {} policies failed: {e:#}; \
+                     skipping it (next rescan will reconcile)",
+                    chunk.len()
+                );
+            }
+        }
+        for chunk in inventory_docs.chunks(UPSERT_BATCH) {
+            if let Err(e) = self
+                .indexes
+                .inventory
+                .upsert(chunk, crate::index::inventory::Document::PRIMARY_KEY)
+                .await
+            {
+                tracing::warn!(
+                    "indexing a batch of {} inventory docs failed: {e:#}; \
+                     skipping it (next rescan will reconcile)",
+                    chunk.len()
+                );
+            }
+        }
+
         self.seeded
             .reconcile(&previous_seeded, seeded.clone())
             .await;
 
-        let removed = match self.index.list_doc_ids().await {
+        let removed = match self.indexes.repos.list_doc_ids().await {
             Ok(meili_ids) => {
-                let orphans = bootstrap::orphans(seeded, &meili_ids);
+                let meili_keys: HashSet<repo::DocumentKey> = meili_ids
+                    .iter()
+                    .filter_map(|s| {
+                        RepoId::from_canonical(s)
+                            .map(repo::DocumentKey::new)
+                            .map_err(|e| {
+                                tracing::warn!("skipping unparseable meili id {s:?}: {e:#}");
+                                e
+                            })
+                            .ok()
+                    })
+                    .collect();
+                let orphans = bootstrap::orphans(seeded.clone(), &meili_keys);
                 if !orphans.is_empty() {
                     tracing::info!("removing {} orphan documents from index", orphans.len());
-                    if let Err(e) = self.index.delete_many(&orphans).await {
+                    if let Err(e) = self
+                        .indexes
+                        .repos
+                        .delete_many(&orphans.iter().map(|k| k.to_string()).collect::<Vec<_>>())
+                        .await
+                    {
                         tracing::warn!("orphan delete failed: {e:#}");
                     }
                 }
@@ -173,6 +338,32 @@ impl Indexer {
                 0
             }
         };
+
+        // Mirror indexes: plain id diff against the freshly built sets. The
+        // freshly built issue/patch sets only ever contain documents for
+        // repos still in `plan.to_index`, so this single diff covers both a
+        // repo dropped from seeding entirely and an individual cob (e.g. a
+        // redacted issue) removed from a repo that's still seeded.
+        for (label, index, current) in [
+            ("issues", &self.indexes.issues, issue_ids),
+            ("patches", &self.indexes.patches, patch_ids),
+            ("nodes", &self.indexes.nodes, node_ids),
+            ("policies", &self.indexes.policies, policy_ids),
+            ("inventory", &self.indexes.inventory, inventory_ids),
+        ] {
+            match index.list_doc_ids().await {
+                Ok(ids) => {
+                    let orphans = bootstrap::orphan_ids(&current, &ids);
+                    if !orphans.is_empty()
+                        && let Err(e) = index.delete_many(&orphans).await
+                    {
+                        tracing::warn!("{label}: orphan delete failed: {e:#}");
+                    }
+                }
+                Err(e) => tracing::warn!("{label}: listing ids failed: {e:#}"),
+            }
+        }
+
         tracing::info!("rescan complete ({total} indexed, {removed} removed)");
         Ok(())
     }
@@ -199,7 +390,13 @@ impl Indexer {
                 repo.identity_doc()?
             };
             match build::document(&profile, &db, rid, &doc)? {
-                Some(doc) => Ok(ReindexAction::Upsert(Box::new(doc))),
+                Some(repo_doc) => {
+                    let repo = profile.storage.repository(rid)?;
+                    Ok(ReindexAction::Upsert {
+                        repo_doc: Box::new(repo_doc),
+                        cob_docs: build_cob_docs(&profile, &repo, rid),
+                    })
+                }
                 None => Ok(ReindexAction::Delete),
             }
         })
@@ -207,12 +404,34 @@ impl Indexer {
         .context("reindex blocking task panicked")??;
 
         match action {
-            ReindexAction::Upsert(doc) => {
-                self.index.upsert(std::slice::from_ref(&*doc)).await?;
+            ReindexAction::Upsert { repo_doc, cob_docs } => {
+                self.indexes
+                    .repos
+                    .upsert(
+                        std::slice::from_ref(&*repo_doc),
+                        repo::Document::PRIMARY_KEY,
+                    )
+                    .await?;
+                for chunk in cob_docs.issues.chunks(UPSERT_BATCH) {
+                    self.indexes
+                        .issues
+                        .upsert(chunk, cob::Document::PRIMARY_KEY)
+                        .await?;
+                }
+                for chunk in cob_docs.patches.chunks(UPSERT_BATCH) {
+                    self.indexes
+                        .patches
+                        .upsert(chunk, cob::Document::PRIMARY_KEY)
+                        .await?;
+                }
             }
             ReindexAction::Delete => {
                 tracing::info!("removing {rid} from index (no longer seeded)");
-                self.index.delete(&key).await?;
+                self.indexes.repos.delete(&key.to_string()).await?;
+                // Meilisearch filter values containing `:` must be quoted.
+                let filter = format!("rid = \"{rid}\"");
+                self.indexes.issues.delete_by_filter(&filter).await?;
+                self.indexes.patches.delete_by_filter(&filter).await?;
                 self.seeded.remove(&key).await;
             }
         }
@@ -255,31 +474,83 @@ impl Indexer {
                         }
                         None => break,
                     };
-                    let Some((rid, category)) = event::classify_event(&event) else {
+                    let Some(class) = event::classify_event(&event) else {
                         tracing::debug!("ignored event: {}", event::event_kind(&event));
                         continue;
                     };
-                    let key = repo::DocumentKey::new(rid);
-                    let is_seeded = self.seeded.contains(&key).await;
-                    match event::event_action(category, is_seeded) {
-                        event::EventAction::Skip => {
-                            tracing::debug!(
-                                "skipping {rid} ({}): not locally seeded",
-                                event::event_kind(&event)
-                            );
-                            continue;
+                    match class {
+                        event::EventClass::Repo(rid, category) => {
+                            let key = repo::DocumentKey::new(rid);
+                            let is_seeded = self.seeded.contains(&key).await;
+                            match event::event_action(category, is_seeded) {
+                                event::EventAction::Skip => {
+                                    tracing::debug!(
+                                        "skipping {rid} ({}): not locally seeded",
+                                        event::event_kind(&event)
+                                    );
+                                    continue;
+                                }
+                                event::EventAction::Reindex => {}
+                                event::EventAction::DiscoverAndReindex => {
+                                    self.seeded.insert(key).await;
+                                    tracing::info!("discovered new local seed: {rid}");
+                                }
+                            }
+                            if pending.insert(rid) {
+                                tracing::debug!(
+                                    "queued reindex of {rid} (event: {})",
+                                    event::event_kind(&event)
+                                );
+                            }
                         }
-                        event::EventAction::Reindex => {}
-                        event::EventAction::DiscoverAndReindex => {
-                            self.seeded.insert(key).await;
-                            tracing::info!("discovered new local seed: {rid}");
+                        event::EventClass::Node { nid, alias } => {
+                            let profile = self.profile.clone();
+                            let doc = tokio::task::spawn_blocking(move || {
+                                let db = profile.database()?;
+                                let agent = radicle::node::address::Store::get(&db, &nid)?
+                                    .map(|n| n.agent.to_string());
+                                Ok::<_, anyhow::Error>(crate::index::node::Document::new(
+                                    nid,
+                                    Some(alias.to_string()),
+                                    agent,
+                                ))
+                            })
+                            .await
+                            .context("node doc task panicked")?;
+                            let doc = match doc {
+                                Ok(doc) => doc,
+                                Err(e) => {
+                                    tracing::warn!("node doc for {nid} failed: {e:#}");
+                                    continue;
+                                }
+                            };
+                            if let Err(e) = self
+                                .indexes
+                                .nodes
+                                .upsert(
+                                    std::slice::from_ref(&doc),
+                                    crate::index::node::Document::PRIMARY_KEY,
+                                )
+                                .await
+                            {
+                                tracing::warn!("node doc upsert for {nid} failed: {e:#}");
+                            }
                         }
-                    }
-                    if pending.insert(rid) {
-                        tracing::debug!(
-                            "queued reindex of {rid} (event: {})",
-                            event::event_kind(&event)
-                        );
+                        event::EventClass::Inventory { nid, inventory } => {
+                            let doc =
+                                crate::index::inventory::Document::new(nid, inventory);
+                            if let Err(e) = self
+                                .indexes
+                                .inventory
+                                .upsert(
+                                    std::slice::from_ref(&doc),
+                                    crate::index::inventory::Document::PRIMARY_KEY,
+                                )
+                                .await
+                            {
+                                tracing::warn!("inventory doc upsert for {nid} failed: {e:#}");
+                            }
+                        }
                     }
                 }
                 () = async {
@@ -378,9 +649,74 @@ async fn read_events(
     }
 }
 
+struct CobDocs {
+    issues: Vec<cob::Document>,
+    patches: Vec<cob::Document>,
+}
+
 enum ReindexAction {
-    Upsert(Box<repo::Document>),
+    Upsert {
+        repo_doc: Box<repo::Document>,
+        cob_docs: CobDocs,
+    },
     Delete,
+}
+
+fn build_cob_docs(
+    profile: &Profile,
+    repo: &radicle::storage::git::Repository,
+    rid: RepoId,
+) -> CobDocs {
+    use radicle::issue::cache::Issues as _;
+    use radicle::patch::cache::Patches as _;
+
+    let issues = match profile.issues(repo) {
+        Ok(cache) => match cache.list() {
+            Ok(iter) => iter
+                .filter_map(|r| {
+                    r.inspect_err(|e| tracing::warn!("{rid}: skipping unreadable cob row: {e:#}"))
+                        .ok()
+                })
+                .filter_map(|(id, issue)| {
+                    build::issue_document(rid, &id, &issue)
+                        .inspect_err(|e| tracing::warn!("{rid}: skipping issue {id}: {e:#}"))
+                        .ok()
+                })
+                .collect(),
+            Err(e) => {
+                tracing::warn!("{rid}: listing issues failed: {e:#}");
+                Vec::new()
+            }
+        },
+        Err(e) => {
+            tracing::warn!("{rid}: opening issue cache failed: {e:#}");
+            Vec::new()
+        }
+    };
+    let patches = match profile.patches(repo) {
+        Ok(cache) => match cache.list() {
+            Ok(iter) => iter
+                .filter_map(|r| {
+                    r.inspect_err(|e| tracing::warn!("{rid}: skipping unreadable cob row: {e:#}"))
+                        .ok()
+                })
+                .filter_map(|(id, patch)| {
+                    build::patch_document(rid, &id, &patch)
+                        .inspect_err(|e| tracing::warn!("{rid}: skipping patch {id}: {e:#}"))
+                        .ok()
+                })
+                .collect(),
+            Err(e) => {
+                tracing::warn!("{rid}: listing patches failed: {e:#}");
+                Vec::new()
+            }
+        },
+        Err(e) => {
+            tracing::warn!("{rid}: opening patch cache failed: {e:#}");
+            Vec::new()
+        }
+    };
+    CobDocs { issues, patches }
 }
 
 #[cfg(test)]
