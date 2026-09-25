@@ -1,3 +1,4 @@
+use crate::cobs::search::SearchResult;
 use radicle::identity;
 use radicle::patch;
 use radicle::patch::Patch;
@@ -50,5 +51,13 @@ where
         rid: identity::RepoId,
     ) -> Result<PatchCounts, super::models::patch::CountsError> {
         self.patches.counts(rid)
+    }
+
+    fn search(
+        &self,
+        query: &str,
+        take: usize,
+    ) -> Result<Vec<SearchResult>, super::models::patch::ListPatchesError> {
+        self.patches.search(query, take)
     }
 }

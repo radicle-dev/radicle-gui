@@ -38,6 +38,7 @@
   import CreateIssueModal from "@app/modals/CreateIssue.svelte";
   import GuideView from "@app/modals/Guide.svelte";
   import KeyboardShortcutsModal from "@app/modals/KeyboardShortcuts.svelte";
+  import NavigatorView from "@app/modals/Navigator.svelte";
   import SettingsView from "@app/modals/Settings.svelte";
   import Auth from "@app/views/auth/Auth.svelte";
   import CreateIdentity from "@app/views/auth/CreateIdentity.svelte";
@@ -125,6 +126,11 @@
           window.location.reload();
         }
       },
+    },
+    {
+      shortcut: "navigator",
+      allowInModal: true,
+      run: () => toggle({ component: NavigatorView, props: {} }),
     },
     {
       shortcut: "settings",

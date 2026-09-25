@@ -8,6 +8,7 @@ use radicle::patch::{Patch, PatchId, Status};
 use radicle::{git, identity};
 use sqlite as sql;
 
+use crate::cobs::search::SearchResult;
 use crate::domain::inbox::models::notification;
 use crate::domain::inbox::traits::InboxStorage;
 use crate::domain::issue::models::issue::{ListIssuesError, Status as IssueStatus};
@@ -37,6 +38,10 @@ impl Sqlite {
 }
 
 impl PatchStorage for Sqlite {
+    fn search(&self, query: &str, take: usize) -> Result<Vec<SearchResult>, ListPatchesError> {
+        Ok(self.search_cobs("patches", "patch", query, take)?)
+    }
+
     fn counts(&self, rid: identity::RepoId) -> Result<PatchCounts, CountsError> {
         let mut stmt = self.db.prepare(
             "SELECT
@@ -127,6 +132,48 @@ impl PatchStorage for Sqlite {
 }
 
 impl Sqlite {
+    /// Issues or patches in any repository whose title contains `query` or
+    /// whose ID starts with it, open ones first. `table` is either `issues`
+    /// or `patches`, and names the JSON column too.
+    fn search_cobs(
+        &self,
+        table: &str,
+        column: &str,
+        query: &str,
+        take: usize,
+    ) -> Result<Vec<SearchResult>, sql::Error> {
+        let escaped = query
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let mut stmt = self.db.prepare(format!(
+            "SELECT id, repo, {column}->>'$.title' AS title,
+                 {column}->>'$.state.status' AS status
+             FROM {table}
+             WHERE {column}->>'$.title' LIKE ?1 ESCAPE '\\'
+                OR id LIKE ?2 ESCAPE '\\'
+             ORDER BY status != 'open', rowid DESC
+             LIMIT ?3;
+             "
+        ))?;
+        stmt.bind((1, format!("%{escaped}%").as_str()))?;
+        stmt.bind((2, format!("{}%", escaped.to_lowercase()).as_str()))?;
+        stmt.bind((3, take as i64))?;
+
+        Ok(stmt
+            .into_iter()
+            .filter_map(|row| {
+                let row = row.ok()?;
+                Some(SearchResult {
+                    rid: row.try_read::<identity::RepoId, _>("repo").ok()?,
+                    id: git::Oid::from_str(row.read::<&str, _>("id")).ok()?,
+                    title: row.read::<&str, _>("title").to_owned(),
+                    status: row.read::<&str, _>("status").to_owned(),
+                })
+            })
+            .collect())
+    }
+
     /// Issues for `rid`, newest first, optionally filtered by state. Single
     /// home of the issue-listing SQL; `list`/`list_by_status` differ only in
     /// the status predicate. The sort key is the root comment's timestamp
@@ -182,6 +229,10 @@ impl IssueStorage for Sqlite {
         status: IssueStatus,
     ) -> Result<impl Iterator<Item = (IssueId, Issue)>, ListIssuesError> {
         self.issues_by(rid, Some(status))
+    }
+
+    fn search(&self, query: &str, take: usize) -> Result<Vec<SearchResult>, ListIssuesError> {
+        Ok(self.search_cobs("issues", "issue", query, take)?)
     }
 }
 

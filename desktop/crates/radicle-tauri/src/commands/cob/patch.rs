@@ -34,6 +34,15 @@ pub async fn list_patches(
 }
 
 #[tauri::command]
+pub async fn search_patches(
+    sqlite_service: tauri::State<'_, Service<Sqlite>>,
+    query: String,
+    take: usize,
+) -> Result<Vec<cobs::search::SearchResult>, Error> {
+    Ok(sqlite_service.search(&query, take)?)
+}
+
+#[tauri::command]
 pub fn patch_by_id(
     ctx: tauri::State<AppState>,
     rid: identity::RepoId,

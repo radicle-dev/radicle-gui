@@ -224,9 +224,11 @@ pub fn router(shared: Shared) -> Router {
         )
         .route("/repo_split_tree_path", post(repo_split_tree_path_handler))
         .route("/list_issues", post(issues_handler))
+        .route("/search_issues", post(search_issues_handler))
         .route("/issue_by_id", post(issue_handler))
         .route("/comment_threads_by_issue_id", post(issue_threads_handler))
         .route("/list_patches", post(patches_handler))
+        .route("/search_patches", post(search_patches_handler))
         .route("/patch_by_id", post(patch_handler))
         .route("/revisions_by_patch", post(revision_handler))
         .route("/get_embed", post(get_embeds_handler))
@@ -824,6 +826,26 @@ async fn issues_handler(
         .list_paginated(rid, status.unwrap_or_default(), skip, take, &aliases)?;
 
     Ok::<_, Error>(Json(page))
+}
+
+#[derive(Serialize, Deserialize)]
+struct SearchBody {
+    pub query: String,
+    pub take: usize,
+}
+
+async fn search_issues_handler(
+    Ctx(ctx): Ctx,
+    Json(SearchBody { query, take }): Json<SearchBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.issues.search(&query, take)?))
+}
+
+async fn search_patches_handler(
+    Ctx(ctx): Ctx,
+    Json(SearchBody { query, take }): Json<SearchBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.patches.search(&query, take)?))
 }
 
 #[derive(Serialize, Deserialize)]

@@ -22,6 +22,10 @@ interface ShortcutDoc {
 // Components bind behaviour to these by id, so the keys live only here.
 export const shortcuts = {
   help: { combos: ["?"], description: "Keyboard shortcuts" },
+  navigator: {
+    combos: ["Mod+K"],
+    description: "Search repositories, issues and patches",
+  },
   filter: {
     combos: ["Mod+F"],
     description: "Focus a filter on screen, press again to cycle through them",

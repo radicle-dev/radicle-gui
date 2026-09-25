@@ -62,6 +62,15 @@ pub(crate) async fn list_issues(
 }
 
 #[tauri::command]
+pub(crate) async fn search_issues(
+    issue_service: tauri::State<'_, Service<Sqlite>>,
+    query: String,
+    take: usize,
+) -> Result<Vec<types::cobs::search::SearchResult>, Error> {
+    Ok(issue_service.search(&query, take)?)
+}
+
+#[tauri::command]
 pub(crate) fn issue_by_id(
     ctx: tauri::State<AppState>,
     rid: identity::RepoId,

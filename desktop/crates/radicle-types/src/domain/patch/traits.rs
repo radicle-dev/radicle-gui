@@ -5,6 +5,7 @@ use radicle::patch::Patch;
 use radicle::patch::PatchId;
 
 use crate::cobs;
+use crate::cobs::search::SearchResult;
 use crate::domain::patch::models;
 
 pub trait PatchStorage {
@@ -23,6 +24,12 @@ pub trait PatchStorage {
         &self,
         rid: identity::RepoId,
     ) -> Result<models::patch::PatchCounts, models::patch::CountsError>;
+
+    fn search(
+        &self,
+        query: &str,
+        take: usize,
+    ) -> Result<Vec<SearchResult>, models::patch::ListPatchesError>;
 }
 
 pub trait PatchService {
@@ -41,6 +48,12 @@ pub trait PatchService {
         &self,
         rid: identity::RepoId,
     ) -> Result<models::patch::PatchCounts, models::patch::CountsError>;
+
+    fn search(
+        &self,
+        query: &str,
+        take: usize,
+    ) -> Result<Vec<SearchResult>, models::patch::ListPatchesError>;
 
     /// One page of patch summaries, shared by all drivers so pagination
     /// behaves identically everywhere. Rows are consumed lazily: with `take`

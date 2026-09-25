@@ -3,6 +3,7 @@ use radicle::issue::{Issue, IssueId};
 use radicle::node::AliasStore;
 
 use crate::cobs;
+use crate::cobs::search::SearchResult;
 use crate::domain::issue::models;
 use crate::domain::issue::models::issue::Status;
 
@@ -17,6 +18,12 @@ pub trait IssueStorage {
         rid: identity::RepoId,
         status: Status,
     ) -> Result<impl Iterator<Item = (IssueId, Issue)>, models::issue::ListIssuesError>;
+
+    fn search(
+        &self,
+        query: &str,
+        take: usize,
+    ) -> Result<Vec<SearchResult>, models::issue::ListIssuesError>;
 }
 
 pub trait IssueService {
@@ -30,6 +37,12 @@ pub trait IssueService {
         rid: identity::RepoId,
         status: Status,
     ) -> Result<impl Iterator<Item = (IssueId, Issue)>, models::issue::ListIssuesError>;
+
+    fn search(
+        &self,
+        query: &str,
+        take: usize,
+    ) -> Result<Vec<SearchResult>, models::issue::ListIssuesError>;
 
     /// One page of issue summaries, shared by all drivers so pagination
     /// behaves identically everywhere. Rows are consumed lazily: with `take`

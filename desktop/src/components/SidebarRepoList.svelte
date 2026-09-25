@@ -35,6 +35,10 @@
     return pinnedFirst(repos, pinnedRepoIds.value, r => r.rid);
   }
 
+  export function pinnedRepoOrder(): string[] {
+    return pinnedRepoIds.value;
+  }
+
   export function revealRepoInSidebar(rid: string) {
     if (pinnedRepoIds.value.includes(rid)) return;
 

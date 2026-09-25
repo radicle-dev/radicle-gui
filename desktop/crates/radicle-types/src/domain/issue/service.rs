@@ -1,6 +1,7 @@
 use radicle::identity;
 use radicle::issue::{Issue, IssueId};
 
+use crate::cobs::search::SearchResult;
 use crate::domain::issue::models;
 use crate::domain::issue::traits::{IssueService, IssueStorage};
 
@@ -38,5 +39,13 @@ where
         status: models::issue::Status,
     ) -> Result<impl Iterator<Item = (IssueId, Issue)>, models::issue::ListIssuesError> {
         self.issues.list_by_status(rid, status)
+    }
+
+    fn search(
+        &self,
+        query: &str,
+        take: usize,
+    ) -> Result<Vec<SearchResult>, models::issue::ListIssuesError> {
+        self.issues.search(query, take)
     }
 }
