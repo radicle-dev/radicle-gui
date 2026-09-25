@@ -10,6 +10,7 @@ use radicle::storage::git::Repository;
 
 use radicle_artifact::display::{CommitTitle, TagName};
 use radicle_artifact::{cache_db_path, Artifact, Cid, Release, ReleaseId, Releases};
+use radicle_search::index::release;
 
 use crate::api;
 use crate::api::error::Error;
@@ -20,14 +21,6 @@ use crate::axum_extra::{Path, Query};
 
 /// Default number of releases returned per page.
 const DEFAULT_PER_PAGE: usize = 30;
-
-/// Whether an artifact was redacted by its own author or by a delegate.
-fn redacted_by_trusted(artifact: &Artifact, delegates: &Delegates) -> bool {
-    artifact
-        .redactions()
-        .keys()
-        .any(|did| did == artifact.author() || delegates.contains(did))
-}
 
 /// How far the caller widened the default, delegate-scoped release view.
 #[derive(Clone, Copy)]
@@ -44,7 +37,7 @@ impl Filter {
     /// `show_redacted`).
     fn show_artifact(&self, artifact: &Artifact, delegates: &Delegates) -> bool {
         (self.all_authors || delegates.contains(artifact.author()))
-            && (self.show_redacted || !redacted_by_trusted(artifact, delegates))
+            && (self.show_redacted || !release::redacted_by_trusted(artifact, delegates))
     }
 
     /// Whether a release is shown under this view: created by a delegate (or
@@ -52,19 +45,8 @@ impl Filter {
     /// trusted party (or `show_redacted`).
     fn show_release(&self, release: &Release, delegates: &Delegates) -> bool {
         (self.all_authors || delegates.contains(release.creator()))
-            && (self.show_redacted || !release_redacted(release, delegates))
+            && (self.show_redacted || !release::fully_redacted(release, delegates))
     }
-}
-
-/// Whether every artifact of a release was redacted by a trusted party. A
-/// release without artifacts is not redacted; it has nothing to redact.
-fn release_redacted(release: &Release, delegates: &Delegates) -> bool {
-    let artifacts = release.artifacts();
-
-    !artifacts.is_empty()
-        && artifacts
-            .values()
-            .all(|artifact| redacted_by_trusted(artifact, delegates))
 }
 
 /// Serialize a single artifact. Locations are flattened across contributors

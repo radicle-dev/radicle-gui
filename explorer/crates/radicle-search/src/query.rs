@@ -15,7 +15,7 @@ use radicle::node::{Alias, NodeId};
 
 use crate::index::node;
 use crate::index::repo;
-use crate::index::{cob, inventory, policy};
+use crate::index::{cob, inventory, policy, release};
 
 #[derive(Debug, Error)]
 pub enum SearchError {
@@ -98,6 +98,23 @@ pub(crate) fn cob_list_filter(rid: RepoId, state: Option<&str>) -> String {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ReleaseView {
+    pub all_authors: bool,
+    pub show_redacted: bool,
+}
+
+pub(crate) fn release_filter(rid: RepoId, view: ReleaseView) -> String {
+    let mut clauses = vec![eq_filter("rid", rid)];
+    if !view.all_authors {
+        clauses.push("creatorIsDelegate = true".to_string());
+    }
+    if !view.show_redacted {
+        clauses.push("redacted = false".to_string());
+    }
+    clauses.join(" AND ")
+}
+
 fn is_not_found(e: &meilisearch_sdk::errors::Error) -> bool {
     matches!(
         e,
@@ -106,7 +123,7 @@ fn is_not_found(e: &meilisearch_sdk::errors::Error) -> bool {
     )
 }
 
-/// A read-only Meilisearch client over the six indexes radicle-search
+/// A read-only Meilisearch client over the seven indexes radicle-search
 /// publishes. Document construction lives in the indexer; this client
 /// only reads.
 #[derive(Clone)]
@@ -117,6 +134,7 @@ pub struct SearchClient {
     nodes: indexes::Index,
     policies: indexes::Index,
     inventory: indexes::Index,
+    releases: indexes::Index,
     query_timeout: Duration,
 }
 
@@ -140,6 +158,7 @@ impl SearchClient {
             nodes: client.index(index_uid(index_prefix, "nodes")),
             policies: client.index(index_uid(index_prefix, "policies")),
             inventory: client.index(index_uid(index_prefix, "inventory")),
+            releases: client.index(index_uid(index_prefix, "releases")),
             query_timeout,
         })
     }
@@ -326,6 +345,65 @@ impl SearchClient {
         doc.map(|d| ensure_v(d.v).map(|()| d)).transpose()
     }
 
+    pub async fn list_releases(
+        &self,
+        rid: RepoId,
+        view: ReleaseView,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<release::Document>, SearchError> {
+        let filter = release_filter(rid, view);
+        let sort = ["timestamp:desc"];
+        let mut query = self.releases.search();
+        query
+            .with_filter(&filter)
+            .with_sort(&sort)
+            .with_offset(offset)
+            .with_limit(limit);
+        let result = self.run(query.execute::<release::Document>()).await?;
+        result
+            .hits
+            .into_iter()
+            .map(|hit| ensure_v(hit.result.v).map(|()| hit.result))
+            .collect()
+    }
+
+    pub async fn get_release(
+        &self,
+        rid: RepoId,
+        oid: &str,
+    ) -> Result<Option<release::Document>, SearchError> {
+        let doc: Option<release::Document> = self
+            .get_document(&self.releases, &cob::doc_id(rid, oid))
+            .await?;
+        doc.map(|d| ensure_v(d.v).map(|()| d)).transpose()
+    }
+
+    pub async fn search_releases(
+        &self,
+        rid: RepoId,
+        q: &str,
+        view: ReleaseView,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<release::Document>, SearchError> {
+        let filter = release_filter(rid, view);
+        let sort = ["timestamp:desc"];
+        let mut query = self.releases.search();
+        query
+            .with_query(q)
+            .with_filter(&filter)
+            .with_sort(&sort)
+            .with_offset(offset)
+            .with_limit(limit);
+        let result = self.run(query.execute::<release::Document>()).await?;
+        result
+            .hits
+            .into_iter()
+            .map(|hit| ensure_v(hit.result.v).map(|()| hit.result))
+            .collect()
+    }
+
     pub async fn get_policy(&self, rid: RepoId) -> Result<Option<SeedingPolicy>, SearchError> {
         let doc: Option<policy::Document> =
             self.get_document(&self.policies, &rid.canonical()).await?;
@@ -388,6 +466,7 @@ impl SearchClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn in_filter_quotes_each_value() {
@@ -444,6 +523,53 @@ mod tests {
         assert_eq!(
             cob_list_filter(rid, Some("open")),
             "rid = \"rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp\" AND state = \"open\""
+        );
+    }
+
+    #[test]
+    fn release_filter_maps_every_view_combination() {
+        let rid = RepoId::from_str("rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp").unwrap();
+        let base = "rid = \"rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp\"";
+
+        assert_eq!(
+            release_filter(
+                rid,
+                ReleaseView {
+                    all_authors: false,
+                    show_redacted: false
+                }
+            ),
+            format!("{base} AND creatorIsDelegate = true AND redacted = false")
+        );
+        assert_eq!(
+            release_filter(
+                rid,
+                ReleaseView {
+                    all_authors: true,
+                    show_redacted: false
+                }
+            ),
+            format!("{base} AND redacted = false")
+        );
+        assert_eq!(
+            release_filter(
+                rid,
+                ReleaseView {
+                    all_authors: false,
+                    show_redacted: true
+                }
+            ),
+            format!("{base} AND creatorIsDelegate = true")
+        );
+        assert_eq!(
+            release_filter(
+                rid,
+                ReleaseView {
+                    all_authors: true,
+                    show_redacted: true
+                }
+            ),
+            base
         );
     }
 }

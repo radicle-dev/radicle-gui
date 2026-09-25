@@ -16,7 +16,7 @@ use radicle::storage::{ReadRepository, ReadStorage};
 use tokio::sync::{RwLock, mpsc, watch};
 
 use crate::config::Config;
-use crate::index::{Indexes, cob, repo};
+use crate::index::{Indexes, client, cob, release, repo};
 
 const UPSERT_BATCH: usize = 100;
 const EVENT_CHANNEL_CAPACITY: usize = 1024;
@@ -26,6 +26,7 @@ struct BootstrapPayload {
     seeded: HashSet<repo::DocumentKey>,
     issue_docs: Vec<cob::Document>,
     patch_docs: Vec<cob::Document>,
+    release_docs: Vec<release::Document>,
     node_docs: Vec<crate::index::node::Document>,
     policy_docs: Vec<crate::index::policy::Document>,
     inventory_docs: Vec<crate::index::inventory::Document>,
@@ -103,6 +104,7 @@ impl Indexer {
             seeded,
             issue_docs,
             patch_docs,
+            release_docs,
             node_docs,
             policy_docs,
             inventory_docs,
@@ -139,13 +141,14 @@ impl Indexer {
             let mut docs = Vec::with_capacity(plan.to_index.len());
             let mut issue_docs: Vec<cob::Document> = Vec::new();
             let mut patch_docs: Vec<cob::Document> = Vec::new();
+            let mut release_docs: Vec<release::Document> = Vec::new();
             let mut remote_nids: BTreeSet<NodeId> = BTreeSet::new();
             for info in repos
                 .iter()
                 .filter(|info| plan.to_index.contains(&info.rid))
             {
                 match build::document(&profile, &db, info.rid, &info.doc) {
-                    Ok(Some(doc)) => {
+                    Ok(Some(mut doc)) => {
                         let repo = match profile.storage.repository(info.rid) {
                             Ok(r) => r,
                             Err(e) => {
@@ -174,8 +177,10 @@ impl Indexer {
                             }
                         }
                         let cob_docs = build_cob_docs(&profile, &repo, info.rid);
+                        doc.release_count = cob_docs.releases.len() as u64;
                         issue_docs.extend(cob_docs.issues);
                         patch_docs.extend(cob_docs.patches);
+                        release_docs.extend(cob_docs.releases);
                         docs.push(doc);
                     }
                     Ok(None) => {}
@@ -192,6 +197,7 @@ impl Indexer {
                 seeded: plan.seeded,
                 issue_docs,
                 patch_docs,
+                release_docs,
                 node_docs,
                 policy_docs,
                 inventory_docs,
@@ -202,101 +208,63 @@ impl Indexer {
 
         let total = repo_docs.len();
         tracing::info!("indexing {total} repositories");
-        for chunk in repo_docs.chunks(UPSERT_BATCH) {
-            // A batch that still fails after the enqueue retries is logged and
-            // skipped rather than aborting the whole rescan (which would
-            // propagate to the fatal exit in main and crash-loop the daemon).
-            // The next periodic rescan reconciles whatever was missed.
-            if let Err(e) = self
-                .indexes
-                .repos
-                .upsert(chunk, repo::Document::PRIMARY_KEY)
-                .await
-            {
-                tracing::warn!(
-                    "indexing a batch of {} repositories failed: {e:#}; \
-                     skipping it (next rescan will reconcile)",
-                    chunk.len()
-                );
-            }
-        }
+        upsert_all(
+            "repositories",
+            &self.indexes.repos,
+            &repo_docs,
+            repo::Document::PRIMARY_KEY,
+        )
+        .await;
 
         let issue_ids: HashSet<String> = issue_docs.iter().map(|d| d.id.clone()).collect();
         let patch_ids: HashSet<String> = patch_docs.iter().map(|d| d.id.clone()).collect();
+        let release_ids: HashSet<String> = release_docs.iter().map(|d| d.id.clone()).collect();
         let node_ids: HashSet<String> = node_docs.iter().map(|d| d.id.clone()).collect();
         let policy_ids: HashSet<String> = policy_docs.iter().map(|d| d.id.to_string()).collect();
         let inventory_ids: HashSet<String> = inventory_docs.iter().map(|d| d.id.clone()).collect();
 
-        for chunk in issue_docs.chunks(UPSERT_BATCH) {
-            if let Err(e) = self
-                .indexes
-                .issues
-                .upsert(chunk, cob::Document::PRIMARY_KEY)
-                .await
-            {
-                tracing::warn!(
-                    "indexing a batch of {} issues failed: {e:#}; \
-                     skipping it (next rescan will reconcile)",
-                    chunk.len()
-                );
-            }
-        }
-        for chunk in patch_docs.chunks(UPSERT_BATCH) {
-            if let Err(e) = self
-                .indexes
-                .patches
-                .upsert(chunk, cob::Document::PRIMARY_KEY)
-                .await
-            {
-                tracing::warn!(
-                    "indexing a batch of {} patches failed: {e:#}; \
-                     skipping it (next rescan will reconcile)",
-                    chunk.len()
-                );
-            }
-        }
-        for chunk in node_docs.chunks(UPSERT_BATCH) {
-            if let Err(e) = self
-                .indexes
-                .nodes
-                .upsert(chunk, crate::index::node::Document::PRIMARY_KEY)
-                .await
-            {
-                tracing::warn!(
-                    "indexing a batch of {} nodes failed: {e:#}; \
-                     skipping it (next rescan will reconcile)",
-                    chunk.len()
-                );
-            }
-        }
-        for chunk in policy_docs.chunks(UPSERT_BATCH) {
-            if let Err(e) = self
-                .indexes
-                .policies
-                .upsert(chunk, crate::index::policy::Document::PRIMARY_KEY)
-                .await
-            {
-                tracing::warn!(
-                    "indexing a batch of {} policies failed: {e:#}; \
-                     skipping it (next rescan will reconcile)",
-                    chunk.len()
-                );
-            }
-        }
-        for chunk in inventory_docs.chunks(UPSERT_BATCH) {
-            if let Err(e) = self
-                .indexes
-                .inventory
-                .upsert(chunk, crate::index::inventory::Document::PRIMARY_KEY)
-                .await
-            {
-                tracing::warn!(
-                    "indexing a batch of {} inventory docs failed: {e:#}; \
-                     skipping it (next rescan will reconcile)",
-                    chunk.len()
-                );
-            }
-        }
+        upsert_all(
+            "issues",
+            &self.indexes.issues,
+            &issue_docs,
+            cob::Document::PRIMARY_KEY,
+        )
+        .await;
+        upsert_all(
+            "patches",
+            &self.indexes.patches,
+            &patch_docs,
+            cob::Document::PRIMARY_KEY,
+        )
+        .await;
+        upsert_all(
+            "releases",
+            &self.indexes.releases,
+            &release_docs,
+            release::Document::PRIMARY_KEY,
+        )
+        .await;
+        upsert_all(
+            "nodes",
+            &self.indexes.nodes,
+            &node_docs,
+            crate::index::node::Document::PRIMARY_KEY,
+        )
+        .await;
+        upsert_all(
+            "policies",
+            &self.indexes.policies,
+            &policy_docs,
+            crate::index::policy::Document::PRIMARY_KEY,
+        )
+        .await;
+        upsert_all(
+            "inventory docs",
+            &self.indexes.inventory,
+            &inventory_docs,
+            crate::index::inventory::Document::PRIMARY_KEY,
+        )
+        .await;
 
         self.seeded
             .reconcile(&previous_seeded, seeded.clone())
@@ -347,6 +315,7 @@ impl Indexer {
         for (label, index, current) in [
             ("issues", &self.indexes.issues, issue_ids),
             ("patches", &self.indexes.patches, patch_ids),
+            ("releases", &self.indexes.releases, release_ids),
             ("nodes", &self.indexes.nodes, node_ids),
             ("policies", &self.indexes.policies, policy_ids),
             ("inventory", &self.indexes.inventory, inventory_ids),
@@ -390,11 +359,13 @@ impl Indexer {
                 repo.identity_doc()?
             };
             match build::document(&profile, &db, rid, &doc)? {
-                Some(repo_doc) => {
+                Some(mut repo_doc) => {
                     let repo = profile.storage.repository(rid)?;
+                    let cob_docs = build_cob_docs(&profile, &repo, rid);
+                    repo_doc.release_count = cob_docs.releases.len() as u64;
                     Ok(ReindexAction::Upsert {
                         repo_doc: Box::new(repo_doc),
-                        cob_docs: build_cob_docs(&profile, &repo, rid),
+                        cob_docs,
                     })
                 }
                 None => Ok(ReindexAction::Delete),
@@ -424,6 +395,12 @@ impl Indexer {
                         .upsert(chunk, cob::Document::PRIMARY_KEY)
                         .await?;
                 }
+                for chunk in cob_docs.releases.chunks(UPSERT_BATCH) {
+                    self.indexes
+                        .releases
+                        .upsert(chunk, release::Document::PRIMARY_KEY)
+                        .await?;
+                }
             }
             ReindexAction::Delete => {
                 tracing::info!("removing {rid} from index (no longer seeded)");
@@ -431,6 +408,7 @@ impl Indexer {
                 let filter = crate::query::eq_filter("rid", rid);
                 self.indexes.issues.delete_by_filter(&filter).await?;
                 self.indexes.patches.delete_by_filter(&filter).await?;
+                self.indexes.releases.delete_by_filter(&filter).await?;
                 self.seeded.remove(&key).await;
             }
         }
@@ -651,6 +629,7 @@ async fn read_events(
 struct CobDocs {
     issues: Vec<cob::Document>,
     patches: Vec<cob::Document>,
+    releases: Vec<release::Document>,
 }
 
 enum ReindexAction {
@@ -659,6 +638,26 @@ enum ReindexAction {
         cob_docs: CobDocs,
     },
     Delete,
+}
+
+/// Upserts `docs` in batches. A batch that still fails after the enqueue
+/// retries is logged and skipped rather than aborting the whole rescan (which
+/// would crash-loop the daemon); the next periodic rescan reconciles it.
+async fn upsert_all<D: serde::Serialize + Send + Sync>(
+    label: &str,
+    index: &client::Index,
+    docs: &[D],
+    primary_key: &str,
+) {
+    for chunk in docs.chunks(UPSERT_BATCH) {
+        if let Err(e) = index.upsert(chunk, primary_key).await {
+            tracing::warn!(
+                "indexing a batch of {} {label} failed: {e:#}; \
+                 skipping it (next rescan will reconcile)",
+                chunk.len()
+            );
+        }
+    }
 }
 
 fn build_cob_docs(
@@ -715,7 +714,18 @@ fn build_cob_docs(
             Vec::new()
         }
     };
-    CobDocs { issues, patches }
+    let releases = match repo.identity_doc() {
+        Ok(doc_at) => build::release_documents(rid, repo, doc_at.delegates()),
+        Err(e) => {
+            tracing::warn!("{rid}: reading identity doc for releases failed: {e:#}");
+            Vec::new()
+        }
+    };
+    CobDocs {
+        issues,
+        patches,
+        releases,
+    }
 }
 
 #[cfg(test)]

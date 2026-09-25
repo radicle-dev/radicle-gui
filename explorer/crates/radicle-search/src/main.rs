@@ -21,7 +21,7 @@ Environment
     RADICLE_SEARCH_MEILI_URL           Meilisearch base URL (default: http://localhost:7700)
     RADICLE_SEARCH_MEILI_KEY           Meilisearch API key (optional; must allow writes)
     RADICLE_SEARCH_INDEX_PREFIX        Prefix for the index names repos, issues, patches,
-                                       nodes, policies, inventory (default: empty)
+                                       releases, nodes, policies, inventory (default: empty)
     RADICLE_SEARCH_RESCAN_SECS         Periodic full rescan interval in seconds (default: 3600)
     RADICLE_SEARCH_RECONNECT_BACKOFF_SECS  Reconnect delay after a dropped event stream (default: 5)
     RADICLE_SEARCH_BATCH_SECS          Interval for re-indexing repos touched by events (default: 30)
@@ -102,11 +102,7 @@ async fn run() -> Result<()> {
     let profile = Arc::new(Profile::load().context("failed to load Radicle profile")?);
     tracing::info!("loaded profile at {}", profile.home().path().display());
 
-    let indexes = Arc::new(Indexes::connect(
-        &config.meili_url,
-        config.meili_key.as_deref(),
-        &config,
-    )?);
+    let indexes = Arc::new(Indexes::connect(&config)?);
     tokio::select! {
         _ = shutdown_rx.changed() => return Ok(()),
         res = indexes.configure_all_with_retry() => res?,

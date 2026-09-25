@@ -1,4 +1,5 @@
 use std::process::{Child, Command};
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -9,10 +10,10 @@ use radicle::storage::{ReadRepository as _, ReadStorage as _};
 
 use crate::config::Config;
 use crate::index::repo::DocumentKey;
-use crate::index::{Indexes, cob, repo};
+use crate::index::{Indexes, cob, release, repo};
 use crate::indexer::Indexer;
 use crate::indexer::build;
-use crate::query::{CobKind, SearchClient, SearchError, SortField};
+use crate::query::{CobKind, ReleaseView, SearchClient, SearchError, SortField};
 
 struct LiveMeili {
     child: Child,
@@ -130,7 +131,11 @@ fn cob_docs(
     profile: &radicle::Profile,
     repo: &radicle::storage::git::Repository,
     rid: RepoId,
-) -> (Vec<cob::Document>, Vec<cob::Document>) {
+) -> (
+    Vec<cob::Document>,
+    Vec<cob::Document>,
+    Vec<release::Document>,
+) {
     let issues = profile.issues(repo).expect("open issue cache");
     let issue_docs: Vec<cob::Document> = issues
         .list()
@@ -145,7 +150,9 @@ fn cob_docs(
         .filter_map(|r| r.ok())
         .map(|(id, patch)| build::patch_document(rid, &id, &patch).expect("build patch document"))
         .collect();
-    (issue_docs, patch_docs)
+    let doc_at = repo.identity_doc().expect("read identity doc");
+    let release_docs = build::release_documents(rid, repo, doc_at.delegates());
+    (issue_docs, patch_docs, release_docs)
 }
 
 /// Build the fixture, connect real [`Indexes`] to `meili`, and upsert every
@@ -156,8 +163,28 @@ async fn seeded_client(
     meili: &LiveMeili,
 ) -> (tempfile::TempDir, radicle::Profile, RepoId, SearchClient) {
     let (tmp, profile, rid) = crate::test::fixture();
+    {
+        use radicle::storage::WriteStorage as _;
+        let signer = radicle::crypto::SigningKey::from_seed(radicle::crypto::Seed::new([0xff; 32]));
+        let repo = profile
+            .storage
+            .repository_mut(rid)
+            .expect("open fixture repo for writing");
+        let (_, head) = repo.head().expect("fixture head");
+        let mut releases = radicle_artifact::Releases::open(&repo).expect("open release store");
+        let mut release = releases
+            .create(head, None, &signer)
+            .expect("create release");
+        let cid = radicle_artifact::Cid::from_str(
+            "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi",
+        )
+        .expect("valid cid");
+        release
+            .register_artifact(cid, "linux-amd64".to_string(), &signer)
+            .expect("register artifact");
+    }
     let config = config_with(&meili.url);
-    let indexes = Indexes::connect(&meili.url, None, &config).expect("connect to meilisearch");
+    let indexes = Indexes::connect(&config).expect("connect to meilisearch");
     indexes
         .configure_all_with_retry()
         .await
@@ -169,7 +196,7 @@ async fn seeded_client(
     let repo_doc = build::document(&profile, &db, rid, &doc_at.doc)
         .expect("build repo document")
         .expect("fixture repo document is public");
-    let (issue_docs, patch_docs) = cob_docs(&profile, &repo, rid);
+    let (issue_docs, patch_docs, release_docs) = cob_docs(&profile, &repo, rid);
     let node_docs =
         build::node_documents(&profile, &db, std::iter::empty()).expect("build node documents");
     let policy_docs = build::policy_documents(&profile).expect("build policy documents");
@@ -193,6 +220,11 @@ async fn seeded_client(
         .upsert(&patch_docs, cob::Document::PRIMARY_KEY)
         .await
         .expect("upsert patch docs");
+    indexes
+        .releases
+        .upsert(&release_docs, release::Document::PRIMARY_KEY)
+        .await
+        .expect("upsert release docs");
     indexes
         .nodes
         .upsert(&node_docs, crate::index::node::Document::PRIMARY_KEY)
@@ -227,13 +259,17 @@ async fn seeded_client(
                 Ok(docs) if docs.len() == 1
             );
             let node_ready = matches!(client.get_node(&profile.public_key).await, Ok(Some(_)));
-            repo_ready && issue_ready && patch_ready && node_ready
+            let release_ready = matches!(
+                client.list_releases(rid, ReleaseView::default(), 0, 10).await,
+                Ok(docs) if docs.len() == 1
+            );
+            repo_ready && issue_ready && patch_ready && node_ready && release_ready
         }
     })
     .await;
     assert!(
         ready,
-        "fixture repo/issue/patch/node docs did not appear in the index within 10s"
+        "fixture repo/issue/patch/node/release docs did not appear in the index within 10s"
     );
 
     (tmp, profile, rid, client)
@@ -283,13 +319,59 @@ async fn live_filters_and_reads() {
 
 #[tokio::test]
 #[ignore]
+async fn live_release_reads() {
+    let meili = LiveMeili::spawn();
+    let (_tmp, profile, rid, client) = seeded_client(&meili).await;
+    let did = Did::from(profile.public_key);
+
+    let listed = client
+        .list_releases(rid, ReleaseView::default(), 0, 10)
+        .await
+        .unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].title.as_deref(), Some("Second commit"));
+    assert_eq!(listed[0].artifact_names, vec!["linux-amd64".to_string()]);
+    assert!(listed[0].creator_is_delegate);
+
+    let fetched = client
+        .get_release(rid, &listed[0].cob_id)
+        .await
+        .unwrap()
+        .expect("release document by id");
+    assert_eq!(fetched.id, listed[0].id);
+    let release: radicle_artifact::Release = serde_json::from_str(&fetched.cob).unwrap();
+    assert_eq!(release.creator(), &did);
+
+    for q in ["amd64", "second commit", &did.to_string()] {
+        let hits = client
+            .search_releases(rid, q, ReleaseView::default(), 0, 10)
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 1, "query {q:?} should hit the release");
+    }
+    let miss = client
+        .search_releases(rid, "windows-arm64", ReleaseView::default(), 0, 10)
+        .await
+        .unwrap();
+    assert!(miss.is_empty());
+
+    let empty_q = client
+        .search_releases(rid, "", ReleaseView::default(), 0, 10)
+        .await
+        .unwrap();
+    assert_eq!(empty_q.len(), 1);
+    assert_eq!(empty_q[0].cob_id, listed[0].cob_id);
+}
+
+#[tokio::test]
+#[ignore]
 async fn live_pagination_cap() {
     const EXTRA: u64 = 1500;
 
     let meili = LiveMeili::spawn();
     let (_tmp, _profile, rid, client) = seeded_client(&meili).await;
     let config = config_with(&meili.url);
-    let indexes = Indexes::connect(&meili.url, None, &config).expect("connect to meilisearch");
+    let indexes = Indexes::connect(&config).expect("connect to meilisearch");
 
     let template = client
         .get_repo_docs(&[rid])
@@ -364,7 +446,7 @@ async fn live_schema_mismatch_and_not_found() {
     let meili = LiveMeili::spawn();
     let (_tmp, profile, _rid, client) = seeded_client(&meili).await;
     let config = config_with(&meili.url);
-    let indexes = Indexes::connect(&meili.url, None, &config).expect("connect to meilisearch");
+    let indexes = Indexes::connect(&config).expect("connect to meilisearch");
 
     let did = Did::from(profile.public_key);
     let mismatched_rid = synthetic_rid(90_001);
@@ -414,7 +496,7 @@ async fn live_unseed_purges() {
     let meili = LiveMeili::spawn();
     let (_tmp, profile, rid) = crate::test::fixture();
     let config = config_with(&meili.url);
-    let indexes = Indexes::connect(&meili.url, None, &config).expect("connect to meilisearch");
+    let indexes = Indexes::connect(&config).expect("connect to meilisearch");
     indexes
         .configure_all_with_retry()
         .await

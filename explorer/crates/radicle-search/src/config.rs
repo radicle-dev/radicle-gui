@@ -34,7 +34,7 @@ impl Config {
                 "RADICLE_SEARCH_INDEX_NAME is no longer read; set RADICLE_SEARCH_INDEX_PREFIX instead"
             );
         }
-        let index_prefix = index_prefix_from_env("RADICLE_SEARCH_INDEX_PREFIX");
+        let index_prefix = env::var("RADICLE_SEARCH_INDEX_PREFIX").unwrap_or_default();
         let rescan_interval =
             duration_from_env("RADICLE_SEARCH_RESCAN_SECS", DEFAULT_RESCAN_INTERVAL_SECS)?;
         let reconnect_backoff = duration_from_env(
@@ -65,10 +65,6 @@ impl Config {
     pub fn index_name(&self, base: &str) -> String {
         crate::query::index_uid(&self.index_prefix, base)
     }
-}
-
-fn index_prefix_from_env(var: &str) -> String {
-    env::var(var).unwrap_or_default()
 }
 
 fn duration_from_env(var: &str, default_secs: u64) -> Result<Duration> {

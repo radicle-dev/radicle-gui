@@ -4,15 +4,17 @@ use anyhow::{Context, Result};
 use radicle::Profile;
 use radicle::cob::issue::{Issue, IssueId};
 use radicle::cob::patch::{Patch, PatchId};
+use radicle::identity::doc::Delegates;
 use radicle::identity::{Did, RepoId};
 use radicle::node::address::Store as AddressStore;
 use radicle::node::routing::Store as _;
 use radicle::node::{Alias, NodeId};
 use radicle::prelude::Doc;
 use radicle::storage::{ReadRepository, ReadStorage};
+use radicle_artifact::Releases;
 use radicle_surf::Repository as SurfRepository;
 
-use crate::index::{cob, inventory, node, policy, repo};
+use crate::index::{cob, inventory, node, policy, release, repo};
 
 const ONE_YEAR_SECS: i64 = 52 * 7 * 24 * 60 * 60;
 
@@ -51,6 +53,7 @@ pub(crate) fn document(
         seeding_count,
         issue_counts,
         patch_counts,
+        0,
     ))
 }
 
@@ -145,6 +148,41 @@ pub(crate) fn patch_document(rid: RepoId, id: &PatchId, patch: &Patch) -> Result
         labels: patch.labels().map(|l| l.name().to_string()).collect(),
         cob: serde_json::to_string(patch).context("serializing patch")?,
     })
+}
+
+pub(crate) fn release_documents(
+    rid: RepoId,
+    repo: &radicle::storage::git::Repository,
+    delegates: &Delegates,
+) -> Vec<release::Document> {
+    let releases = match Releases::open(repo) {
+        Ok(releases) => releases,
+        Err(e) => {
+            tracing::warn!("{rid}: opening release store failed: {e:#}");
+            return Vec::new();
+        }
+    };
+    let entries = match releases.all() {
+        Ok(entries) => entries,
+        Err(e) => {
+            tracing::warn!("{rid}: listing releases failed: {e:#}");
+            return Vec::new();
+        }
+    };
+    entries
+        .into_iter()
+        .filter_map(|entry| {
+            entry
+                .inspect_err(|e| tracing::warn!("{rid}: skipping unreadable release: {e:#}"))
+                .ok()
+        })
+        .filter_map(|(id, release)| {
+            let text = release::text(repo, &release);
+            release::Document::new(rid, &id, &release, text, delegates)
+                .inspect_err(|e| tracing::warn!("{rid}: skipping release {id}: {e:#}"))
+                .ok()
+        })
+        .collect()
 }
 
 pub(crate) fn node_alias(follow_alias: Option<Alias>, announced: Option<Alias>) -> Option<String> {
@@ -365,6 +403,39 @@ mod tests {
     }
 
     #[test]
+    fn repo_document_serializes_release_count() {
+        let (_tmp, profile, rid) = crate::test::fixture();
+        let db = profile.database().unwrap();
+        let doc_at = {
+            let repo = radicle::storage::ReadStorage::repository(&profile.storage, rid).unwrap();
+            radicle::storage::ReadRepository::identity_doc(&repo).unwrap()
+        };
+
+        let mut doc = document(&profile, &db, rid, &doc_at.doc).unwrap().unwrap();
+        doc.release_count = 1;
+
+        let json = serde_json::to_value(&doc).unwrap();
+        assert_eq!(json["releaseCount"], 1);
+    }
+
+    #[test]
+    fn repo_document_defaults_release_count_when_absent() {
+        let (_tmp, profile, rid) = crate::test::fixture();
+        let db = profile.database().unwrap();
+        let doc_at = {
+            let repo = radicle::storage::ReadStorage::repository(&profile.storage, rid).unwrap();
+            radicle::storage::ReadRepository::identity_doc(&repo).unwrap()
+        };
+        let doc = document(&profile, &db, rid, &doc_at.doc).unwrap().unwrap();
+        let mut json = serde_json::to_value(&doc).unwrap();
+        json.as_object_mut().unwrap().remove("releaseCount");
+
+        let parsed: repo::Document = serde_json::from_value(json).unwrap();
+
+        assert_eq!(parsed.release_count, 0);
+    }
+
+    #[test]
     fn issue_document_extracts_fields() {
         let (_tmp, profile, rid) = crate::test::fixture();
         let repo = radicle::storage::ReadStorage::repository(&profile.storage, rid).unwrap();
@@ -466,5 +537,30 @@ mod tests {
                 .iter()
                 .any(|d| d.nid == remote_nid && d.alias.as_deref() == Some("remote-peer"))
         );
+    }
+
+    #[test]
+    fn release_documents_lists_every_release_with_text() {
+        use radicle::storage::WriteStorage as _;
+        use radicle_artifact::Releases;
+
+        let (_tmp, profile, rid) = crate::test::fixture();
+        {
+            let signer =
+                radicle::crypto::SigningKey::from_seed(radicle::crypto::Seed::new([0xff; 32]));
+            let repo = profile.storage.repository_mut(rid).unwrap();
+            let (_, head) = radicle::storage::ReadRepository::head(&repo).unwrap();
+            let mut releases = Releases::open(&repo).unwrap();
+            releases.create(head, None, &signer).unwrap();
+        }
+        let repo = radicle::storage::ReadStorage::repository(&profile.storage, rid).unwrap();
+        let doc_at = radicle::storage::ReadRepository::identity_doc(&repo).unwrap();
+
+        let docs = release_documents(rid, &repo, doc_at.delegates());
+
+        assert_eq!(docs.len(), 1);
+        assert_eq!(docs[0].rid, rid);
+        assert_eq!(docs[0].title.as_deref(), Some("Second commit"));
+        assert!(docs[0].creator_is_delegate);
     }
 }

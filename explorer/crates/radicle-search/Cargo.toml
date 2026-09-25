@@ -17,6 +17,7 @@ chrono.workspace = true
 lexopt.workspace = true
 meilisearch-sdk.workspace = true
 radicle.workspace = true
+radicle-artifact = { version = "0.18", default-features = false }
 radicle-surf.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -28,6 +29,7 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 [dev-dependencies]
 radicle = { workspace = true, features = ["test"] }
 tempfile = { version = "3.20.0" }
+url = "2"
 # `test-util` enables `#[tokio::test(start_paused = true)]` so the retry
 # backoff tests fast-forward through their sleeps instead of waiting.
 tokio = { workspace = true, features = ["test-util"] }

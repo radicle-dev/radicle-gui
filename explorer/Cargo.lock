@@ -2840,6 +2840,7 @@ dependencies = [
  "lexopt",
  "meilisearch-sdk",
  "radicle",
+ "radicle-artifact",
  "radicle-surf",
  "serde",
  "serde_json",
@@ -2848,6 +2849,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]

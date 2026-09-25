@@ -80,6 +80,8 @@ pub struct Document {
     pub seeding_count: u64,
     pub issue_counts: IssueCounts,
     pub patch_counts: PatchCounts,
+    #[serde(default)]
+    pub release_count: u64,
     #[serde(flatten)]
     pub activity: Activity,
 }
@@ -127,6 +129,7 @@ impl Document {
         seeding_count: u64,
         issue_counts: IssueCounts,
         patch_counts: PatchCounts,
+        release_count: u64,
     ) -> Option<Self> {
         if !doc.visibility().is_public() {
             return None;
@@ -151,6 +154,7 @@ impl Document {
             seeding_count,
             issue_counts,
             patch_counts,
+            release_count,
             activity,
         })
     }

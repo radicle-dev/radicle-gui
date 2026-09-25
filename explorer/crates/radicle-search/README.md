@@ -1,7 +1,7 @@
 # radicle-search
 
 Optional indexing daemon for Radicle. Runs alongside `radicle-node` and
-maintains six Meilisearch indexes that `radicle-httpd` can use to serve fast,
+maintains seven Meilisearch indexes that `radicle-httpd` can use to serve fast,
 typo-tolerant repo listings and full-text search.
 
 When configured, httpd routes `/repos?sort=activity|seeding` and
@@ -11,7 +11,7 @@ client side, no API contract changes.
 
 ## Indexes
 
-The daemon maintains six indexes (all named relative to
+The daemon maintains seven indexes (all named relative to
 `RADICLE_SEARCH_INDEX_PREFIX`):
 
 ### `repos`
@@ -40,6 +40,12 @@ One document per patch in every indexed repo. Full COB JSON, stored as a string
 in the `cob` field, plus extracted `title`, `description`, `comments`, and
 `dids`. Filterable on `rid`, `state`, and `dids`. Sortable on `timestamp`.
 
+### `releases`
+
+The `releases` index carries each release Collaborative Object (COB) with its
+tag/commit text, artifact names and URLs, and participant DIDs, plus two view
+flags (`creatorIsDelegate`, `redacted`) that radicle-httpd applies as filters.
+
 ### `nodes`
 
 One document per known node. `alias` is searchable; `nid` is filterable.
@@ -59,7 +65,7 @@ announced.
 ## How it stays up to date
 
 1. **Bootstrap.** On startup and after every event-stream reconnect, the daemon
-   walks the storage tree end-to-end and reconciles all six indexes.
+   walks the storage tree end-to-end and reconciles all seven indexes.
 2. **Real time.** Subscribes to the node's control socket (same stream as
    `rad node events`) and reacts to:
    - `RefsFetched`, `LocalRefsAnnounced`, `CanonicalRefUpdated`, `RefsSynced` →
@@ -130,7 +136,7 @@ cargo build --release -p radicle-search
 
 The daemon picks up the Radicle profile from `RAD_HOME` and the node control
 socket from `RAD_SOCKET` (or their defaults). On first launch it bootstraps all
-six indexes in a few seconds, then listens for node events.
+seven indexes in a few seconds, then listens for node events.
 
 ### 3. Point httpd at the index
 
@@ -147,16 +153,16 @@ absent, httpd works exactly as before.
 
 All via environment variables:
 
-| Variable                                | Default                       | Purpose                                                                                                                                                                          |
-| --------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RADICLE_SEARCH_MEILI_URL`              | `http://localhost:7700`       | Meilisearch instance to connect to.                                                                                                                                              |
-| `RADICLE_SEARCH_MEILI_KEY`              | _(none)_                      | Meilisearch master key (production mode).                                                                                                                                        |
-| `RADICLE_SEARCH_INDEX_PREFIX`           | _(none)_                      | Prefix prepended to each index name (e.g. `prod-` → `prod-repos`, `prod-issues`, …). When unset, index names are `repos`, `issues`, `patches`, `nodes`, `policies`, `inventory`. |
-| `RADICLE_SEARCH_RESCAN_SECS`            | `3600`                        | Interval between safety-net full rescans.                                                                                                                                        |
-| `RADICLE_SEARCH_RECONNECT_BACKOFF_SECS` | `5`                           | Delay before reconnecting after an event-stream disconnect.                                                                                                                      |
-| `RADICLE_SEARCH_BATCH_SECS`             | `30`                          | Interval at which repos touched by node events are re-indexed.                                                                                                                   |
-| `RAD_HOME`                              | `~/.radicle`                  | Standard Radicle profile path.                                                                                                                                                   |
-| `RAD_SOCKET`                            | `$RAD_HOME/node/control.sock` | Standard node control socket.                                                                                                                                                    |
+| Variable                                | Default                       | Purpose                                                                                                                                                                                      |
+| --------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RADICLE_SEARCH_MEILI_URL`              | `http://localhost:7700`       | Meilisearch instance to connect to.                                                                                                                                                          |
+| `RADICLE_SEARCH_MEILI_KEY`              | _(none)_                      | Meilisearch master key (production mode).                                                                                                                                                    |
+| `RADICLE_SEARCH_INDEX_PREFIX`           | _(none)_                      | Prefix prepended to each index name (e.g. `prod-` → `prod-repos`, `prod-issues`, …). When unset, index names are `repos`, `issues`, `patches`, `releases`, `nodes`, `policies`, `inventory`. |
+| `RADICLE_SEARCH_RESCAN_SECS`            | `3600`                        | Interval between safety-net full rescans.                                                                                                                                                    |
+| `RADICLE_SEARCH_RECONNECT_BACKOFF_SECS` | `5`                           | Delay before reconnecting after an event-stream disconnect.                                                                                                                                  |
+| `RADICLE_SEARCH_BATCH_SECS`             | `30`                          | Interval at which repos touched by node events are re-indexed.                                                                                                                               |
+| `RAD_HOME`                              | `~/.radicle`                  | Standard Radicle profile path.                                                                                                                                                               |
+| `RAD_SOCKET`                            | `$RAD_HOME/node/control.sock` | Standard node control socket.                                                                                                                                                                |
 
 httpd reads a parallel set to decide, at runtime, whether to use the index:
 
@@ -176,7 +182,7 @@ out, httpd transparently falls back to the storage walk.
 
 Earlier versions exposed a single `RADICLE_SEARCH_INDEX_NAME` variable for the
 repos index. That variable is now `RADICLE_SEARCH_INDEX_PREFIX`, and both
-`radicle-search` and `radicle-httpd` use it to reference all six indexes.
+`radicle-search` and `radicle-httpd` use it to reference all seven indexes.
 
 If you were running with a non-default index name (e.g.
 `RADICLE_SEARCH_INDEX_NAME=my-repos`), update as follows:
