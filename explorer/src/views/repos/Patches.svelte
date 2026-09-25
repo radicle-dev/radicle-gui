@@ -3,10 +3,12 @@
 
   import { HttpdClient } from "@http-client";
 
-  import { PATCHES_PER_PAGE } from "./router";
+  import { PATCHES_PER_PAGE, fetchPatchesPage, patchesSearch } from "./router";
+  import { replace } from "@app/lib/router";
   import { baseUrlToString } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
+  import CobSearch from "./CobSearch.svelte";
   import ErrorMessage from "@app/components/ErrorMessage.svelte";
   import Icon from "@app/components/Icon.svelte";
   import Layout from "./Layout.svelte";
@@ -24,6 +26,8 @@
   export let status: PatchState["status"];
   export let nodeId: string;
   export let nodeAvatarUrl: string | undefined;
+  export let q: string | undefined = undefined;
+  export let searchAvailable: boolean;
 
   let loading = false;
   let page = 0;
@@ -42,11 +46,7 @@
     loading = true;
     page += 1;
     try {
-      const response = await api.repo.getAllPatches(repo.rid, {
-        status,
-        page,
-        perPage: PATCHES_PER_PAGE,
-      });
+      const response = await fetchPatchesPage(api, repo.rid, status, q, page);
       allPatches = [...allPatches, ...response];
     } catch (e) {
       error = e;
@@ -55,16 +55,33 @@
     }
   }
 
+  function search(event: CustomEvent<string | undefined>) {
+    void replace({
+      resource: "repo.patches",
+      repo: repoId,
+      node: baseUrl,
+      search: patchesSearch(status, event.detail),
+    });
+  }
+
+  $: totalForStatus = repo.payloads["xyz.radicle.project"].meta.patches[status];
+  $: showEmpty = q
+    ? allPatches.length === 0 && !loading && !error
+    : totalForStatus === 0;
+
   $: showMoreButton =
     !loading &&
     !error &&
-    allPatches.length <
-      repo.payloads["xyz.radicle.project"].meta.patches[status];
+    (q
+      ? allPatches.length === (page + 1) * PATCHES_PER_PAGE
+      : allPatches.length < totalForStatus);
 </script>
 
 <style>
   .header {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 0.25rem;
     padding: 1rem;
     border-bottom: 1px solid var(--color-border-subtle);
@@ -127,7 +144,7 @@
         resource: "repo.patches",
         repo: repoId,
         node: baseUrl,
-        search: "status=open",
+        search: patchesSearch("open", q),
       }}>
       <Button variant={status === "open" ? "gray" : "background"}>
         <Icon name="patch" />
@@ -144,7 +161,7 @@
         resource: "repo.patches",
         repo: repoId,
         node: baseUrl,
-        search: "status=draft",
+        search: patchesSearch("draft", q),
       }}>
       <Button variant={status === "draft" ? "gray" : "background"}>
         <Icon name="patch-draft" />
@@ -161,7 +178,7 @@
         resource: "repo.patches",
         repo: repoId,
         node: baseUrl,
-        search: "status=archived",
+        search: patchesSearch("archived", q),
       }}>
       <Button variant={status === "archived" ? "gray" : "background"}>
         <Icon name="patch-archived" />
@@ -178,7 +195,7 @@
         resource: "repo.patches",
         repo: repoId,
         node: baseUrl,
-        search: "status=merged",
+        search: patchesSearch("merged", q),
       }}>
       <Button variant={status === "merged" ? "gray" : "background"}>
         <Icon name="patch-merged" />
@@ -190,6 +207,9 @@
         </div>
       </Button>
     </Link>
+    {#if searchAvailable}
+      <CobSearch value={q} placeholder="Search patches…" on:search={search} />
+    {/if}
   </div>
 
   <List items={allPatches}>
@@ -204,9 +224,11 @@
       {error} />
   {/if}
 
-  {#if repo.payloads["xyz.radicle.project"].meta.patches[status] === 0}
+  {#if showEmpty}
     <div class="placeholder">
-      <Placeholder iconName="patch" caption={`No ${status} patches`} />
+      <Placeholder
+        iconName="patch"
+        caption={q ? "No patches match" : `No ${status} patches`} />
     </div>
   {/if}
 

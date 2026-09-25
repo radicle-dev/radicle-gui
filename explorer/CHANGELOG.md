@@ -22,7 +22,12 @@
   participant DIDs, and delegate/redaction view flags); the release count,
   `/repos/{rid}/releases` and `/repos/{rid}/releases/{id}` are served from it in
   Meilisearch mode, and a new `GET /repos/{rid}/releases/search?q=` searches one
-  repo's releases (index-backed, with a storage-walk fallback in SQLite mode)
+  repo's releases (Meilisearch mode only; a sqlite-mode node answers 501)
+- **Issue and patch search**: new `GET /repos/{rid}/issues/search?q=` and
+  `GET /repos/{rid}/patches/search?q=` search one repo's issues or patches by
+  title, description, comments and participant DIDs, with the same
+  `status`/`page`/`perPage` parameters as the list routes. Meilisearch mode only
+  — a sqlite-mode node answers `501 Not Implemented`
 
 ## radicle-httpd + radicle-search 0.30.0
 

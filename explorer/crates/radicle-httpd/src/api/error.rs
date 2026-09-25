@@ -115,6 +115,10 @@ pub enum Error {
     /// client-facing 503 response.
     #[error("search backend unavailable")]
     SearchFailed(#[from] radicle_search::query::SearchError),
+
+    /// The active source cannot serve search routes (sqlite mode).
+    #[error("search is not supported by this node's source")]
+    SearchNotSupported,
 }
 
 impl Error {
@@ -178,6 +182,7 @@ impl IntoResponse for Error {
                 tracing::warn!("search backend call failed: {e:#}");
                 return service_unavailable();
             }
+            Error::SearchNotSupported => (StatusCode::NOT_IMPLEMENTED, Some(message.clone())),
             Error::Crypto(msg) => (StatusCode::BAD_REQUEST, Some(msg.to_string())),
             Error::Git2(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -264,6 +269,29 @@ mod tests {
             serde_json::json!({
                 "error": "search backend unavailable",
                 "code": 503
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn search_not_supported_maps_to_501() {
+        let response = Error::SearchNotSupported.into_response();
+
+        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).unwrap(),
+            "application/json"
+        );
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "error": "search is not supported by this node's source",
+                "code": 501
             })
         );
     }

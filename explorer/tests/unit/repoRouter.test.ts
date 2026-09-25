@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  patchesSearch,
   repoRouteToPath,
   resolveRepoRoute,
   testExports,
@@ -37,4 +38,16 @@ describe("repo alias in routes", () => {
       expect(repoRouteToPath(route!)).toContain(`/${segment}/issues`);
     },
   );
+});
+
+describe("patchesSearch", () => {
+  test("carries the query alongside the status", () => {
+    expect(patchesSearch("open", "hello world")).toEqual(
+      "status=open&q=hello+world",
+    );
+  });
+
+  test("omits an absent query", () => {
+    expect(patchesSearch("draft", undefined)).toEqual("status=draft");
+  });
 });

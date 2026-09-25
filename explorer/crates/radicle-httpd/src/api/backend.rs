@@ -4,7 +4,9 @@ use radicle::identity::{Did, RepoId};
 use radicle::node::policy::{SeedPolicy, SeedingPolicy};
 use radicle::node::{Alias, NodeId};
 use radicle_search::index::{cob, node, release, repo};
-use radicle_search::query::{CobKind, ReleaseView, SearchClient, SearchError, SortField};
+use radicle_search::query::{
+    CobFilter, CobKind, ReleaseView, SearchClient, SearchError, SortField,
+};
 
 /// The search backend httpd reads from. In production this is always the
 /// Meilisearch client; tests substitute an in-memory fake so handlers can
@@ -103,6 +105,22 @@ impl Backend {
             Self::Meili(c) => c.list_cobs(kind, rid, state, offset, limit).await,
             #[cfg(test)]
             Self::Fake(f) => Ok(f.list_cobs(kind, rid, state, offset, limit)),
+        }
+    }
+
+    pub async fn search_cobs(
+        &self,
+        kind: CobKind,
+        rid: RepoId,
+        q: &str,
+        filter: CobFilter<'_>,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<cob::Document>, SearchError> {
+        match self {
+            Self::Meili(c) => c.search_cobs(kind, rid, q, filter, offset, limit).await,
+            #[cfg(test)]
+            Self::Fake(f) => Ok(f.search_cobs(kind, rid, q, filter, offset, limit)),
         }
     }
 
@@ -294,6 +312,33 @@ pub(crate) mod fake {
             docs.into_iter().skip(offset).take(limit).collect()
         }
 
+        fn cob_text_fields(doc: &cob::Document) -> Vec<String> {
+            let mut fields = vec![doc.title.clone(), doc.description.clone()];
+            fields.extend(doc.comments.iter().cloned());
+            fields.extend(doc.dids.iter().map(|did| did.to_string()));
+            fields
+        }
+
+        pub fn search_cobs(
+            &self,
+            kind: CobKind,
+            rid: RepoId,
+            q: &str,
+            filter: CobFilter<'_>,
+            offset: usize,
+            limit: usize,
+        ) -> Vec<cob::Document> {
+            self.list_cobs(kind, rid, filter.state, 0, usize::MAX)
+                .into_iter()
+                .filter(|d| {
+                    let fields = Self::cob_text_fields(d);
+                    release::text_matches(q, fields.iter().map(String::as_str))
+                })
+                .skip(offset)
+                .take(limit)
+                .collect()
+        }
+
         fn release_in_view(doc: &release::Document, view: ReleaseView) -> bool {
             (view.all_authors || doc.creator_is_delegate) && (view.show_redacted || !doc.redacted)
         }
@@ -447,6 +492,89 @@ pub(crate) mod fake {
             assert!(fake
                 .search_releases(rid, "bin-bb", ReleaseView::default(), 0, 10)
                 .is_empty());
+        }
+
+        fn cob_doc(
+            cob_id: &str,
+            timestamp: i64,
+            state: &str,
+            title: &str,
+            description: &str,
+        ) -> cob::Document {
+            let rid = RepoId::from_str("rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp").unwrap();
+            cob::Document {
+                v: radicle_search::index::SCHEMA_VERSION,
+                id: cob::doc_id(rid, cob_id),
+                rid,
+                cob_id: cob_id.to_string(),
+                state: state.to_string(),
+                timestamp,
+                title: title.to_string(),
+                description: description.to_string(),
+                comments: vec!["follow-up comment".to_string()],
+                dids: vec![],
+                author_did: Did::from_str(
+                    "did:key:z6MkkfM3tPXNPrPevKr3uSiQtHPuwnNhu2yUVjgd2jXVsVz5",
+                )
+                .unwrap(),
+                assignee_dids: vec![],
+                labels: vec![],
+                cob: "{}".to_string(),
+            }
+        }
+
+        #[test]
+        fn fake_cob_search_matches_text_within_the_state() {
+            let rid = RepoId::from_str("rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp").unwrap();
+            let fake = Fake {
+                issues: vec![
+                    cob_doc("aa", 1, "open", "Crash on start", "segfault in main"),
+                    cob_doc("bb", 2, "closed", "Typo", "fix the readme"),
+                ],
+                ..Default::default()
+            };
+            let ids =
+                |docs: Vec<cob::Document>| docs.into_iter().map(|d| d.cob_id).collect::<Vec<_>>();
+
+            assert_eq!(
+                ids(fake.search_cobs(
+                    CobKind::Issues,
+                    rid,
+                    "SEGFAULT",
+                    CobFilter::default(),
+                    0,
+                    10
+                )),
+                vec!["aa"]
+            );
+            assert_eq!(
+                ids(fake.search_cobs(
+                    CobKind::Issues,
+                    rid,
+                    "readme",
+                    CobFilter {
+                        state: Some("open")
+                    },
+                    0,
+                    10
+                )),
+                Vec::<String>::new()
+            );
+            assert_eq!(
+                ids(fake.search_cobs(
+                    CobKind::Issues,
+                    rid,
+                    "follow-up",
+                    CobFilter::default(),
+                    0,
+                    10
+                )),
+                vec!["bb", "aa"]
+            );
+            assert_eq!(
+                ids(fake.search_cobs(CobKind::Issues, rid, "", CobFilter::default(), 0, 10)),
+                vec!["bb", "aa"]
+            );
         }
     }
 }

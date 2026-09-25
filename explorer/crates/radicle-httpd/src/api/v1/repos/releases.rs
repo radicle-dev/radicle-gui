@@ -290,6 +290,10 @@ pub(super) async fn search_handler(
     Query(qs): Query<ReleasesSearchQuery>,
 ) -> impl IntoResponse {
     let rid = ctx.resolve_repo(&rid)?;
+    if ctx.source() != crate::Source::Meilisearch {
+        return Err(Error::SearchNotSupported);
+    }
+    let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
     let q: String =
         qs.q.unwrap_or_default()
             .chars()
@@ -298,104 +302,11 @@ pub(super) async fn search_handler(
     let page = qs.page.unwrap_or(0);
     let per_page = qs.per_page.unwrap_or(DEFAULT_PER_PAGE).min(MAX_PER_PAGE);
     let view = view_from(qs.all_authors, qs.show_redacted);
-    let offset = page.saturating_mul(per_page);
-
-    let releases = match ctx.source() {
-        crate::Source::Meilisearch => {
-            let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
-            let docs = backend
-                .search_releases(rid, &q, view, offset, per_page)
-                .await?;
-            serialize_docs(&ctx, rid, docs, Some(view)).await?
-        }
-        crate::Source::Sqlite => {
-            if let Some(backend) = ctx.search() {
-                match backend
-                    .search_releases(rid, &q, view, offset, per_page)
-                    .await
-                {
-                    Ok(docs) => match serialize_docs(&ctx, rid, docs, Some(view)).await {
-                        Ok(releases) => return Ok::<_, Error>(Json(json!(releases))),
-                        Err(e) => tracing::warn!(
-                            "release search backend failed, falling back to storage walk ({e:?})"
-                        ),
-                    },
-                    Err(e) => tracing::warn!(
-                        "release search backend failed, falling back to storage walk ({e:#})"
-                    ),
-                }
-            }
-            storage_search(ctx, rid, q, view, offset, per_page).await?
-        }
-    };
+    let docs = backend
+        .search_releases(rid, &q, view, page.saturating_mul(per_page), per_page)
+        .await?;
+    let releases = serialize_docs(&ctx, rid, docs, Some(view)).await?;
     Ok::<_, Error>(Json(json!(releases)))
-}
-
-fn search_fields(release: &Release, text: &release::Text) -> Vec<String> {
-    let mut fields: Vec<String> = Vec::new();
-    fields.extend(text.title.clone());
-    fields.extend(text.tag_name.clone());
-    fields.push(text.description.clone());
-    for artifact in release.artifacts().values() {
-        fields.push(artifact.name().to_string());
-        fields.extend(
-            artifact
-                .locations()
-                .values()
-                .flatten()
-                .map(|u| u.to_string()),
-        );
-    }
-    fields.extend(
-        release::participants(release)
-            .iter()
-            .map(|did| did.to_string()),
-    );
-    fields
-}
-
-async fn storage_search(
-    ctx: Context,
-    rid: RepoId,
-    q: String,
-    view: ReleaseView,
-    offset: usize,
-    per_page: usize,
-) -> Result<Vec<Value>, Error> {
-    api::blocking(move || {
-        let (repo, doc) = ctx.repo(rid)?;
-        let delegates = doc.delegates();
-        let aliases = ctx.profile.aliases();
-        let cache = cache_db_path(ctx.profile.cobs());
-
-        Ok::<_, Error>(
-            releases_in_view(&repo, cache, view, delegates)?
-                .into_iter()
-                .map(|(id, release)| {
-                    let text = release::text(&repo, &release);
-                    (id, release, text)
-                })
-                .filter(|(_, release, text)| {
-                    let fields = search_fields(release, text);
-                    release::text_matches(&q, fields.iter().map(String::as_str))
-                })
-                .skip(offset)
-                .take(per_page)
-                .map(|(id, release, text)| {
-                    release_json(
-                        id,
-                        &release,
-                        text.title,
-                        text.tag_name,
-                        &aliases,
-                        delegates,
-                        Some(view),
-                    )
-                })
-                .collect(),
-        )
-    })
-    .await
 }
 
 #[cfg(test)]
@@ -864,32 +775,21 @@ mod routes {
     }
 
     #[tokio::test]
-    async fn test_sqlite_release_search_walks_storage() {
+    async fn test_sqlite_release_search_is_not_supported() {
         let tmp = tempfile::tempdir().unwrap();
         let ctx = seed(tmp.path());
-        let id = create_release(&ctx, DELEGATE_SEED);
         let app = app(ctx);
 
-        for q in ["AMD64", "another folder", DID] {
-            let response = get(
-                &app,
-                format!("/repos/{RID}/releases/search?q={}", q.replace(' ', "%20")),
-            )
-            .await;
-            assert_eq!(response.status(), StatusCode::OK, "query {q}");
-            let body = response.json().await;
-            assert_eq!(body.as_array().unwrap().len(), 1, "query {q}");
-            assert_eq!(body[0]["id"], json!(id), "query {q}");
-        }
-
-        let response = get(&app, format!("/repos/{RID}/releases/search?q=windows")).await;
-        assert_eq!(response.json().await, json!([]));
+        let response = get(&app, format!("/repos/{RID}/releases/search?q=amd64")).await;
+        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(response.json().await["code"], json!(501));
     }
 
     #[tokio::test]
     async fn test_release_search_route_wins_over_release_id() {
         let tmp = tempfile::tempdir().unwrap();
-        let app = app(seed(tmp.path()));
+        let (ctx, _) = seed_meili_releases(tmp.path(), &[]);
+        let app = app(ctx);
 
         let response = get(&app, format!("/repos/{RID}/releases/search")).await;
 

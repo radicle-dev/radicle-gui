@@ -45,6 +45,80 @@ export const PATCHES_PER_PAGE = 10;
 export const ISSUES_PER_PAGE = 10;
 export const RELEASES_PER_PAGE = 30;
 
+export function patchesSearch(
+  status: PatchState["status"],
+  q: string | undefined,
+): string {
+  const params = new URLSearchParams({ status });
+  if (q) {
+    params.set("q", q);
+  }
+  return params.toString();
+}
+
+export function fetchIssuesPage(
+  api: HttpdClient,
+  rid: string,
+  status: IssueState["status"],
+  q: string | undefined,
+  page: number,
+): Promise<Issue[]> {
+  const query = { status, page, perPage: ISSUES_PER_PAGE };
+  return q
+    ? api.repo.searchIssues(rid, { ...query, q })
+    : api.repo.getAllIssues(rid, query);
+}
+
+export function fetchPatchesPage(
+  api: HttpdClient,
+  rid: string,
+  status: PatchState["status"],
+  q: string | undefined,
+  page: number,
+): Promise<Patch[]> {
+  const query = { status, page, perPage: PATCHES_PER_PAGE };
+  return q
+    ? api.repo.searchPatches(rid, { ...query, q })
+    : api.repo.getAllPatches(rid, query);
+}
+
+export function fetchReleasesPage(
+  api: HttpdClient,
+  rid: string,
+  allAuthors: boolean,
+  q: string | undefined,
+  page: number,
+): Promise<Release[]> {
+  const query = { allAuthors, page, perPage: RELEASES_PER_PAGE };
+  return q
+    ? api.repo.searchReleases(rid, { ...query, q })
+    : api.repo.getAllReleases(rid, query);
+}
+
+function searchQuery(params: URLSearchParams): string | undefined {
+  const q = params.get("q")?.trim();
+  return q ? q : undefined;
+}
+
+async function cobSearchAvailable(api: HttpdClient): Promise<boolean> {
+  try {
+    const info = await api.getInfo();
+    return info.httpd.source === "meilisearch";
+  } catch {
+    return false;
+  }
+}
+
+function whenSearchable<T>(
+  searchAvailable: Promise<boolean>,
+  q: string | undefined,
+  fetchPage: (q: string | undefined) => Promise<T>,
+): Promise<T> {
+  return q
+    ? searchAvailable.then(available => fetchPage(available ? q : undefined))
+    : fetchPage(undefined);
+}
+
 export function peerHasBranches(peer: PeerRefs): boolean {
   return Object.keys(peer.refs).some(name => name.startsWith(REFS_HEADS));
 }
@@ -105,6 +179,7 @@ interface RepoIssuesRoute {
   node: BaseUrl;
   repo: string;
   status?: "open" | "closed";
+  q?: string;
 }
 
 interface RepoReleasesRoute {
@@ -112,6 +187,7 @@ interface RepoReleasesRoute {
   node: BaseUrl;
   repo: string;
   allAuthors?: boolean;
+  q?: string;
 }
 
 interface RepoReleaseRoute {
@@ -247,6 +323,8 @@ export type RepoLoadedRoute =
         repoId: string;
         issues: Issue[];
         status: IssueState["status"];
+        q: string | undefined;
+        searchAvailable: boolean;
         nodeId: string;
         nodeAvatarUrl: string | undefined;
       };
@@ -259,6 +337,8 @@ export type RepoLoadedRoute =
         repoId: string;
         patches: Patch[];
         status: PatchState["status"];
+        q: string | undefined;
+        searchAvailable: boolean;
         nodeId: string;
         nodeAvatarUrl: string | undefined;
       };
@@ -286,6 +366,8 @@ export type RepoLoadedRoute =
         releases: Release[];
         allAuthors: boolean;
         showFilters: boolean;
+        q: string | undefined;
+        searchAvailable: boolean;
         nodeId: string;
         nodeAvatarUrl: string | undefined;
       };
@@ -435,15 +517,15 @@ async function loadPatchesView(
   const api = new HttpdClient(route.node);
   const searchParams = new URLSearchParams(route.search || "");
   const status = (searchParams.get("status") as PatchState["status"]) || "open";
+  const searchAvailablePromise = cobSearchAvailable(api);
 
-  const [repo, patches, node] = await Promise.all([
+  const [repo, patches, node, searchAvailable] = await Promise.all([
     api.repo.getByRid(route.repo),
-    api.repo.getAllPatches(route.repo, {
-      status,
-      page: 0,
-      perPage: PATCHES_PER_PAGE,
-    }),
+    whenSearchable(searchAvailablePromise, searchQuery(searchParams), q =>
+      fetchPatchesPage(api, route.repo, status, q, 0),
+    ),
     api.getNode(),
+    searchAvailablePromise,
   ]);
 
   return {
@@ -453,6 +535,8 @@ async function loadPatchesView(
       repoId: route.repo,
       patches,
       status,
+      q: searchAvailable ? searchQuery(searchParams) : undefined,
+      searchAvailable,
       repo,
       nodeId: node.id,
       nodeAvatarUrl: node.avatarUrl,
@@ -465,15 +549,15 @@ async function loadIssuesView(
 ): Promise<RepoLoadedRoute> {
   const api = new HttpdClient(route.node);
   const status = route.status || "open";
+  const searchAvailablePromise = cobSearchAvailable(api);
 
-  const [repo, issues, node] = await Promise.all([
+  const [repo, issues, node, searchAvailable] = await Promise.all([
     api.repo.getByRid(route.repo),
-    api.repo.getAllIssues(route.repo, {
-      status,
-      page: 0,
-      perPage: ISSUES_PER_PAGE,
-    }),
+    whenSearchable(searchAvailablePromise, route.q, q =>
+      fetchIssuesPage(api, route.repo, status, q, 0),
+    ),
     api.getNode(),
+    searchAvailablePromise,
   ]);
 
   return {
@@ -483,6 +567,8 @@ async function loadIssuesView(
       repoId: route.repo,
       issues,
       status,
+      q: searchAvailable ? route.q : undefined,
+      searchAvailable,
       repo,
       nodeId: node.id,
       nodeAvatarUrl: node.avatarUrl,
@@ -509,24 +595,37 @@ async function loadReleasesView(
 ): Promise<RepoLoadedRoute | NotFoundRoute> {
   const api = new HttpdClient(route.node);
   const allAuthors = route.allAuthors || false;
+  const searchAvailablePromise = cobSearchAvailable(api);
 
   // Fetch releases alongside the repo so the common path stays parallel; the
   // repo's `meta.releases` then tells us whether a failure is an unsupported
   // node or a genuine error. The delegate scope is a subset of every author,
   // so the all-authors view sizes both scopes from its own page, while the
   // delegate view has to ask for the other scope to size it.
-  const [repo, releasesResult, everyAuthorPage, node] = await Promise.all([
+  const [
+    repo,
+    releasesResult,
+    scopePage,
+    everyAuthorPage,
+    node,
+    searchAvailable,
+  ] = await Promise.all([
     api.repo.getByRid(route.repo),
-    api.repo
-      .getAllReleases(route.repo, {
-        allAuthors,
-        page: 0,
-        perPage: RELEASES_PER_PAGE,
-      })
-      .then(
-        releases => ({ releases }),
-        (error: unknown) => ({ error }),
-      ),
+    whenSearchable(searchAvailablePromise, route.q, q =>
+      fetchReleasesPage(api, route.repo, allAuthors, q, 0),
+    ).then(
+      releases => ({ releases }),
+      (error: unknown) => ({ error }),
+    ),
+    route.q
+      ? api.repo
+          .getAllReleases(route.repo, {
+            allAuthors,
+            page: 0,
+            perPage: RELEASES_PER_PAGE,
+          })
+          .catch(() => undefined)
+      : undefined,
     allAuthors
       ? undefined
       : api.repo
@@ -539,6 +638,7 @@ async function loadReleasesView(
           // the page down with it.
           .catch(() => undefined),
     api.getNode(),
+    searchAvailablePromise,
   ]);
 
   const releaseCount = repo.payloads["xyz.radicle.project"].meta.releases;
@@ -561,13 +661,18 @@ async function loadReleasesView(
   // it appear or vanish as the user pages, and keep it too if the other scope
   // failed to load. Decided here so it stays fixed for the life of the route.
   const delegateIds = new Set(repo.delegates.map(d => d.id));
-  const delegateReleaseCount = allAuthors
-    ? releases.filter(r => delegateIds.has(r.creator.id)).length
-    : releases.length;
+  const sizingPage = route.q ? scopePage : releases;
+  const delegateReleaseCount =
+    sizingPage === undefined
+      ? undefined
+      : allAuthors
+        ? sizingPage.filter(r => delegateIds.has(r.creator.id)).length
+        : sizingPage.length;
   const everyAuthorCount = allAuthors
-    ? releases.length
+    ? sizingPage?.length
     : everyAuthorPage?.length;
   const showFilters =
+    delegateReleaseCount === undefined ||
     everyAuthorCount === undefined ||
     everyAuthorCount === RELEASES_PER_PAGE ||
     delegateReleaseCount !== everyAuthorCount;
@@ -580,6 +685,8 @@ async function loadReleasesView(
       releases,
       allAuthors,
       showFilters,
+      q: searchAvailable ? route.q : undefined,
+      searchAvailable,
       repo,
       nodeId: node.id,
       nodeAvatarUrl: node.avatarUrl,
@@ -1135,9 +1242,8 @@ export function resolveRepoRoute(
         issue: issueOrAction,
       };
     } else {
-      const rawStatus = new URLSearchParams(sanitizeQueryString(urlSearch)).get(
-        "status",
-      );
+      const searchParams = new URLSearchParams(sanitizeQueryString(urlSearch));
+      const rawStatus = searchParams.get("status");
       let status: "open" | "closed" | undefined;
       if (rawStatus === "open" || rawStatus === "closed") {
         status = rawStatus;
@@ -1147,15 +1253,15 @@ export function resolveRepoRoute(
         node,
         repo,
         status,
+        q: searchQuery(searchParams),
       };
     }
   } else if (content === "patches") {
     return resolvePatchesRoute(node, repo, segments, urlSearch);
   } else if (content === "releases") {
     const release = segments.shift();
-    const allAuthors =
-      new URLSearchParams(sanitizeQueryString(urlSearch)).get("allAuthors") ===
-      "true";
+    const searchParams = new URLSearchParams(sanitizeQueryString(urlSearch));
+    const allAuthors = searchParams.get("allAuthors") === "true";
     if (release) {
       return {
         resource: "repo.release",
@@ -1170,6 +1276,7 @@ export function resolveRepoRoute(
         node,
         repo,
         allAuthors,
+        q: searchQuery(searchParams),
       };
     }
   } else {
@@ -1279,6 +1386,9 @@ export function repoRouteToPath(route: RepoRoute): string {
     if (route.status) {
       searchParams.set("status", route.status);
     }
+    if (route.q) {
+      searchParams.set("q", route.q);
+    }
     if (searchParams.size > 0) {
       url += `?${searchParams}`;
     }
@@ -1295,8 +1405,15 @@ export function repoRouteToPath(route: RepoRoute): string {
     return patchRouteToPath(route);
   } else if (route.resource === "repo.releases") {
     let url = [...pathSegments, "releases"].join("/");
+    const searchParams = new URLSearchParams();
     if (route.allAuthors) {
-      url += "?allAuthors=true";
+      searchParams.set("allAuthors", "true");
+    }
+    if (route.q) {
+      searchParams.set("q", route.q);
+    }
+    if (searchParams.size > 0) {
+      url += `?${searchParams}`;
     }
     return url;
   } else if (route.resource === "repo.release") {

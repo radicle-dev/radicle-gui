@@ -119,6 +119,16 @@ describe("route invariant when parsed", () => {
     });
   });
 
+  test("repos.issues with status and q", () => {
+    expectParsingInvariant({
+      resource: "repo.issues",
+      node,
+      repo: "REPO",
+      status: "open",
+      q: "hello world",
+    });
+  });
+
   test("repos.issue", () => {
     expectParsingInvariant({
       resource: "repo.issue",
@@ -143,6 +153,16 @@ describe("route invariant when parsed", () => {
       node,
       repo: "REPO",
       search: "SEARCH",
+    });
+  });
+
+  test("repos.releases with allAuthors and q", () => {
+    expectParsingInvariant({
+      resource: "repo.releases",
+      node,
+      repo: "REPO",
+      allAuthors: true,
+      q: "v1.0",
     });
   });
 

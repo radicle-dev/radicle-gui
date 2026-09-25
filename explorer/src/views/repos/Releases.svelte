@@ -2,10 +2,12 @@
   import type { BaseUrl, Release, Repo } from "@http-client";
 
   import { HttpdClient } from "@http-client";
-  import { RELEASES_PER_PAGE } from "./router";
+  import { RELEASES_PER_PAGE, fetchReleasesPage } from "./router";
+  import { replace } from "@app/lib/router";
   import { baseUrlToString } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
+  import CobSearch from "./CobSearch.svelte";
   import ErrorMessage from "@app/components/ErrorMessage.svelte";
   import Icon from "@app/components/Icon.svelte";
   import Layout from "./Layout.svelte";
@@ -24,6 +26,8 @@
   export let showFilters: boolean;
   export let nodeId: string;
   export let nodeAvatarUrl: string | undefined;
+  export let q: string | undefined = undefined;
+  export let searchAvailable: boolean;
 
   let loading = false;
   let page = 0;
@@ -54,11 +58,13 @@
     // doesn't leave a gap behind on retry.
     const next = page + 1;
     try {
-      const response = await api.repo.getAllReleases(repo.rid, {
+      const response = await fetchReleasesPage(
+        api,
+        repo.rid,
         allAuthors,
-        page: next,
-        perPage: RELEASES_PER_PAGE,
-      });
+        q,
+        next,
+      );
       allReleases = [...allReleases, ...response];
       page = next;
     } catch (e) {
@@ -66,6 +72,16 @@
     } finally {
       loading = false;
     }
+  }
+
+  function search(event: CustomEvent<string | undefined>) {
+    void replace({
+      resource: "repo.releases",
+      repo: repoId,
+      node: baseUrl,
+      allAuthors,
+      q: event.detail,
+    });
   }
 
   // The count for the current filter isn't in repo metadata, so offer "More"
@@ -78,6 +94,7 @@
 <style>
   .header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.25rem;
     padding: 1rem;
@@ -137,45 +154,59 @@
     </Link>
   </svelte:fragment>
   <svelte:fragment slot="header">
-    {#if showFilters}
+    {#if showFilters || searchAvailable}
       <div class="header">
-        <Link
-          route={{ resource: "repo.releases", repo: repoId, node: baseUrl }}>
-          <Button let:hover variant={!allAuthors ? "gray" : "background"}>
-            <Icon name="badge" />
-            <div class="title-counter">
-              Delegates
-              <span
-                class="counter"
-                class:selected={!allAuthors}
-                class:hover={hover && allAuthors}>
-                {delegateReleaseCount}{showMoreButton ? "+" : ""}
-              </span>
-            </div>
-          </Button>
-        </Link>
-        <Link
-          route={{
-            resource: "repo.releases",
-            repo: repoId,
-            node: baseUrl,
-            allAuthors: true,
-          }}>
-          <Button let:hover variant={allAuthors ? "gray" : "background"}>
-            <Icon name="avatar-incognito" />
-            <div class="title-counter">
-              All
-              {#if releaseCount !== undefined}
+        {#if showFilters}
+          <Link
+            route={{
+              resource: "repo.releases",
+              repo: repoId,
+              node: baseUrl,
+              q,
+            }}>
+            <Button let:hover variant={!allAuthors ? "gray" : "background"}>
+              <Icon name="badge" />
+              <div class="title-counter">
+                Delegates
                 <span
                   class="counter"
-                  class:selected={allAuthors}
-                  class:hover={hover && !allAuthors}>
-                  {releaseCount}
+                  class:selected={!allAuthors}
+                  class:hover={hover && allAuthors}>
+                  {delegateReleaseCount}{showMoreButton ? "+" : ""}
                 </span>
-              {/if}
-            </div>
-          </Button>
-        </Link>
+              </div>
+            </Button>
+          </Link>
+          <Link
+            route={{
+              resource: "repo.releases",
+              repo: repoId,
+              node: baseUrl,
+              allAuthors: true,
+              q,
+            }}>
+            <Button let:hover variant={allAuthors ? "gray" : "background"}>
+              <Icon name="avatar-incognito" />
+              <div class="title-counter">
+                All
+                {#if releaseCount !== undefined}
+                  <span
+                    class="counter"
+                    class:selected={allAuthors}
+                    class:hover={hover && !allAuthors}>
+                    {releaseCount}
+                  </span>
+                {/if}
+              </div>
+            </Button>
+          </Link>
+        {/if}
+        {#if searchAvailable}
+          <CobSearch
+            value={q}
+            placeholder="Search releases…"
+            on:search={search} />
+        {/if}
       </div>
     {/if}
   </svelte:fragment>
@@ -203,9 +234,11 @@
     <div class="placeholder">
       <Placeholder
         iconName="parcel"
-        caption={showFilters && !allAuthors
-          ? "No releases by delegates"
-          : "No releases"} />
+        caption={q
+          ? "No releases match"
+          : showFilters && !allAuthors
+            ? "No releases by delegates"
+            : "No releases"} />
     </div>
   {/if}
 

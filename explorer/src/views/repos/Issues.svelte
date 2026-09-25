@@ -2,10 +2,12 @@
   import type { BaseUrl, Issue, IssueState, Repo } from "@http-client";
 
   import { HttpdClient } from "@http-client";
-  import { ISSUES_PER_PAGE } from "./router";
+  import { ISSUES_PER_PAGE, fetchIssuesPage } from "./router";
+  import { replace } from "@app/lib/router";
   import { baseUrlToString } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
+  import CobSearch from "./CobSearch.svelte";
   import ErrorMessage from "@app/components/ErrorMessage.svelte";
   import Icon from "@app/components/Icon.svelte";
   import IssueTeaser from "@app/views/repos/Issue/IssueTeaser.svelte";
@@ -23,6 +25,8 @@
   export let status: IssueState["status"];
   export let nodeId: string;
   export let nodeAvatarUrl: string | undefined;
+  export let q: string | undefined = undefined;
+  export let searchAvailable: boolean;
 
   let loading = false;
   let page = 0;
@@ -41,11 +45,7 @@
     loading = true;
     page += 1;
     try {
-      const response = await api.repo.getAllIssues(repo.rid, {
-        status,
-        page,
-        perPage: ISSUES_PER_PAGE,
-      });
+      const response = await fetchIssuesPage(api, repo.rid, status, q, page);
       allIssues = [...allIssues, ...response];
     } catch (e) {
       error = e;
@@ -54,15 +54,34 @@
     }
   }
 
+  function search(event: CustomEvent<string | undefined>) {
+    void replace({
+      resource: "repo.issues",
+      repo: repoId,
+      node: baseUrl,
+      status,
+      q: event.detail,
+    });
+  }
+
+  $: totalForStatus = repo.payloads["xyz.radicle.project"].meta.issues[status];
+  $: showEmpty = q
+    ? allIssues.length === 0 && !loading && !error
+    : totalForStatus === 0;
+
   $: showMoreButton =
     !loading &&
     !error &&
-    allIssues.length < repo.payloads["xyz.radicle.project"].meta.issues[status];
+    (q
+      ? allIssues.length === (page + 1) * ISSUES_PER_PAGE
+      : allIssues.length < totalForStatus);
 </script>
 
 <style>
   .header {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 0.25rem;
     padding: 1rem;
     border-bottom: 1px solid var(--color-border-subtle);
@@ -123,6 +142,7 @@
         repo: repoId,
         node: baseUrl,
         status: "open",
+        q,
       }}>
       <Button variant={status === "open" ? "gray" : "background"}>
         <Icon name="issue" />
@@ -140,6 +160,7 @@
         repo: repoId,
         node: baseUrl,
         status: "closed",
+        q,
       }}>
       <Button variant={status === "closed" ? "gray" : "background"}>
         <Icon name="issue-closed" />
@@ -151,6 +172,9 @@
         </div>
       </Button>
     </Link>
+    {#if searchAvailable}
+      <CobSearch value={q} placeholder="Search issues…" on:search={search} />
+    {/if}
   </div>
 
   <List items={allIssues}>
@@ -165,9 +189,11 @@
       {error} />
   {/if}
 
-  {#if repo.payloads["xyz.radicle.project"].meta.issues[status] === 0}
+  {#if showEmpty}
     <div class="placeholder">
-      <Placeholder iconName="issue" caption={`No ${status} issues`} />
+      <Placeholder
+        iconName="issue"
+        caption={q ? "No issues match" : `No ${status} issues`} />
     </div>
   {/if}
 

@@ -19,11 +19,13 @@ use radicle::cob::{issue::cache::Issues as _, patch::cache::Patches as _};
 use radicle::git::fmt::{Qualified, RefString};
 use radicle::node::{Alias, NodeId};
 use radicle::storage::{ReadRepository, RemoteRepository};
-use radicle_search::query::CobKind;
+use radicle_search::query::{CobFilter, CobKind};
 
 use crate::api;
 use crate::api::error::Error;
-use crate::api::query::{CobsQuery, PaginationQuery, RepoQuery, MAX_PER_PAGE, MAX_QUERY_LEN};
+use crate::api::query::{
+    CobsQuery, CobsSearchQuery, PaginationQuery, RepoQuery, MAX_PER_PAGE, MAX_QUERY_LEN,
+};
 use crate::api::search::SearchQueryString;
 use crate::api::Context;
 use crate::api::PeelToCommit;
@@ -58,8 +60,10 @@ pub fn router(ctx: Context) -> Router {
         .route("/repos/{rid}/readme/{sha}", get(readme_handler))
         .route("/repos/{rid}/jobs/{sha}", get(job::handler))
         .route("/repos/{rid}/issues", get(issues_handler))
+        .route("/repos/{rid}/issues/search", get(issues_search_handler))
         .route("/repos/{rid}/issues/{id}", get(issue_handler))
         .route("/repos/{rid}/patches", get(patches_handler))
+        .route("/repos/{rid}/patches/search", get(patches_search_handler))
         .route("/repos/{rid}/patches/{id}", get(patch_handler));
 
     #[cfg(feature = "artifacts")]
@@ -1567,6 +1571,64 @@ fn cob_from_doc<T: serde::de::DeserializeOwned>(
     Ok((oid, cob))
 }
 
+async fn issues_from_docs(
+    backend: &crate::api::backend::Backend,
+    docs: Vec<radicle_search::index::cob::Document>,
+) -> Result<Vec<serde_json::Value>, Error> {
+    let issues: Vec<(Oid, radicle::issue::Issue)> = docs
+        .iter()
+        .filter_map(|d| cob_from_doc("issue", d).ok())
+        .collect();
+    let nids = api::unique_nids(
+        issues
+            .iter()
+            .flat_map(|(_, issue)| api::json::cobs::issue_participants(issue)),
+    );
+    let aliases = backend.get_aliases(&nids).await?;
+    Ok(issues
+        .iter()
+        .map(|(oid, issue)| api::json::cobs::Issue::new(issue).as_json((*oid).into(), &aliases))
+        .collect())
+}
+
+async fn patches_from_docs(
+    ctx: Context,
+    backend: &crate::api::backend::Backend,
+    rid: radicle::identity::RepoId,
+    docs: Vec<radicle_search::index::cob::Document>,
+) -> Result<Vec<serde_json::Value>, Error> {
+    let patches: Vec<(Oid, radicle::patch::Patch)> = docs
+        .iter()
+        .filter_map(|d| cob_from_doc("patch", d).ok())
+        .collect();
+    let nids = api::unique_nids(
+        patches
+            .iter()
+            .flat_map(|(_, patch)| api::json::cobs::patch_participants(patch)),
+    );
+    let aliases = backend.get_aliases(&nids).await?;
+    api::blocking(move || {
+        let (repo, _) = ctx.repo(rid)?;
+        Ok::<_, Error>(
+            patches
+                .iter()
+                .map(|(oid, patch)| {
+                    api::json::cobs::Patch::new(patch).as_json((*oid).into(), &repo, &aliases)
+                })
+                .collect::<Vec<_>>(),
+        )
+    })
+    .await
+}
+
+fn search_query(q: Option<String>) -> String {
+    q.unwrap_or_default()
+        .trim()
+        .chars()
+        .take(MAX_QUERY_LEN)
+        .collect()
+}
+
 /// Get repo issues list.
 /// `GET /repos/:rid/issues`
 async fn issues_handler(
@@ -1598,22 +1660,7 @@ async fn issues_handler(
                     per_page,
                 )
                 .await?;
-            let issues: Vec<(Oid, radicle::issue::Issue)> = docs
-                .iter()
-                .filter_map(|d| cob_from_doc("issue", d).ok())
-                .collect();
-            let nids = api::unique_nids(
-                issues
-                    .iter()
-                    .flat_map(|(_, issue)| api::json::cobs::issue_participants(issue)),
-            );
-            let aliases = backend.get_aliases(&nids).await?;
-            issues
-                .iter()
-                .map(|(oid, issue)| {
-                    api::json::cobs::Issue::new(issue).as_json((*oid).into(), &aliases)
-                })
-                .collect::<Vec<_>>()
+            issues_from_docs(backend, docs).await?
         }
         crate::Source::Sqlite => {
             api::blocking(move || {
@@ -1642,6 +1689,40 @@ async fn issues_handler(
         }
     };
 
+    Ok::<_, Error>(Json(issues))
+}
+
+/// Search repo issues.
+/// `GET /repos/:rid/issues/search?q=<query>`
+async fn issues_search_handler(
+    State(ctx): State<Context>,
+    Path(rid): Path<String>,
+    Query(qs): Query<CobsSearchQuery<api::query::IssueStatus>>,
+) -> impl IntoResponse {
+    let rid = ctx.resolve_repo(&rid)?;
+    if ctx.source() != crate::Source::Meilisearch {
+        return Err(Error::SearchNotSupported);
+    }
+    let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
+    let repo_ctx = ctx.clone();
+    api::blocking(move || repo_ctx.repo(rid).map(|_| ())).await?;
+    let q = search_query(qs.q);
+    let page = qs.page.unwrap_or(0);
+    let per_page = qs.per_page.unwrap_or(10).min(MAX_PER_PAGE);
+    let status = qs.status.unwrap_or_default();
+    let docs = backend
+        .search_cobs(
+            CobKind::Issues,
+            rid,
+            &q,
+            CobFilter {
+                state: status.as_state_filter(),
+            },
+            page.saturating_mul(per_page),
+            per_page,
+        )
+        .await?;
+    let issues = issues_from_docs(backend, docs).await?;
     Ok::<_, Error>(Json(issues))
 }
 
@@ -1708,7 +1789,7 @@ async fn patches_handler(
 
     let patches = match ctx.source() {
         crate::Source::Meilisearch => {
-            let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
+            let backend = ctx.search().ok_or(Error::SearchUnavailable)?.clone();
             let docs = backend
                 .list_cobs(
                     CobKind::Patches,
@@ -1718,32 +1799,7 @@ async fn patches_handler(
                     per_page,
                 )
                 .await?;
-            let patches: Vec<(Oid, radicle::patch::Patch)> = docs
-                .iter()
-                .filter_map(|d| cob_from_doc("patch", d).ok())
-                .collect();
-            let nids = api::unique_nids(
-                patches
-                    .iter()
-                    .flat_map(|(_, patch)| api::json::cobs::patch_participants(patch)),
-            );
-            let aliases = backend.get_aliases(&nids).await?;
-            api::blocking(move || {
-                let (repo, _) = ctx.repo(rid)?;
-                Ok::<_, Error>(
-                    patches
-                        .iter()
-                        .map(|(oid, patch)| {
-                            api::json::cobs::Patch::new(patch).as_json(
-                                (*oid).into(),
-                                &repo,
-                                &aliases,
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .await?
+            patches_from_docs(ctx, &backend, rid, docs).await?
         }
         crate::Source::Sqlite => {
             api::blocking(move || {
@@ -1773,6 +1829,38 @@ async fn patches_handler(
         }
     };
 
+    Ok::<_, Error>(Json(patches))
+}
+
+/// Search repo patches.
+/// `GET /repos/:rid/patches/search?q=<query>`
+async fn patches_search_handler(
+    State(ctx): State<Context>,
+    Path(rid): Path<String>,
+    Query(qs): Query<CobsSearchQuery<api::query::PatchStatus>>,
+) -> impl IntoResponse {
+    let rid = ctx.resolve_repo(&rid)?;
+    if ctx.source() != crate::Source::Meilisearch {
+        return Err(Error::SearchNotSupported);
+    }
+    let backend = ctx.search().ok_or(Error::SearchUnavailable)?.clone();
+    let q = search_query(qs.q);
+    let page = qs.page.unwrap_or(0);
+    let per_page = qs.per_page.unwrap_or(10).min(MAX_PER_PAGE);
+    let status = qs.status.unwrap_or_default();
+    let docs = backend
+        .search_cobs(
+            CobKind::Patches,
+            rid,
+            &q,
+            CobFilter {
+                state: status.as_state_filter(),
+            },
+            page.saturating_mul(per_page),
+            per_page,
+        )
+        .await?;
+    let patches = patches_from_docs(ctx, &backend, rid, docs).await?;
     Ok::<_, Error>(Json(patches))
 }
 
@@ -3851,6 +3939,86 @@ mod routes {
                 ],
             })
         );
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_cob_search_is_not_supported() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = super::router(seed(tmp.path()));
+
+        for path in ["issues", "patches"] {
+            let response = get(&app, format!("/repos/{RID}/{path}/search?q=hello")).await;
+            assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED, "{path}");
+            assert_eq!(response.json().await["code"], json!(501), "{path}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_issues_search_meili_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, format!("/repos/{RID}/issues/search?q=everyone")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.json().await;
+        assert_eq!(body.as_array().unwrap().len(), 1);
+        assert_eq!(body[0]["id"], json!(ISSUE_ID));
+        assert_eq!(body[0]["author"]["alias"], json!(CONTRIBUTOR_ALIAS));
+
+        let response = get(
+            &app,
+            format!("/repos/{RID}/issues/search?q=everyone&status=closed"),
+        )
+        .await;
+        assert_eq!(response.json().await, json!([]));
+
+        let response = get(&app, format!("/repos/{RID}/issues/search?q=zzz")).await;
+        assert_eq!(response.json().await, json!([]));
+
+        let response = get(&app, format!("/repos/{RID}/issues/search")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.json().await[0]["id"], json!(ISSUE_ID));
+    }
+
+    #[tokio::test]
+    async fn test_patches_search_meili_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, format!("/repos/{RID}/patches/search?q=README")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.json().await;
+        assert_eq!(body.as_array().unwrap().len(), 1);
+        assert_eq!(body[0]["id"], json!(PATCH_ID));
+        assert_eq!(body[0]["author"]["alias"], json!(CONTRIBUTOR_ALIAS));
+
+        let response = get(
+            &app,
+            format!("/repos/{RID}/patches/search?q=README&status=merged"),
+        )
+        .await;
+        assert_eq!(response.json().await, json!([]));
+
+        let response = get(&app, format!("/repos/{RID}/patches/search?q=zzz")).await;
+        assert_eq!(response.json().await, json!([]));
+    }
+
+    #[tokio::test]
+    async fn test_cob_search_routes_win_over_cob_ids() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        for path in ["issues", "patches"] {
+            let response = get(&app, format!("/repos/{RID}/{path}/search?q=zzz")).await;
+            assert_eq!(response.status(), StatusCode::OK, "{path}");
+            assert_eq!(response.json().await, json!([]), "{path}");
+        }
     }
 
     #[tokio::test]

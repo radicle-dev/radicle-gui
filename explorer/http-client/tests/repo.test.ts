@@ -1,4 +1,4 @@
-import { describe, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { HttpdClient } from "@http-client";
 import config from "@app/lib/config";
@@ -8,6 +8,7 @@ import {
   cobRid,
   sourceBrowsingRid,
 } from "@tests/support/fixtures.js";
+import { useLocalHttpd } from "@tests/support/support.js";
 
 describe("repo", () => {
   const api = new HttpdClient({
@@ -120,4 +121,22 @@ describe("repo", () => {
   test("#getAllPatches(rid)", async () => {
     await api.repo.getAllPatches(cobRid);
   });
+
+  test.skipIf(!useLocalHttpd)(
+    "#searchIssues(rid, { q }) answers 501 in sqlite mode",
+    async () => {
+      await expect(
+        api.repo.searchIssues(cobRid, { q: "hello" }),
+      ).rejects.toMatchObject({ status: 501 });
+    },
+  );
+
+  test.skipIf(!useLocalHttpd)(
+    "#searchPatches(rid, { q }) answers 501 in sqlite mode",
+    async () => {
+      await expect(
+        api.repo.searchPatches(cobRid, { q: "hello" }),
+      ).rejects.toMatchObject({ status: 501 });
+    },
+  );
 });

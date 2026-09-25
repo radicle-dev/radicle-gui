@@ -545,6 +545,27 @@ export class Client {
     );
   }
 
+  public async searchIssues(
+    rid: string,
+    query: {
+      q?: string;
+      status?: string;
+      page?: number;
+      perPage?: number;
+    },
+    options?: RequestOptions,
+  ): Promise<Issue[]> {
+    return this.#fetcher.fetchOk(
+      {
+        method: "GET",
+        path: `repos/${rid}/issues/search`,
+        query,
+        options,
+      },
+      issuesSchema,
+    );
+  }
+
   public async getPatchById(
     rid: string,
     patchId: string,
@@ -573,6 +594,27 @@ export class Client {
       {
         method: "GET",
         path: `repos/${rid}/patches`,
+        query,
+        options,
+      },
+      patchesSchema,
+    );
+  }
+
+  public async searchPatches(
+    rid: string,
+    query: {
+      q?: string;
+      status?: string;
+      page?: number;
+      perPage?: number;
+    },
+    options?: RequestOptions,
+  ): Promise<Patch[]> {
+    return this.#fetcher.fetchOk(
+      {
+        method: "GET",
+        path: `repos/${rid}/patches/search`,
         query,
         options,
       },

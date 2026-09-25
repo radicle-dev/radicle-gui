@@ -87,15 +87,17 @@ pub(crate) fn eq_filter(field: &str, value: impl std::fmt::Display) -> String {
     format!("{field} = \"{value}\"")
 }
 
-pub(crate) fn cob_list_filter(rid: RepoId, state: Option<&str>) -> String {
-    match state {
-        Some(state) => format!(
-            "{} AND {}",
-            eq_filter("rid", rid),
-            eq_filter("state", state)
-        ),
-        None => eq_filter("rid", rid),
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CobFilter<'a> {
+    pub state: Option<&'a str>,
+}
+
+pub(crate) fn cob_search_filter(rid: RepoId, filter: &CobFilter<'_>) -> String {
+    let mut clauses = vec![eq_filter("rid", rid)];
+    if let Some(state) = filter.state {
+        clauses.push(eq_filter("state", state));
     }
+    clauses.join(" AND ")
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -308,18 +310,22 @@ impl SearchClient {
         Ok(rids)
     }
 
-    pub async fn list_cobs(
+    pub async fn search_cobs(
         &self,
         kind: CobKind,
         rid: RepoId,
-        state: Option<&str>,
+        q: &str,
+        filter: CobFilter<'_>,
         offset: usize,
         limit: usize,
     ) -> Result<Vec<cob::Document>, SearchError> {
         let index = self.cob_index(kind);
-        let filter = cob_list_filter(rid, state);
+        let filter = cob_search_filter(rid, &filter);
         let sort = ["timestamp:desc"];
         let mut query = index.search();
+        if !q.is_empty() {
+            query.with_query(q);
+        }
         query
             .with_filter(&filter)
             .with_sort(&sort)
@@ -331,6 +337,18 @@ impl SearchClient {
             .into_iter()
             .map(|hit| ensure_v(hit.result.v).map(|()| hit.result))
             .collect()
+    }
+
+    pub async fn list_cobs(
+        &self,
+        kind: CobKind,
+        rid: RepoId,
+        state: Option<&str>,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<cob::Document>, SearchError> {
+        self.search_cobs(kind, rid, "", CobFilter { state }, offset, limit)
+            .await
     }
 
     pub async fn get_cob(
@@ -513,15 +531,20 @@ mod tests {
     }
 
     #[test]
-    fn cob_list_filter_composes_state() {
+    fn cob_search_filter_composes_state() {
         use std::str::FromStr;
         let rid = radicle::identity::RepoId::from_str("rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp").unwrap();
         assert_eq!(
-            cob_list_filter(rid, None),
+            cob_search_filter(rid, &CobFilter::default()),
             "rid = \"rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp\""
         );
         assert_eq!(
-            cob_list_filter(rid, Some("open")),
+            cob_search_filter(
+                rid,
+                &CobFilter {
+                    state: Some("open")
+                }
+            ),
             "rid = \"rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp\" AND state = \"open\""
         );
     }

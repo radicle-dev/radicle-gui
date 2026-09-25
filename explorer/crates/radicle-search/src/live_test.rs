@@ -14,7 +14,7 @@ use crate::index::repo::DocumentKey;
 use crate::index::{Indexes, cob, release, repo};
 use crate::indexer::Indexer;
 use crate::indexer::build;
-use crate::query::{CobKind, ReleaseView, SearchClient, SearchError, SortField};
+use crate::query::{CobFilter, CobKind, ReleaseView, SearchClient, SearchError, SortField};
 
 struct LiveMeili {
     child: Child,
@@ -303,6 +303,56 @@ async fn live_filters_and_reads() {
         .await
         .unwrap();
     assert_eq!(closed.len(), 0);
+
+    let hits = client
+        .search_cobs(
+            CobKind::Issues,
+            rid,
+            "everyone",
+            CobFilter {
+                state: Some("open"),
+            },
+            0,
+            10,
+        )
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].title, "Issue #1");
+
+    let phrase = client
+        .search_cobs(
+            CobKind::Issues,
+            rid,
+            "hello everyone",
+            CobFilter::default(),
+            0,
+            10,
+        )
+        .await
+        .unwrap();
+    assert_eq!(phrase.len(), 1);
+
+    let misses = client
+        .search_cobs(CobKind::Issues, rid, "zzz", CobFilter::default(), 0, 10)
+        .await
+        .unwrap();
+    assert!(misses.is_empty());
+
+    let listed = client
+        .search_cobs(
+            CobKind::Issues,
+            rid,
+            "",
+            CobFilter {
+                state: Some("open"),
+            },
+            0,
+            10,
+        )
+        .await
+        .unwrap();
+    assert_eq!(listed.len(), open.len());
 
     let aliases = client.get_aliases(&[profile.public_key]).await.unwrap();
     assert_eq!(

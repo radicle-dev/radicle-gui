@@ -53,6 +53,15 @@ pub struct CobsQuery<T> {
     pub status: Option<T>,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CobsSearchQuery<T> {
+    pub q: Option<String>,
+    pub page: Option<usize>,
+    pub per_page: Option<usize>,
+    pub status: Option<T>,
+}
+
 #[cfg(feature = "artifacts")]
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
