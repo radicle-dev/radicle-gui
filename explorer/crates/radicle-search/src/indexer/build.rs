@@ -16,7 +16,7 @@ use crate::index::{cob, inventory, node, policy, repo};
 
 const ONE_YEAR_SECS: i64 = 52 * 7 * 24 * 60 * 60;
 
-pub(super) fn document(
+pub(crate) fn document(
     profile: &Profile,
     db: &radicle::node::Database,
     rid: RepoId,

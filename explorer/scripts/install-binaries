@@ -5,8 +5,10 @@ REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 RELEASE=$(cat "$REPO_ROOT/tests/support/heartwood-release")
 HTTPD_RELEASE=$(cat "$REPO_ROOT/tests/support/radicle-httpd-release")
 ARTIFACT_RELEASE=$(cat "$REPO_ROOT/tests/support/radicle-artifact-release")
+MEILI_RELEASE=$(cat "$REPO_ROOT/tests/support/meilisearch-release")
 BINARY_PATH=$REPO_ROOT/tests/tmp/bin
 OS=$(uname)
+MACHINE=$(uname -m)
 
 install() {
   local BINARY=""
@@ -20,7 +22,14 @@ install() {
       ARCH="aarch64-apple-darwin"
       ;;
     Linux)
-      ARCH="x86_64-unknown-linux-musl"
+      case "$MACHINE" in
+      aarch64 | arm64)
+        ARCH="aarch64-unknown-linux-musl"
+        ;;
+      *)
+        ARCH="x86_64-unknown-linux-musl"
+        ;;
+      esac
       ;;
     *)
       echo "There are no precompiled binaries for your OS: $OS, compile $1 manually and make sure it's in PATH." && exit 1
@@ -30,22 +39,41 @@ install() {
     heartwood)
       FETCH_URL="https://files.radicle.dev/releases/$2/radicle-$ARCH.tar.xz"
       FILENAME="radicle-$2-$ARCH"
+      if [ "$ARCH" = "aarch64-unknown-linux-musl" ] && ! curl --fail --silent --head "$FETCH_URL" >/dev/null; then
+        echo "No aarch64 heartwood asset for v$2 ($FETCH_URL); compile heartwood manually for this host and make sure it's in PATH." && exit 1
+      fi
       ;;
     httpd)
       FETCH_URL="https://files.radicle.dev/releases/radicle-httpd/$2/radicle-httpd-$ARCH.tar.xz"
       FILENAME="radicle-httpd-$2-$ARCH"
+      if [ "$ARCH" = "aarch64-unknown-linux-musl" ] && ! curl --fail --silent --head "$FETCH_URL" >/dev/null; then
+        echo "No aarch64 httpd asset for v$2 ($FETCH_URL); compile radicle-httpd manually for this host and make sure it's in PATH." && exit 1
+      fi
       ;;
     artifact)
       # radicle-artifact publishes bare executables instead of archives.
       FETCH_URL="https://files.radicle.dev/releases/radicle-artifact/$2/rad-artifact_$2_$ARCH"
       BINARY="rad-artifact"
       ;;
+    meilisearch)
+      case "$OS" in
+      Darwin) MEILI_ASSET="meilisearch-macos-apple-silicon" ;;
+      Linux)
+        case "$MACHINE" in
+        aarch64 | arm64) MEILI_ASSET="meilisearch-linux-aarch64" ;;
+        *) MEILI_ASSET="meilisearch-linux-amd64" ;;
+        esac
+        ;;
+      esac
+      FETCH_URL="https://github.com/meilisearch/meilisearch/releases/download/$2/$MEILI_ASSET"
+      BINARY="meilisearch"
+      ;;
     *)
       echo "No precompiled binary found with the name $1." && exit 1
       ;;
     esac
 
-    echo Downloading "$1" v"$2" from "$FETCH_URL into /tests/tmp/bin/$1/$2"
+    echo Downloading "$1" v"${2#v}" from "$FETCH_URL into /tests/tmp/bin/$1/$2"
     if test -n "$BINARY"; then
       curl --fail --silent --location --output "$BINARY_PATH/$1/$2/$BINARY" "$FETCH_URL" || (echo "Download failed" && exit 1)
       chmod +x "$BINARY_PATH/$1/$2/$BINARY"
@@ -79,5 +107,6 @@ done
 install "heartwood" "$RELEASE"
 install "httpd" "$HTTPD_RELEASE"
 install "artifact" "$ARTIFACT_RELEASE"
+install "meilisearch" "$MEILI_RELEASE"
 
 echo

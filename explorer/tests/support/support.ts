@@ -37,6 +37,17 @@ export const radicleArtifactRelease = (
   await Fs.readFile(`${supportDir}/radicle-artifact-release`, "utf8")
 ).trim();
 
+export const meilisearchRelease = (
+  await Fs.readFile(`${supportDir}/meilisearch-release`, "utf8")
+).trim();
+
+export const meilisearchBinaryPath = Path.join(
+  tmpDir,
+  "bin",
+  "meilisearch",
+  meilisearchRelease,
+);
+
 export const useLocalHttpd = process.env.USE_LOCAL_HTTPD === "true";
 
 export const releaseApiOnlyLocal =

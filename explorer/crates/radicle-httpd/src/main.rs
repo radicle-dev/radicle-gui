@@ -37,6 +37,8 @@ Environment
                                      RUST_LOG=radicle_httpd=debug). Defaults to "info".
     RADICLE_HTTPD_LOG_FORMAT         Log rendering: text (default) or json.
                                      Unrecognised values fall back to "text".
+    RADICLE_SEARCH_INDEX_PREFIX      Prefix prepended to every index name (e.g. "staging-").
+                                     Defaults to "" (no prefix).
 "#;
 
 #[tokio::main]
@@ -136,15 +138,17 @@ fn search_options_from_env() -> anyhow::Result<Option<httpd::SearchOptions>> {
     let api_key = std::env::var("RADICLE_SEARCH_KEY")
         .ok()
         .filter(|s| !s.is_empty());
-    let index_name = std::env::var("RADICLE_SEARCH_INDEX_NAME")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "repos".to_string());
+    if std::env::var_os("RADICLE_SEARCH_INDEX_NAME").is_some() {
+        tracing::warn!(
+            "RADICLE_SEARCH_INDEX_NAME is no longer read; set RADICLE_SEARCH_INDEX_PREFIX instead"
+        );
+    }
+    let index_prefix = std::env::var("RADICLE_SEARCH_INDEX_PREFIX").unwrap_or_default();
     let query_timeout = parse_timeout_ms_from_env("RADICLE_SEARCH_TIMEOUT_MS", 500)?;
     Ok(Some(httpd::SearchOptions {
         url,
         api_key,
-        index_name,
+        index_prefix,
         query_timeout,
     }))
 }

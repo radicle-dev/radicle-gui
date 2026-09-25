@@ -29,6 +29,11 @@ impl Config {
         let meili_key = env::var("RADICLE_SEARCH_MEILI_KEY")
             .ok()
             .filter(|k| !k.is_empty());
+        if env::var_os("RADICLE_SEARCH_INDEX_NAME").is_some() {
+            tracing::warn!(
+                "RADICLE_SEARCH_INDEX_NAME is no longer read; set RADICLE_SEARCH_INDEX_PREFIX instead"
+            );
+        }
         let index_prefix = index_prefix_from_env("RADICLE_SEARCH_INDEX_PREFIX");
         let rescan_interval =
             duration_from_env("RADICLE_SEARCH_RESCAN_SECS", DEFAULT_RESCAN_INTERVAL_SECS)?;
@@ -58,7 +63,7 @@ impl Config {
 
     /// Full index name for a base name, e.g. `index_name("repos")`.
     pub fn index_name(&self, base: &str) -> String {
-        format!("{}{base}", self.index_prefix)
+        crate::query::index_uid(&self.index_prefix, base)
     }
 }
 

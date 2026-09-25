@@ -79,6 +79,16 @@ announced.
 3. **Periodic rescan.** Every `RADICLE_SEARCH_RESCAN_SECS` (default 1h) as a
    safety net for missed events.
 
+## Live tests
+
+`src/live_test.rs` covers filtering/reads, the pagination cap, schema-version
+and not-found handling, unseed purging, and timeout/connection error mapping
+against a real, locally-spawned Meilisearch instance, rather than mocking the
+engine. Run them with `npm run test:live-search` from `explorer/` (equivalent to
+`cargo test -p radicle-search -- --ignored --test-threads=1` after
+`./scripts/install-binaries`); they're `#[ignore]`d, so a plain `cargo test`
+skips them.
+
 ## Setup
 
 ### 1. Install Meilisearch
@@ -150,33 +160,32 @@ All via environment variables:
 
 httpd reads a parallel set to decide, at runtime, whether to use the index:
 
-| Variable                    | Default  | Purpose                                                                                                                 |
-| --------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `RADICLE_SEARCH_URL`        | _(none)_ | Meilisearch instance httpd queries. **Unset disables search** — httpd serves listings and search from its storage walk. |
-| `RADICLE_SEARCH_KEY`        | _(none)_ | Meilisearch API key.                                                                                                    |
-| `RADICLE_SEARCH_INDEX_NAME` | `repos`  | Index name to query.                                                                                                    |
-| `RADICLE_SEARCH_TIMEOUT_MS` | `500`    | Per-query timeout in milliseconds (must be a non-zero integer).                                                         |
+| Variable                      | Default  | Purpose                                                                                                                                                           |
+| ----------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RADICLE_SEARCH_URL`          | _(none)_ | Meilisearch instance httpd queries. **Unset disables search** — httpd serves listings and search from its storage walk.                                           |
+| `RADICLE_SEARCH_KEY`          | _(none)_ | Meilisearch API key.                                                                                                                                              |
+| `RADICLE_SEARCH_INDEX_PREFIX` | _(none)_ | Prefix prepended to each index name (e.g. `prod-` → `prod-repos`); must match the daemon's prefix. When unset, index names are `repos`, `issues`, `patches`, etc. |
+| `RADICLE_SEARCH_TIMEOUT_MS`   | `500`    | Per-query timeout in milliseconds (must be a non-zero integer).                                                                                                   |
 
 Use the same URL and key in both processes. A single `radicle-httpd` binary
 handles both modes — no build-time feature flag is involved. When
 `RADICLE_SEARCH_URL` is unset, or when a query to the backend fails or times
 out, httpd transparently falls back to the storage walk.
 
-## Migrating from a custom `RADICLE_SEARCH_INDEX_NAME` (daemon)
+## Migrating from a custom `RADICLE_SEARCH_INDEX_NAME`
 
-Earlier daemon versions exposed a single `RADICLE_SEARCH_INDEX_NAME` variable
-that named the one repos index. That variable is now
-`RADICLE_SEARCH_INDEX_PREFIX` on the daemon side.
+Earlier versions exposed a single `RADICLE_SEARCH_INDEX_NAME` variable for the
+repos index. That variable is now `RADICLE_SEARCH_INDEX_PREFIX`, and both
+`radicle-search` and `radicle-httpd` use it to reference all six indexes.
 
-If you were running the daemon with a non-default index name (e.g.
+If you were running with a non-default index name (e.g.
 `RADICLE_SEARCH_INDEX_NAME=my-repos`), update as follows:
 
 - **Daemon:** replace `RADICLE_SEARCH_INDEX_NAME=my-repos` with
   `RADICLE_SEARCH_INDEX_PREFIX=my-` so the daemon writes to `my-repos`,
   `my-issues`, `my-patches`, etc.
-- **httpd:** keep `RADICLE_SEARCH_INDEX_NAME=my-repos` unchanged — httpd still
-  uses it to find the repos index.
+- **httpd:** replace `RADICLE_SEARCH_INDEX_NAME=my-repos` with
+  `RADICLE_SEARCH_INDEX_PREFIX=my-` so httpd queries the same prefixed indexes.
 
-Without this change the daemon will write to the new default index names
-(`repos`, `issues`, …) while httpd continues querying the old name — a silent
-mismatch where search returns no results.
+Without this change the daemon and httpd will use mismatched index names — a
+silent mismatch where search returns no results.

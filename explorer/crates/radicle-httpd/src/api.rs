@@ -96,14 +96,14 @@ impl Context {
             Some(cfg) => match SearchClient::new(
                 &cfg.url,
                 cfg.api_key.as_deref(),
-                &cfg.index_name,
+                &cfg.index_prefix,
                 cfg.query_timeout,
             ) {
                 Ok(client) => {
                     tracing::info!(
-                        "search backend enabled: url={} index={}",
+                        "search backend enabled: url={} prefix={:?}",
                         cfg.url,
-                        cfg.index_name
+                        cfg.index_prefix
                     );
                     Some(client)
                 }

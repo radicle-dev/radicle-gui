@@ -5,3 +5,6 @@ pub mod query;
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod live_test;

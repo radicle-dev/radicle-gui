@@ -17,6 +17,7 @@
     "test:http-client:unit": "NODE_CONFIG_ENV='test' TZ='UTC' vitest run --config http-client/vite.config.ts --reporter verbose",
     "test:http-client:unit:local": "scripts/compile-local-httpd && USE_LOCAL_HTTPD=true NODE_CONFIG_ENV='test' TZ='UTC' vitest run --config http-client/vite.config.ts --reporter verbose",
     "test:radicle-httpd": "cargo test --all-features",
+    "test:live-search": "scripts/install-binaries && cargo test -p radicle-search -- --ignored --test-threads=1",
     "deploy": "rimraf build && npm clean-install && NODE_CONFIG_ENV='radicle.network' npm run build && scripts/inject-plausible && npx wrangler deploy",
     "deploy:open-graph": "cd workers/open-graph && npx wrangler deploy",
     "start:open-graph": "cd workers/open-graph && npx wrangler dev"

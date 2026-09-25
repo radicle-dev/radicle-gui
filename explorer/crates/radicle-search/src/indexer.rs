@@ -1,5 +1,5 @@
 mod bootstrap;
-mod build;
+pub(crate) mod build;
 mod event;
 
 use std::collections::{BTreeSet, HashSet};
@@ -428,8 +428,7 @@ impl Indexer {
             ReindexAction::Delete => {
                 tracing::info!("removing {rid} from index (no longer seeded)");
                 self.indexes.repos.delete(&key.to_string()).await?;
-                // Meilisearch filter values containing `:` must be quoted.
-                let filter = format!("rid = \"{rid}\"");
+                let filter = crate::query::eq_filter("rid", rid);
                 self.indexes.issues.delete_by_filter(&filter).await?;
                 self.indexes.patches.delete_by_filter(&filter).await?;
                 self.seeded.remove(&key).await;

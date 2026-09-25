@@ -70,7 +70,7 @@ pub struct Options {
 pub struct SearchOptions {
     pub url: String,
     pub api_key: Option<String>,
-    pub index_name: String,
+    pub index_prefix: String,
     pub query_timeout: std::time::Duration,
 }
 
