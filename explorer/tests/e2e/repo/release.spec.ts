@@ -185,16 +185,53 @@ test.describe(() => {
     await expect(page.getByText("delegate-artifact")).toBeVisible();
     await expect(page.getByText("eve-artifact")).toBeHidden();
 
-    await page.getByRole("link", { name: "All 2" }).click();
+    // The scopes don't overlap: others shows only Eve's artifact.
+    await page.getByRole("link", { name: "Others 1" }).click();
     await expect(page).toHaveURL(
-      `${peer.uiUrl()}/${rid}/releases/${releaseId}?allAuthors=true`,
+      `${peer.uiUrl()}/${rid}/releases/${releaseId}?scope=untrusted`,
     );
     await expect(page.getByText("eve-artifact")).toBeVisible();
+    await expect(page.getByText("delegate-artifact")).toBeHidden();
 
     await page.getByRole("link", { name: "Delegates 1" }).click();
     await expect(page).toHaveURL(
       `${peer.uiUrl()}/${rid}/releases/${releaseId}`,
     );
     await expect(page.getByText("eve-artifact")).toBeHidden();
+  });
+
+  test("open others' release on delegate artifacts", async ({
+    page,
+    peer,
+    peerManager,
+  }) => {
+    const name = "others-release";
+    const { rid, repoFolder } = await createRepo(peer, { name });
+    const { contributor, repoFolder: contributorFolder } =
+      await createContributor(peerManager, peer, { rid, repoName: name });
+    const { releaseId } = await registerArtifact(
+      contributor,
+      contributorFolder,
+      { name: "eve-artifact" },
+    );
+    await syncFrom(peer, repoFolder);
+    await registerArtifact(peer, repoFolder, {
+      name: "delegate-artifact",
+      release: releaseId,
+    });
+
+    await page.goto(`${peer.uiUrl()}/${rid}/releases?scope=untrusted`);
+    await page.locator(`a[href$="/releases/${releaseId}"]`).click();
+    await expect(page).toHaveURL(
+      `${peer.uiUrl()}/${rid}/releases/${releaseId}`,
+    );
+    await expect(page.getByText("delegate-artifact")).toBeVisible();
+    await expect(page.getByText("eve-artifact")).toBeHidden();
+
+    // The breadcrumb leads back to the others' releases.
+    await page.locator('a[href$="/releases?scope=untrusted"]').click();
+    await expect(page).toHaveURL(
+      `${peer.uiUrl()}/${rid}/releases?scope=untrusted`,
+    );
   });
 });

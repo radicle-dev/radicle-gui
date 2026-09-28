@@ -110,6 +110,33 @@ describe("route invariant when parsed", () => {
     });
   });
 
+  test("repos.releases", () => {
+    expectParsingInvariant({
+      resource: "repo.releases",
+      node,
+      repo: "REPO",
+    });
+  });
+
+  test("repos.releases with untrusted scope", () => {
+    expectParsingInvariant({
+      resource: "repo.releases",
+      node,
+      repo: "REPO",
+      scope: "untrusted",
+    });
+  });
+
+  test("repos.release with untrusted scope", () => {
+    expectParsingInvariant({
+      resource: "repo.release",
+      node,
+      repo: "REPO",
+      release: "RELEASE",
+      scope: "untrusted",
+    });
+  });
+
   test("repos.issues with status", () => {
     expectParsingInvariant({
       resource: "repo.issues",

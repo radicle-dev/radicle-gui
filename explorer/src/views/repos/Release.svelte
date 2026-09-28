@@ -1,7 +1,14 @@
 <script lang="ts">
-  import type { Artifact, BaseUrl, Release, Repo } from "@http-client";
+  import type {
+    Artifact,
+    BaseUrl,
+    Release,
+    ReleaseScope,
+    Repo,
+  } from "@http-client";
 
   import * as utils from "@app/lib/utils";
+  import { artifactView, redactedByTrusted } from "@app/lib/releases";
 
   import Badge from "@app/components/Badge.svelte";
   import Button from "@app/components/Button.svelte";
@@ -20,7 +27,7 @@
   export let release: Release;
   export let repo: Repo;
   export let repoId: string;
-  export let allAuthors: boolean;
+  export let scope: ReleaseScope | undefined = undefined;
   export let nodeId: string;
   export let nodeAvatarUrl: string | undefined;
 
@@ -33,14 +40,6 @@
 
   $: delegateIds = new Set(repo.delegates.map(d => d.id));
 
-  // Whether the artifact was redacted by a trusted party (its author or a
-  // delegate), mirroring the backend's default-hidden rule.
-  function redactedByTrusted(artifact: Artifact, delegates: Set<string>) {
-    return artifact.redactions.some(
-      r => r.user.id === artifact.author.id || delegates.has(r.user.id),
-    );
-  }
-
   // Label for the redacted badge. Delegate takes precedence over author,
   // since the author may also be a delegate.
   function redactedByLabel(artifact: Artifact, delegates: Set<string>): string {
@@ -48,46 +47,18 @@
     return byDelegate ? "Redacted by delegate" : "Redacted by author";
   }
 
-  // Artifacts visible under the given redaction toggle.
-  function visible(
-    list: Artifact[],
-    show: boolean,
-    delegates: Set<string>,
-  ): Artifact[] {
-    return show ? list : list.filter(a => !redactedByTrusted(a, delegates));
-  }
-
-  $: delegateArtifacts = release.artifacts.filter(a =>
-    delegateIds.has(a.author.id),
-  );
-  // Artifacts are scoped to delegate authors by default; the endpoint returns
-  // all of them, so filtering happens client-side. With no delegate artifact
-  // at all, fall back to every author.
-  $: authorArtifacts =
-    allAuthors || delegateArtifacts.length === 0
-      ? release.artifacts
-      : delegateArtifacts;
-  $: shownArtifacts = visible(authorArtifacts, showRedacted, delegateIds);
-  // The redacted count is the hidden set within the current author scope.
-  $: redactedCount = authorArtifacts.filter(a =>
-    redactedByTrusted(a, delegateIds),
-  ).length;
-
-  // Segment counts reflect what each choice would actually show, so an
-  // artifact hidden as redacted never counts towards a scope. They label the
-  // segments only: the author scope and the filter visibility come from the
-  // unfiltered sets, so toggling redacted artifacts never moves them.
-  $: delegateCount = visible(
-    delegateArtifacts,
-    showRedacted,
+  $: activeScope = scope ?? "trusted";
+  $: view = artifactView(
+    release.artifacts,
     delegateIds,
-  ).length;
-  $: allCount = visible(release.artifacts, showRedacted, delegateIds).length;
-
-  // Filter only when both scopes hold something.
-  $: showFilters =
-    delegateArtifacts.length > 0 &&
-    delegateArtifacts.length !== release.artifacts.length;
+    activeScope,
+    showRedacted,
+  );
+  $: shownArtifacts = view.shown;
+  $: redactedCount = view.redactedCount;
+  $: delegateCount = view.counts.trusted;
+  $: otherCount = view.counts.untrusted;
+  $: showFilters = view.showFilters;
 
   // Format a byte count as a human-readable size (mirrors the CLI display).
   function formatBytes(bytes: number): string {
@@ -382,7 +353,7 @@
         resource: "repo.releases",
         repo: repoId,
         node: baseUrl,
-        allAuthors,
+        scope: delegateIds.has(release.creator.id) ? undefined : "untrusted",
       }}>
       Releases
     </Link>
@@ -449,14 +420,14 @@
                   }}>
                   <Button
                     let:hover
-                    variant={!allAuthors ? "gray" : "background"}>
+                    variant={activeScope === "trusted" ? "gray" : "background"}>
                     <Icon name="badge" />
                     <div class="title-counter">
                       Delegates
                       <span
                         class="counter"
-                        class:selected={!allAuthors}
-                        class:hover={hover && allAuthors}>
+                        class:selected={activeScope === "trusted"}
+                        class:hover={hover && activeScope !== "trusted"}>
                         {delegateCount}
                       </span>
                     </div>
@@ -468,19 +439,22 @@
                     repo: repoId,
                     node: baseUrl,
                     release: release.id,
-                    allAuthors: true,
+                    scope: "untrusted",
                   }}>
                   <Button
                     let:hover
-                    variant={allAuthors ? "gray" : "background"}>
+                    title="Non-delegates"
+                    variant={activeScope === "untrusted"
+                      ? "gray"
+                      : "background"}>
                     <Icon name="avatar-incognito" />
                     <div class="title-counter">
-                      All
+                      Others
                       <span
                         class="counter"
-                        class:selected={allAuthors}
-                        class:hover={hover && !allAuthors}>
-                        {allCount}
+                        class:selected={activeScope === "untrusted"}
+                        class:hover={hover && activeScope !== "untrusted"}>
+                        {otherCount}
                       </span>
                     </div>
                   </Button>
@@ -505,7 +479,11 @@
         {#if shownArtifacts.length === 0}
           <div class="empty-artifacts">
             <Icon name="attach" />
-            No artifacts
+            {!showFilters
+              ? "No artifacts"
+              : activeScope === "trusted"
+                ? "No artifacts by delegates"
+                : "No artifacts by others"}
           </div>
         {/if}
 

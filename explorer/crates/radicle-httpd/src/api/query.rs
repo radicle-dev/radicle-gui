@@ -59,10 +59,25 @@ pub struct CobsQuery<T> {
 pub struct ReleasesQuery {
     pub page: Option<usize>,
     pub per_page: Option<usize>,
-    /// Include releases and artifacts authored by non-delegates.
+    /// Whose releases and artifacts to show. Defaults to trusted.
+    pub scope: Option<ReleaseScope>,
+    /// Compat: older clients send `allAuthors=true` for every author.
+    /// Ignored when `scope` is set. Server: remove 6 months after release,
+    /// see docs/api-changes.md.
     pub all_authors: Option<bool>,
     /// Include artifacts redacted by their author or a delegate.
     pub show_redacted: Option<bool>,
+}
+
+/// The two disjoint author scopes of the releases list. A web node has no
+/// local user, so trusted means delegates.
+#[cfg(feature = "artifacts")]
+#[derive(Default, Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub enum ReleaseScope {
+    #[default]
+    Trusted,
+    Untrusted,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
