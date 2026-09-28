@@ -14,7 +14,6 @@
   export let delegateIds: Set<string>;
   export let release: Release;
   export let repoId: string;
-  export let allAuthors: boolean = false;
 
   // The COB has no title; fall back to the tag name, then the release id.
   $: title = release.title || release.tagName || release.id;
@@ -84,7 +83,6 @@
             repo: repoId,
             node: baseUrl,
             release: release.id,
-            allAuthors,
           }}>
           <InlineTitle fontSize="body-m-regular" content={title} />
         </Link>

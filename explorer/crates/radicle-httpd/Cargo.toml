@@ -33,7 +33,7 @@ lru = { version = "0.18.2" }
 mime_guess = { version = "2.0.5" }
 nonempty = { version = "0.12.0", features = ["serialize"] }
 radicle.workspace = true
-radicle-artifact = { version = "0.18", optional = true }
+radicle-artifact = { version = "0.23", optional = true }
 radicle-job = { version = "0.6.0" }
 radicle-search = { path = "../radicle-search" }
 radicle-surf = { workspace = true, features = ["serde"] }

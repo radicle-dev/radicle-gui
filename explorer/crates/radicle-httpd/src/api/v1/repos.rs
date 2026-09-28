@@ -417,7 +417,7 @@ async fn repo_handler(State(ctx): State<Context>, Path(rid): Path<String>) -> im
     let rid = ctx.resolve_repo(&rid)?;
     let info = api::blocking(move || {
         let (repo, doc) = ctx.repo(rid)?;
-        ctx.repo_info(&repo, doc)
+        ctx.repo_info_with_releases(&repo, doc)
     })
     .await?;
 
@@ -1404,7 +1404,6 @@ mod routes {
                         "open": 1,
                         "closed": 0,
                       },
-                      "releases": 0,
                     }
                   }
                 },
@@ -1442,7 +1441,6 @@ mod routes {
                         "open": 0,
                         "closed": 0,
                       },
-                      "releases": 0,
                     }
                   }
                 },
@@ -1493,7 +1491,6 @@ mod routes {
                         "open": 1,
                         "closed": 0,
                       },
-                      "releases": 0,
                     }
                   }
                 },
@@ -1531,7 +1528,6 @@ mod routes {
                         "open": 0,
                         "closed": 0,
                       },
-                      "releases": 0,
                     }
                   }
                 },

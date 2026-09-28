@@ -9,7 +9,7 @@
   import config from "@app/lib/config";
   import debounce from "lodash/debounce";
   import { routeToPath } from "@app/lib/router";
-  import { toClipboard } from "@app/lib/utils";
+  import { toClipboard, visibleReleaseCount } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
   import Icon from "@app/components/Icon.svelte";
@@ -20,6 +20,9 @@
   export let activeTab: ActiveTab = undefined;
   export let repo: Repo;
   export let repoId: string;
+
+  // Undefined on older nodes that don't report release counts.
+  $: releaseCount = visibleReleaseCount(repo);
 
   let shareIcon: "link" | "checkmark" = "link";
 
@@ -160,9 +163,9 @@
     </Button>
   </Link>
 
-  <!-- Only nodes that report a release count support the release API; hide the
+  <!-- Only nodes that report release counts support the release API; hide the
   tab on older nodes where the field is absent. -->
-  {#if repo.payloads["xyz.radicle.project"].meta.releases !== undefined}
+  {#if releaseCount !== undefined}
     <Link
       route={{
         resource: "repo.releases",
@@ -179,7 +182,7 @@
             class="counter"
             class:hover={hover && activeTab !== "releases"}
             class:selected={activeTab === "releases"}>
-            {repo.payloads["xyz.radicle.project"].meta.releases}
+            {releaseCount}
           </span>
         </div>
       </Button>
