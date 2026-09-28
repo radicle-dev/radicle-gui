@@ -13,6 +13,20 @@ export function defaultBranch(repo: Repo): string {
   return repo.payloads["xyz.radicle.project"].data.defaultBranch;
 }
 
+// Counts the releases a user can browse: the two unredacted buckets, or the
+// single count older nodes report in place of the buckets. Undefined means the
+// node doesn't report releases at all, which is how the release API is
+// detected.
+export function visibleReleaseCount(repo: Repo): number | undefined {
+  const releases = repo.payloads["xyz.radicle.project"].meta.releases;
+  if (releases === undefined) {
+    return undefined;
+  }
+  return typeof releases === "number"
+    ? releases
+    : releases.delegate + releases.other;
+}
+
 export function unqualifyBranch(refname: string): string {
   return refname.startsWith(REFS_HEADS)
     ? refname.slice(REFS_HEADS.length)

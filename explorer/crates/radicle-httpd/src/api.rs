@@ -15,7 +15,7 @@ use radicle::storage::git::Repository;
 use radicle::storage::{ReadRepository, ReadStorage};
 use radicle::{git, web, Profile};
 #[cfg(feature = "artifacts")]
-use radicle_artifact::Releases;
+use radicle_artifact::{cache_db_path, Releases};
 use tokio::sync::RwLock;
 
 mod error;
@@ -156,8 +156,30 @@ impl Context {
         self.search.as_ref()
     }
 
+    /// Repo metadata for listings. Leaves out the release counts, because
+    /// they read every release of the repo.
     #[allow(clippy::result_large_err)]
     pub fn repo_info(&self, repo: &Repository, doc: DocAt) -> Result<repo::Info, error::Error> {
+        self.build_repo_info(repo, doc, false)
+    }
+
+    /// Repo metadata for a single repo, with the release counts.
+    #[allow(clippy::result_large_err)]
+    pub fn repo_info_with_releases(
+        &self,
+        repo: &Repository,
+        doc: DocAt,
+    ) -> Result<repo::Info, error::Error> {
+        self.build_repo_info(repo, doc, true)
+    }
+
+    #[allow(clippy::result_large_err)]
+    fn build_repo_info(
+        &self,
+        repo: &Repository,
+        doc: DocAt,
+        with_releases: bool,
+    ) -> Result<repo::Info, error::Error> {
         let DocAt { doc, .. } = doc;
         let rid = repo.id();
 
@@ -185,7 +207,9 @@ impl Context {
                         "issues": issues,
                         "patches": patches
                     });
-                    add_releases_meta(&mut meta, repo);
+                    if with_releases {
+                        add_releases_meta(&mut meta, repo, &self.profile);
+                    }
 
                     Some((
                         id.clone(),
@@ -242,20 +266,21 @@ impl Context {
     }
 }
 
-/// Add the release count to a project payload's `meta` object.
+/// Add the count of releases a user can browse to a project payload's `meta`
+/// object: those not left with every artifact redacted by a trusted party.
 #[cfg(feature = "artifacts")]
-fn add_releases_meta(meta: &mut Value, repo: &Repository) {
-    let releases = Releases::open(repo)
+fn add_releases_meta(meta: &mut Value, repo: &Repository, profile: &Profile) {
+    let counts = Releases::open_cached(repo, cache_db_path(profile.cobs()))
         .ok()
-        .and_then(|releases| releases.count().ok())
+        .and_then(|releases| releases.counts().ok())
         .unwrap_or_default();
 
-    meta["releases"] = json!(releases);
+    meta["releases"] = json!(counts.delegate + counts.other);
 }
 
 /// Without artifact support there is no release store, so the key is omitted.
 #[cfg(not(feature = "artifacts"))]
-fn add_releases_meta(_meta: &mut Value, _repo: &Repository) {}
+fn add_releases_meta(_meta: &mut Value, _repo: &Repository, _profile: &Profile) {}
 
 /// Run a blocking closure on the blocking thread pool.
 ///
