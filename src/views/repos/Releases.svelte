@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { BaseUrl, Release, Repo } from "@http-client";
+  import type { BaseUrl, Release, ReleaseScope, Repo } from "@http-client";
 
   import { HttpdClient } from "@http-client";
-  import { RELEASES_PER_PAGE } from "./router";
+  import { RELEASES_PER_PAGE, releasesQuery, scopeReleases } from "./router";
   import { baseUrlToString } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
@@ -20,7 +20,7 @@
   export let releases: Release[];
   export let repo: Repo;
   export let repoId: string;
-  export let allAuthors: boolean;
+  export let scope: ReleaseScope;
   export let showFilters: boolean;
   export let nodeId: string;
   export let nodeAvatarUrl: string | undefined;
@@ -37,14 +37,10 @@
   }
 
   $: delegateIds = new Set(repo.delegates.map(d => d.id));
-  // The delegate count isn't in repo metadata; derive it from the loaded
-  // pages. It labels the segment only, and reads as "30+" while pages are
-  // outstanding; whether the segments show at all is settled by the router.
-  $: delegateReleaseCount = allAuthors
-    ? allReleases.filter(r => delegateIds.has(r.creator.id)).length
-    : allReleases.length;
 
-  $: releaseCount = repo.payloads["xyz.radicle.project"].meta.releases;
+  // Older nodes report a single count, so their segments go without counters.
+  $: releasesMeta = repo.payloads["xyz.radicle.project"].meta.releases;
+  $: counts = typeof releasesMeta === "object" ? releasesMeta : undefined;
 
   const api = new HttpdClient(baseUrl);
 
@@ -54,12 +50,11 @@
     // doesn't leave a gap behind on retry.
     const next = page + 1;
     try {
-      const response = await api.repo.getAllReleases(repo.rid, {
-        allAuthors,
-        page: next,
-        perPage: RELEASES_PER_PAGE,
-      });
-      allReleases = [...allReleases, ...response];
+      const response = await api.repo.getAllReleases(
+        repo.rid,
+        releasesQuery(scope, next),
+      );
+      allReleases = [...allReleases, ...scopeReleases(response, repo, scope)];
       page = next;
     } catch (e) {
       error = e;
@@ -141,16 +136,20 @@
       <div class="header">
         <Link
           route={{ resource: "repo.releases", repo: repoId, node: baseUrl }}>
-          <Button let:hover variant={!allAuthors ? "gray" : "background"}>
+          <Button
+            let:hover
+            variant={scope === "trusted" ? "gray" : "background"}>
             <Icon name="badge" />
             <div class="title-counter">
               Delegates
-              <span
-                class="counter"
-                class:selected={!allAuthors}
-                class:hover={hover && allAuthors}>
-                {delegateReleaseCount}{showMoreButton ? "+" : ""}
-              </span>
+              {#if counts}
+                <span
+                  class="counter"
+                  class:selected={scope === "trusted"}
+                  class:hover={hover && scope !== "trusted"}>
+                  {counts.delegate}
+                </span>
+              {/if}
             </div>
           </Button>
         </Link>
@@ -159,18 +158,21 @@
             resource: "repo.releases",
             repo: repoId,
             node: baseUrl,
-            allAuthors: true,
+            scope: "untrusted",
           }}>
-          <Button let:hover variant={allAuthors ? "gray" : "background"}>
+          <Button
+            let:hover
+            title="Non-delegates"
+            variant={scope === "untrusted" ? "gray" : "background"}>
             <Icon name="avatar-incognito" />
             <div class="title-counter">
-              All
-              {#if releaseCount !== undefined}
+              Others
+              {#if counts}
                 <span
                   class="counter"
-                  class:selected={allAuthors}
-                  class:hover={hover && !allAuthors}>
-                  {releaseCount}
+                  class:selected={scope === "untrusted"}
+                  class:hover={hover && scope !== "untrusted"}>
+                  {counts.other}
                 </span>
               {/if}
             </div>
@@ -186,7 +188,7 @@
       let:item
       {baseUrl}
       {repoId}
-      {allAuthors}
+      {scope}
       {delegateIds}
       release={item} />
   </List>
@@ -203,9 +205,11 @@
     <div class="placeholder">
       <Placeholder
         iconName="desert"
-        caption={showFilters && !allAuthors
-          ? "No releases by delegates"
-          : "No releases"} />
+        caption={!showFilters
+          ? "No releases"
+          : scope === "trusted"
+            ? "No releases by delegates"
+            : "No releases by others"} />
     </div>
   {/if}
 

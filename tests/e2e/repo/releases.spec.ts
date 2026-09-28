@@ -60,11 +60,12 @@ test.describe(() => {
     await expect(page.locator(".release-teaser")).toHaveCount(1);
     await expect(page.getByText("eve commit")).toBeHidden();
 
-    await page.getByRole("link", { name: "All 2" }).click();
+    // The scopes don't overlap: others shows only Eve's release.
+    await page.getByRole("link", { name: "Others 1" }).click();
     await expect(page).toHaveURL(
-      `${peer.uiUrl()}/${rid}/releases?allAuthors=true`,
+      `${peer.uiUrl()}/${rid}/releases?scope=untrusted`,
     );
-    await expect(page.locator(".release-teaser")).toHaveCount(2);
+    await expect(page.locator(".release-teaser")).toHaveCount(1);
     await expect(page.getByText("eve commit")).toBeVisible();
 
     await page.getByRole("link", { name: "Delegates 1" }).click();
@@ -99,9 +100,10 @@ test.describe(() => {
     await page.goto(`${peer.uiUrl()}/${rid}/releases`);
     await expect(page.getByText("No releases", { exact: true })).toBeVisible();
 
-    // The tab counter comes from the repo metadata, which counts every release
-    // COB, redacted or not.
-    await expect(page.getByRole("link", { name: "Releases 1" })).toBeVisible();
+    // The tab counter comes from the repo metadata, which counts only the
+    // releases left with an unredacted artifact, so it agrees with the empty
+    // listing. The tab itself stays, since the node does serve releases.
+    await expect(page.getByRole("link", { name: "Releases 0" })).toBeVisible();
   });
 });
 

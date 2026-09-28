@@ -1,76 +1,39 @@
+use std::collections::BTreeSet;
+
 use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::Json;
 use serde_json::{json, Value};
 
 use radicle::git::Oid;
-use radicle::identity::doc::Delegates;
+use radicle::identity::Did;
 use radicle::node::AliasStore;
 use radicle::storage::git::Repository;
 
 use radicle_artifact::display::{CommitTitle, TagName};
-use radicle_artifact::{cache_db_path, Artifact, Cid, Release, ReleaseId, Releases};
+use radicle_artifact::trust::{Scope, Trust};
+use radicle_artifact::{cache_db_path, Artifact, Cid, Filters, Release, ReleaseId, Releases};
 
 use crate::api;
 use crate::api::error::Error;
 use crate::api::json::Author;
-use crate::api::query::{ReleasesQuery, MAX_PER_PAGE};
+use crate::api::query::{ReleaseScope, ReleasesQuery, MAX_PER_PAGE};
 use crate::api::Context;
 use crate::axum_extra::{Path, Query};
 
 /// Default number of releases returned per page.
 const DEFAULT_PER_PAGE: usize = 30;
 
-/// Whether an artifact was redacted by its own author or by a delegate.
-fn redacted_by_trusted(artifact: &Artifact, delegates: &Delegates) -> bool {
-    artifact
-        .redactions()
-        .keys()
-        .any(|did| did == artifact.author() || delegates.contains(did))
-}
-
-/// How far the caller widened the default, delegate-scoped release view.
-#[derive(Clone, Copy)]
-struct Filter {
-    /// Include releases and artifacts authored by non-delegates.
-    all_authors: bool,
-    /// Include artifacts redacted by their author or a delegate.
-    show_redacted: bool,
-}
-
-impl Filter {
-    /// Whether an artifact is shown under this view: authored by a delegate
-    /// (or `all_authors`), and not redacted by its author or a delegate (or
-    /// `show_redacted`).
-    fn show_artifact(&self, artifact: &Artifact, delegates: &Delegates) -> bool {
-        (self.all_authors || delegates.contains(artifact.author()))
-            && (self.show_redacted || !redacted_by_trusted(artifact, delegates))
-    }
-
-    /// Whether a release is shown under this view: created by a delegate (or
-    /// `all_authors`), and not left with all of its artifacts redacted by a
-    /// trusted party (or `show_redacted`).
-    fn show_release(&self, release: &Release, delegates: &Delegates) -> bool {
-        (self.all_authors || delegates.contains(release.creator()))
-            && (self.show_redacted || !release_redacted(release, delegates))
-    }
-}
-
-/// Whether every artifact of a release was redacted by a trusted party. A
-/// release without artifacts is not redacted; it has nothing to redact.
-fn release_redacted(release: &Release, delegates: &Delegates) -> bool {
-    let artifacts = release.artifacts();
-
-    !artifacts.is_empty()
-        && artifacts
-            .values()
-            .all(|artifact| redacted_by_trusted(artifact, delegates))
-}
-
 /// Serialize a single artifact. Locations are flattened across contributors
 /// into `{ user, url }` entries; attestations are the attesting nodes;
-/// redactions carry the flagging user and its reason.
-fn artifact_json(cid: &Cid, artifact: &Artifact, aliases: &impl AliasStore) -> Value {
+/// redactions carry the flagging user and its reason; metadata is only what
+/// its author or a delegate wrote.
+fn artifact_json(
+    cid: &Cid,
+    artifact: &Artifact,
+    delegates: &BTreeSet<Did>,
+    aliases: &impl AliasStore,
+) -> Value {
     let locations = artifact
         .locations()
         .iter()
@@ -97,12 +60,12 @@ fn artifact_json(cid: &Cid, artifact: &Artifact, aliases: &impl AliasStore) -> V
         "locations": locations,
         "attestations": attestations,
         "redactions": redactions,
-        "metadata": artifact.metadata(),
+        "metadata": artifact.trusted_metadata(delegates),
     })
 }
 
 /// Serialize a release. The COB has no title field: it is resolved from the
-/// tag message when a tag is linked, otherwise the commit summary. `filter`
+/// tag message when a tag is linked, otherwise the commit summary. `filters`
 /// omits the artifacts hidden under the current view; `None` keeps all of
 /// them, as a release fetched by id does.
 fn release_json(
@@ -110,8 +73,8 @@ fn release_json(
     release: &Release,
     repo: &Repository,
     aliases: &impl AliasStore,
-    delegates: &Delegates,
-    filter: Option<Filter>,
+    delegates: &BTreeSet<Did>,
+    filters: Option<Filters>,
 ) -> Value {
     let title = release
         .tag()
@@ -119,14 +82,17 @@ fn release_json(
         .or_else(|| repo.title(release.oid()));
     let tag_name = release.tag().and_then(|tag| repo.tag_name(tag));
 
-    let artifacts = release
-        .artifacts()
-        .iter()
-        .filter(|(_, artifact)| {
-            filter.is_none_or(|filter| filter.show_artifact(artifact, delegates))
-        })
-        .map(|(cid, artifact)| artifact_json(cid, artifact, aliases))
-        .collect::<Vec<_>>();
+    let artifacts = match filters {
+        Some(filters) => filters
+            .artifacts(release)
+            .map(|(cid, artifact)| artifact_json(cid, artifact, delegates, aliases))
+            .collect::<Vec<_>>(),
+        None => release
+            .artifacts()
+            .iter()
+            .map(|(cid, artifact)| artifact_json(cid, artifact, delegates, aliases))
+            .collect::<Vec<_>>(),
+    };
 
     json!({
         "id": id.to_string(),
@@ -140,13 +106,33 @@ fn release_json(
     })
 }
 
+/// The filters a listed release shows its artifacts under. With no artifact by
+/// an author in scope, every author's are shown, as the release page does, so
+/// a teaser never counts fewer artifacts than its page lists.
+fn listed_filters<'a>(release: &Release, filters: Filters<'a>) -> Filters<'a> {
+    if release
+        .artifacts()
+        .values()
+        .any(|artifact| filters.trust.admits(filters.scope, artifact.author()))
+    {
+        return filters;
+    }
+    Filters {
+        scope: Scope::All,
+        ..filters
+    }
+}
+
 /// Get repo releases list, newest first.
 /// `GET /repos/:rid/releases`
 ///
 /// Scoped to releases created by a delegate and artifacts authored by a
-/// delegate (hiding those redacted by a trusted party) unless widened with
-/// `allAuthors=true` / `showRedacted=true`. A release whose artifacts were all
-/// redacted is hidden with them.
+/// delegate, or with `scope=untrusted` to those by non-delegates, so the two
+/// scopes never overlap. Artifacts redacted by a trusted party are hidden
+/// unless `showRedacted=true`. A release with no artifact in scope shows every
+/// author's. A release whose artifacts were all redacted is hidden
+/// with them; a release with no artifacts is shown. This is the view
+/// `rad-artifact list` gives.
 pub async fn list_handler(
     State(ctx): State<Context>,
     Path(rid): Path<String>,
@@ -154,54 +140,50 @@ pub async fn list_handler(
 ) -> impl IntoResponse {
     let rid = ctx.resolve_repo(&rid)?;
     let releases = api::blocking(move || {
-        let (repo, doc) = ctx.repo(rid)?;
-        let delegates = doc.delegates();
+        let (repo, _) = ctx.repo(rid)?;
         let aliases = ctx.profile.aliases();
         let ReleasesQuery {
             page,
             per_page,
-            all_authors,
+            scope,
             show_redacted,
         } = qs;
         let page = page.unwrap_or(0);
         let per_page = per_page.unwrap_or(DEFAULT_PER_PAGE).min(MAX_PER_PAGE);
-        let filter = Filter {
-            all_authors: all_authors.unwrap_or(false),
-            show_redacted: show_redacted.unwrap_or(false),
-        };
 
         // Read through the SQLite cache; it self-warms on read and is shared
-        // with other release reads on this node.
-        let cache = cache_db_path(ctx.profile.cobs());
-        let mut releases: Vec<_> = Releases::open_cached(&repo, cache)?
-            .all()?
-            .into_iter()
-            .filter_map(|r| {
-                let (id, release) = r.ok()?;
-                filter
-                    .show_release(&release, delegates)
-                    .then_some((id, release))
+        // with other release reads on this node. `list` is sorted newest
+        // first and lazy, so only the rows up to the requested page are read.
+        let store = Releases::open_cached(&repo, cache_db_path(ctx.profile.cobs()))?;
+        // A web node has no local user, so only delegates are trusted unless
+        // widened.
+        let filters = Filters {
+            trust: Trust::new(store.delegates(), None),
+            scope: match scope.unwrap_or_default() {
+                ReleaseScope::Trusted => Scope::Trusted,
+                ReleaseScope::Untrusted => Scope::Untrusted,
+            },
+            include_redacted: show_redacted.unwrap_or(false),
+        };
+        let releases = store
+            .list()?
+            .filter_map(Result::ok)
+            .filter(|(_, release)| filters.shows_release(release))
+            .skip(page * per_page)
+            .take(per_page)
+            .map(|(id, release)| {
+                release_json(
+                    ReleaseId::from(id),
+                    &release,
+                    &repo,
+                    &aliases,
+                    store.delegates(),
+                    Some(listed_filters(&release, filters)),
+                )
             })
-            .collect();
-        releases.sort_by_key(|(_, release)| std::cmp::Reverse(release.timestamp()));
+            .collect::<Vec<_>>();
 
-        Ok::<_, Error>(
-            releases
-                .into_iter()
-                .skip(page * per_page)
-                .take(per_page)
-                .map(|(id, release)| {
-                    release_json(
-                        ReleaseId::from(id),
-                        &release,
-                        &repo,
-                        &aliases,
-                        delegates,
-                        Some(filter),
-                    )
-                })
-                .collect::<Vec<_>>(),
-        )
+        Ok::<_, Error>(releases)
     })
     .await?;
 
@@ -216,11 +198,11 @@ pub async fn get_handler(
 ) -> impl IntoResponse {
     let rid = ctx.resolve_repo(&rid)?;
     let value = api::blocking(move || {
-        let (repo, doc) = ctx.repo(rid)?;
-        let delegates = doc.delegates();
+        let (repo, _) = ctx.repo(rid)?;
         let aliases = ctx.profile.aliases();
         let cache = cache_db_path(ctx.profile.cobs());
-        let release = Releases::open_cached(&repo, cache)?
+        let store = Releases::open_cached(&repo, cache)?;
+        let release = store
             .get(&ReleaseId::from(release_id))?
             .ok_or(Error::NotFound)?;
 
@@ -229,7 +211,7 @@ pub async fn get_handler(
             &release,
             &repo,
             &aliases,
-            delegates,
+            store.delegates(),
             None,
         ))
     })
@@ -258,7 +240,7 @@ mod routes {
     use url::Url;
 
     use crate::api::Context;
-    use crate::test::{get, seed, DID, HEAD, RID};
+    use crate::test::{get, seed, DID, HEAD, PARENT, RID};
 
     /// A valid CIDv1 string; the release COB stores it verbatim.
     const CID: &str = "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";
@@ -379,20 +361,27 @@ mod routes {
     }
 
     #[tokio::test]
-    async fn test_repos_releases_hides_non_delegate_creator() {
+    async fn test_repos_releases_scopes_are_disjoint() {
         let tmp = tempfile::tempdir().unwrap();
         let ctx = seed(tmp.path());
-        create_release(&ctx, NON_DELEGATE_SEED);
+        let delegate_id = create_release(&ctx, DELEGATE_SEED);
+        let other_id = create_release(&ctx, NON_DELEGATE_SEED);
         let app = app(ctx);
+        let ids = |body: serde_json::Value| {
+            body.as_array()
+                .unwrap()
+                .iter()
+                .map(|release| release["id"].as_str().unwrap().to_owned())
+                .collect::<Vec<_>>()
+        };
 
         // Default view is scoped to delegate creators.
         let response = get(&app, format!("/repos/{RID}/releases")).await;
-        assert_eq!(response.json().await, json!([]));
+        assert_eq!(ids(response.json().await), [delegate_id]);
 
-        // `allAuthors=true` widens it to include non-delegate creators.
-        let response = get(&app, format!("/repos/{RID}/releases?allAuthors=true")).await;
-        let body = response.json().await;
-        assert_eq!(body.as_array().unwrap().len(), 1);
+        // `scope=untrusted` shows only non-delegate creators.
+        let response = get(&app, format!("/repos/{RID}/releases?scope=untrusted")).await;
+        assert_eq!(ids(response.json().await), [other_id]);
     }
 
     #[tokio::test]
@@ -431,11 +420,68 @@ mod routes {
         assert_eq!(artifacts.len(), 1);
         assert_eq!(artifacts[0]["cid"], json!(CID));
 
-        // `allAuthors=true` widens it to include the non-delegate's artifact.
-        let response = get(&app, format!("/repos/{RID}/releases?allAuthors=true")).await;
+        // A delegate created it, so it is not among the others' releases.
+        let response = get(&app, format!("/repos/{RID}/releases?scope=untrusted")).await;
+        assert_eq!(response.json().await, json!([]));
+    }
+
+    #[tokio::test]
+    async fn test_repos_releases_list_falls_back_to_every_author() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = seed(tmp.path());
+
+        // A delegate release with only a non-delegate artifact, and one where
+        // the delegate's own artifact is redacted.
+        {
+            let signer = SigningKey::from_seed(Seed::new(DELEGATE_SEED));
+            let other_signer = SigningKey::from_seed(Seed::new(NON_DELEGATE_SEED));
+            let rid = RepoId::from_str(RID).unwrap();
+            let repo = ctx.profile().storage.repository_mut(rid).unwrap();
+            let mut releases = Releases::open(&repo).unwrap();
+            let cid = Cid::from_str(CID).unwrap();
+            let other_cid = Cid::from_str(CID_2).unwrap();
+
+            let mut release = releases
+                .create(Oid::from_str(HEAD).unwrap(), None, &signer)
+                .unwrap();
+            release
+                .register_artifact(other_cid, "eve-build".to_string(), &other_signer)
+                .unwrap();
+
+            let mut release = releases
+                .create(Oid::from_str(PARENT).unwrap(), None, &signer)
+                .unwrap();
+            release
+                .register_artifact(cid, "linux-amd64".to_string(), &signer)
+                .unwrap();
+            release
+                .redact(cid, "bad build".to_string(), &signer)
+                .unwrap();
+            release
+                .register_artifact(other_cid, "eve-build".to_string(), &other_signer)
+                .unwrap();
+        }
+        let app = app(ctx);
+
+        let response = get(&app, format!("/repos/{RID}/releases")).await;
         let body = response.json().await;
-        let artifacts = body[0]["artifacts"].as_array().unwrap();
-        assert_eq!(artifacts.len(), 2);
+        let counts = body
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|release| {
+                (
+                    release["oid"].as_str().unwrap().to_owned(),
+                    release["artifacts"].as_array().unwrap().len(),
+                )
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
+
+        // With no delegate artifact, the non-delegate's is shown.
+        assert_eq!(counts[HEAD], 1);
+        // A redacted delegate artifact still scopes the release to
+        // delegates, so nothing is left to show.
+        assert_eq!(counts[PARENT], 0);
     }
 
     #[tokio::test]
@@ -474,6 +520,29 @@ mod routes {
             body[0]["artifacts"][0]["redactions"][0]["reason"],
             json!("bad build")
         );
+    }
+
+    #[tokio::test]
+    async fn test_repos_releases_shows_empty_release() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = seed(tmp.path());
+        {
+            let signer = SigningKey::from_seed(Seed::new(DELEGATE_SEED));
+            let rid = RepoId::from_str(RID).unwrap();
+            let repo = ctx.profile().storage.repository_mut(rid).unwrap();
+            let mut releases = Releases::open(&repo).unwrap();
+            releases
+                .create(Oid::from_str(HEAD).unwrap(), None, &signer)
+                .unwrap();
+        }
+        let app = app(ctx);
+
+        // A release with no artifacts has nothing redacted, so the default
+        // view shows it.
+        let response = get(&app, format!("/repos/{RID}/releases")).await;
+        let body = response.json().await;
+        assert_eq!(body.as_array().unwrap().len(), 1);
+        assert_eq!(body[0]["artifacts"], json!([]));
     }
 
     #[tokio::test]

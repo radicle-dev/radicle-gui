@@ -15,7 +15,7 @@ use radicle::storage::git::Repository;
 use radicle::storage::{ReadRepository, ReadStorage};
 use radicle::{git, web, Profile};
 #[cfg(feature = "artifacts")]
-use radicle_artifact::Releases;
+use radicle_artifact::{cache_db_path, Releases};
 use tokio::sync::RwLock;
 
 mod error;
@@ -31,7 +31,7 @@ use crate::Options;
 
 pub const RADICLE_VERSION: &str = env!("RADICLE_VERSION");
 // This version has to be updated on every breaking change to the radicle-httpd API.
-pub const API_VERSION: &str = "6.2.0";
+pub const API_VERSION: &str = "7.0.0";
 
 /// Thread-safe wrapper around radicle's web configuration.
 ///
@@ -185,7 +185,7 @@ impl Context {
                         "issues": issues,
                         "patches": patches
                     });
-                    add_releases_meta(&mut meta, repo);
+                    add_releases_meta(&mut meta, repo, &self.profile);
 
                     Some((
                         id.clone(),
@@ -242,20 +242,25 @@ impl Context {
     }
 }
 
-/// Add the release count to a project payload's `meta` object.
+/// Add the bucketed release counts to a project payload's `meta` object.
 #[cfg(feature = "artifacts")]
-fn add_releases_meta(meta: &mut Value, repo: &Repository) {
-    let releases = Releases::open(repo)
+fn add_releases_meta(meta: &mut Value, repo: &Repository, profile: &Profile) {
+    let counts = Releases::open_cached(repo, cache_db_path(profile.cobs()))
         .ok()
-        .and_then(|releases| releases.count().ok())
+        .and_then(|releases| releases.counts().ok())
         .unwrap_or_default();
 
-    meta["releases"] = json!(releases);
+    meta["releases"] = json!({
+        "delegate": counts.delegate,
+        "delegateRedacted": counts.delegate_redacted,
+        "other": counts.other,
+        "otherRedacted": counts.other_redacted,
+    });
 }
 
 /// Without artifact support there is no release store, so the key is omitted.
 #[cfg(not(feature = "artifacts"))]
-fn add_releases_meta(_meta: &mut Value, _repo: &Repository) {}
+fn add_releases_meta(_meta: &mut Value, _repo: &Repository, _profile: &Profile) {}
 
 /// Run a blocking closure on the blocking thread pool.
 ///

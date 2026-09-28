@@ -18,6 +18,7 @@ import type {
   PatchState,
   PeerRefs,
   Release,
+  ReleaseScope,
   Remote,
   Repo,
   Revision,
@@ -111,7 +112,7 @@ interface RepoReleasesRoute {
   resource: "repo.releases";
   node: BaseUrl;
   repo: string;
-  allAuthors?: boolean;
+  scope?: ReleaseScope;
 }
 
 interface RepoReleaseRoute {
@@ -119,7 +120,7 @@ interface RepoReleaseRoute {
   node: BaseUrl;
   repo: string;
   release: string;
-  allAuthors?: boolean;
+  scope?: ReleaseScope;
 }
 
 interface RepoIssueRoute {
@@ -284,7 +285,7 @@ export type RepoLoadedRoute =
         repo: Repo;
         repoId: string;
         releases: Release[];
-        allAuthors: boolean;
+        scope: ReleaseScope;
         showFilters: boolean;
         nodeId: string;
         nodeAvatarUrl: string | undefined;
@@ -297,7 +298,7 @@ export type RepoLoadedRoute =
         repo: Repo;
         repoId: string;
         release: Release;
-        allAuthors: boolean;
+        scope?: ReleaseScope;
         nodeId: string;
         nodeAvatarUrl: string | undefined;
       };
@@ -504,73 +505,83 @@ function releasesNotSupported(node: BaseUrl): NotFoundRoute {
   };
 }
 
+// The query for a page of releases in one author scope. Older nodes ignore
+// `scope`, so ask them for every author too when the scope is untrusted.
+export function releasesQuery(scope: ReleaseScope, page: number) {
+  return {
+    scope,
+    allAuthors: scope === "untrusted" ? true : undefined,
+    page,
+    perPage: RELEASES_PER_PAGE,
+  };
+}
+
+// Keep only the releases in the author scope. A newer node has done this
+// already; an older one answers the untrusted scope with every author. Its pages
+// then come back short, so "More" can stop early there.
+export function scopeReleases(
+  releases: Release[],
+  repo: Repo,
+  scope: ReleaseScope,
+): Release[] {
+  if (scope === "trusted") {
+    return releases;
+  }
+  const delegateIds = new Set(repo.delegates.map(d => d.id));
+  return releases.filter(r => !delegateIds.has(r.creator.id));
+}
+
 async function loadReleasesView(
   route: RepoReleasesRoute,
 ): Promise<RepoLoadedRoute | NotFoundRoute> {
   const api = new HttpdClient(route.node);
-  const allAuthors = route.allAuthors || false;
+  let scope = route.scope ?? "trusted";
 
   // Fetch releases alongside the repo so the common path stays parallel; the
   // repo's `meta.releases` then tells us whether a failure is an unsupported
-  // node or a genuine error. The delegate scope is a subset of every author,
-  // so the all-authors view sizes both scopes from its own page, while the
-  // delegate view has to ask for the other scope to size it.
-  const [repo, releasesResult, everyAuthorPage, node] = await Promise.all([
+  // node or a genuine error.
+  const [repo, releasesResult, node] = await Promise.all([
     api.repo.getByRid(route.repo),
-    api.repo
-      .getAllReleases(route.repo, {
-        allAuthors,
-        page: 0,
-        perPage: RELEASES_PER_PAGE,
-      })
-      .then(
-        releases => ({ releases }),
-        (error: unknown) => ({ error }),
-      ),
-    allAuthors
-      ? undefined
-      : api.repo
-          .getAllReleases(route.repo, {
-            allAuthors: true,
-            page: 0,
-            perPage: RELEASES_PER_PAGE,
-          })
-          // Only the filter rides on this, so a failure here shouldn't take
-          // the page down with it.
-          .catch(() => undefined),
+    api.repo.getAllReleases(route.repo, releasesQuery(scope, 0)).then(
+      releases => ({ releases }),
+      (error: unknown) => ({ error }),
+    ),
     api.getNode(),
   ]);
 
-  const releaseCount = repo.payloads["xyz.radicle.project"].meta.releases;
-  if (releaseCount === undefined) {
+  // Older nodes report a single count here, newer ones the buckets, and
+  // either way its absence means no release API.
+  const releasesMeta = repo.payloads["xyz.radicle.project"].meta.releases;
+  if (releasesMeta === undefined) {
     return releasesNotSupported(route.node);
   }
   if ("error" in releasesResult) {
     throw releasesResult.error;
   }
 
-  const releases = releasesResult.releases;
+  let releases = scopeReleases(releasesResult.releases, repo, scope);
 
-  // Offer the author filter only where the two scopes hold different releases,
-  // so a repo whose releases are all by delegates carries no filter with an
-  // identical list behind it, and one with none of its own still leaves a way
-  // through to the others. Both sizes come from a list the endpoint returned:
-  // `meta.releases` counts every release COB, including ones the endpoint
-  // hides such as fully redacted releases, so it would overcount either scope.
-  // A full page means the list may go on, so keep the filter rather than have
-  // it appear or vanish as the user pages, and keep it too if the other scope
-  // failed to load. Decided here so it stays fixed for the life of the route.
-  const delegateIds = new Set(repo.delegates.map(d => d.id));
-  const delegateReleaseCount = allAuthors
-    ? releases.filter(r => delegateIds.has(r.creator.id)).length
-    : releases.length;
-  const everyAuthorCount = allAuthors
-    ? releases.length
-    : everyAuthorPage?.length;
+  // With no scope asked for and no delegate releases, open on the others'
+  // rather than on an empty list.
+  if (
+    route.scope === undefined &&
+    typeof releasesMeta !== "number" &&
+    releasesMeta.delegate === 0 &&
+    releasesMeta.other > 0
+  ) {
+    scope = "untrusted";
+    releases = scopeReleases(
+      await api.repo.getAllReleases(route.repo, releasesQuery(scope, 0)),
+      repo,
+      scope,
+    );
+  }
+
+  // Offer the author filter only where both scopes hold releases.
   const showFilters =
-    everyAuthorCount === undefined ||
-    everyAuthorCount === RELEASES_PER_PAGE ||
-    delegateReleaseCount !== everyAuthorCount;
+    typeof releasesMeta === "number"
+      ? await legacyShowFilters(api, route.repo, repo)
+      : releasesMeta.delegate > 0 && releasesMeta.other > 0;
 
   return {
     resource: "repo.releases",
@@ -578,7 +589,7 @@ async function loadReleasesView(
       baseUrl: route.node,
       repoId: route.repo,
       releases,
-      allAuthors,
+      scope,
       showFilters,
       repo,
       nodeId: node.id,
@@ -587,11 +598,39 @@ async function loadReleasesView(
   };
 }
 
+// Older nodes report a single release count without the delegate and
+// non-delegate buckets, so the filter is decided from the first page of every
+// author. A full page means the list may go on, so keep the filter rather than
+// have it appear or vanish as the user pages. Remove this once nodes without
+// the buckets are no longer supported.
+async function legacyShowFilters(
+  api: HttpdClient,
+  repoId: string,
+  repo: Repo,
+): Promise<boolean> {
+  const delegateIds = new Set(repo.delegates.map(d => d.id));
+  const everyAuthor = await api.repo
+    .getAllReleases(repoId, {
+      allAuthors: true,
+      page: 0,
+      perPage: RELEASES_PER_PAGE,
+    })
+    .catch(
+      // Only the filter depends on this, so a failure must not take the page
+      // down with it.
+      () => undefined,
+    );
+  if (everyAuthor === undefined || everyAuthor.length === RELEASES_PER_PAGE) {
+    return true;
+  }
+  const byDelegate = everyAuthor.filter(r => delegateIds.has(r.creator.id));
+  return byDelegate.length > 0 && byDelegate.length < everyAuthor.length;
+}
+
 async function loadReleaseView(
   route: RepoReleaseRoute,
 ): Promise<RepoLoadedRoute | NotFoundRoute> {
   const api = new HttpdClient(route.node);
-  const allAuthors = route.allAuthors || false;
 
   const [repo, releaseResult, node] = await Promise.all([
     api.repo.getByRid(route.repo),
@@ -616,7 +655,7 @@ async function loadReleaseView(
       repoId: route.repo,
       repo,
       release: releaseResult.release,
-      allAuthors,
+      scope: route.scope,
       nodeId: node.id,
       nodeAvatarUrl: node.avatarUrl,
     },
@@ -1153,23 +1192,25 @@ export function resolveRepoRoute(
     return resolvePatchesRoute(node, repo, segments, urlSearch);
   } else if (content === "releases") {
     const release = segments.shift();
-    const allAuthors =
-      new URLSearchParams(sanitizeQueryString(urlSearch)).get("allAuthors") ===
-      "true";
+    const scope =
+      new URLSearchParams(sanitizeQueryString(urlSearch)).get("scope") ===
+      "untrusted"
+        ? "untrusted"
+        : undefined;
     if (release) {
       return {
         resource: "repo.release",
         node,
         repo,
         release,
-        allAuthors,
+        scope,
       };
     } else {
       return {
         resource: "repo.releases",
         node,
         repo,
-        allAuthors,
+        scope,
       };
     }
   } else {
@@ -1295,14 +1336,14 @@ export function repoRouteToPath(route: RepoRoute): string {
     return patchRouteToPath(route);
   } else if (route.resource === "repo.releases") {
     let url = [...pathSegments, "releases"].join("/");
-    if (route.allAuthors) {
-      url += "?allAuthors=true";
+    if (route.scope === "untrusted") {
+      url += "?scope=untrusted";
     }
     return url;
   } else if (route.resource === "repo.release") {
     let url = [...pathSegments, "releases", route.release].join("/");
-    if (route.allAuthors) {
-      url += "?allAuthors=true";
+    if (route.scope === "untrusted") {
+      url += "?scope=untrusted";
     }
     return url;
   } else {

@@ -1,5 +1,11 @@
 <script lang="ts">
-  import type { Artifact, BaseUrl, Release, Repo } from "@http-client";
+  import type {
+    Artifact,
+    BaseUrl,
+    Release,
+    ReleaseScope,
+    Repo,
+  } from "@http-client";
 
   import * as utils from "@app/lib/utils";
 
@@ -20,7 +26,7 @@
   export let release: Release;
   export let repo: Repo;
   export let repoId: string;
-  export let allAuthors: boolean;
+  export let scope: ReleaseScope | undefined = undefined;
   export let nodeId: string;
   export let nodeAvatarUrl: string | undefined;
 
@@ -57,16 +63,25 @@
     return show ? list : list.filter(a => !redactedByTrusted(a, delegates));
   }
 
+  // Artifacts split into two disjoint scopes by author; the endpoint returns
+  // all of them, so filtering happens client-side.
   $: delegateArtifacts = release.artifacts.filter(a =>
     delegateIds.has(a.author.id),
   );
-  // Artifacts are scoped to delegate authors by default; the endpoint returns
-  // all of them, so filtering happens client-side. With no delegate artifact
-  // at all, fall back to every author.
+  $: otherArtifacts = release.artifacts.filter(
+    a => !delegateIds.has(a.author.id),
+  );
+  // Show the scope asked for, delegates by default, unless it is empty.
+  $: wanted = scope ?? "trusted";
+  $: activeScope =
+    (wanted === "trusted" ? delegateArtifacts : otherArtifacts).length > 0
+      ? wanted
+      : wanted === "trusted"
+        ? "untrusted"
+        : "trusted";
   $: authorArtifacts =
-    allAuthors || delegateArtifacts.length === 0
-      ? release.artifacts
-      : delegateArtifacts;
+    activeScope === "trusted" ? delegateArtifacts : otherArtifacts;
+
   $: shownArtifacts = visible(authorArtifacts, showRedacted, delegateIds);
   // The redacted count is the hidden set within the current author scope.
   $: redactedCount = authorArtifacts.filter(a =>
@@ -82,12 +97,10 @@
     showRedacted,
     delegateIds,
   ).length;
-  $: allCount = visible(release.artifacts, showRedacted, delegateIds).length;
+  $: otherCount = visible(otherArtifacts, showRedacted, delegateIds).length;
 
   // Filter only when both scopes hold something.
-  $: showFilters =
-    delegateArtifacts.length > 0 &&
-    delegateArtifacts.length !== release.artifacts.length;
+  $: showFilters = delegateArtifacts.length > 0 && otherArtifacts.length > 0;
 
   // Format a byte count as a human-readable size (mirrors the CLI display).
   function formatBytes(bytes: number): string {
@@ -382,7 +395,7 @@
         resource: "repo.releases",
         repo: repoId,
         node: baseUrl,
-        allAuthors,
+        scope,
       }}>
       Releases
     </Link>
@@ -449,14 +462,14 @@
                   }}>
                   <Button
                     let:hover
-                    variant={!allAuthors ? "gray" : "background"}>
+                    variant={activeScope === "trusted" ? "gray" : "background"}>
                     <Icon name="badge" />
                     <div class="title-counter">
                       Delegates
                       <span
                         class="counter"
-                        class:selected={!allAuthors}
-                        class:hover={hover && allAuthors}>
+                        class:selected={activeScope === "trusted"}
+                        class:hover={hover && activeScope !== "trusted"}>
                         {delegateCount}
                       </span>
                     </div>
@@ -468,19 +481,22 @@
                     repo: repoId,
                     node: baseUrl,
                     release: release.id,
-                    allAuthors: true,
+                    scope: "untrusted",
                   }}>
                   <Button
                     let:hover
-                    variant={allAuthors ? "gray" : "background"}>
+                    title="Non-delegates"
+                    variant={activeScope === "untrusted"
+                      ? "gray"
+                      : "background"}>
                     <Icon name="avatar-incognito" />
                     <div class="title-counter">
-                      All
+                      Others
                       <span
                         class="counter"
-                        class:selected={allAuthors}
-                        class:hover={hover && !allAuthors}>
-                        {allCount}
+                        class:selected={activeScope === "untrusted"}
+                        class:hover={hover && activeScope !== "untrusted"}>
+                        {otherCount}
                       </span>
                     </div>
                   </Button>
