@@ -334,6 +334,7 @@
 <div class="container">
   <Popover
     popoverContainerMinWidth="0"
+    popoverFullWidthOnMobile
     popoverPadding="0"
     popoverPositionTop="2.5rem"
     popoverBorderRadius="var(--border-radius-sm)">

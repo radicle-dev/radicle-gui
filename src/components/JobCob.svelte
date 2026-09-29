@@ -247,7 +247,7 @@
   .popover-body {
     display: flex;
     flex-direction: column;
-    min-width: 24rem;
+    min-width: min(24rem, calc(100vw - 2rem));
     font: var(--txt-body-m-regular);
   }
   .row {
@@ -295,16 +295,16 @@
     white-space: nowrap;
   }
   .host-row {
-    padding-left: 2.25rem;
+    padding-left: 0.75rem;
     color: var(--color-text-secondary);
     font: var(--txt-body-s-regular);
   }
   /*
-   * 3.75rem = row padding (0.75) + chevron (1) + gap (0.5) + header chip (1)
-   * + gap (0.5), so the run status chip sits under the node avatar.
+   * 2.25rem = row padding (0.75) + header chip (1) + gap (0.5), so the run
+   * status chip sits under the node avatar.
    */
   .run-row {
-    padding-left: 3.75rem;
+    padding-left: 2.25rem;
     text-decoration: none;
     color: var(--color-text-primary);
   }
@@ -338,6 +338,7 @@
     {@const overallCounts = totalCounts(groups)}
     {@const overall = aggregateStatus(overallCounts)}
     <Popover
+      popoverFullWidthOnMobile
       popoverPadding="0.25rem"
       popoverBorderRadius="var(--border-radius-md)"
       popoverPositionTop="calc(100% + 0.25rem)"
@@ -378,9 +379,6 @@
                   toggleNode(group.nodeKey);
                 }
               }}>
-              <span class="chevron">
-                <Icon name={isCollapsed ? "chevron-right" : "chevron-down"} />
-              </span>
               <span class="chip {group.status}">
                 {#if group.status === "succeeded"}
                   <Icon name="checkmark" />
@@ -401,6 +399,9 @@
                 {/if}
               </span>
               <span class="count">{statusLabel(group.counts)}</span>
+              <span class="chevron">
+                <Icon name={isCollapsed ? "chevron-down" : "chevron-up"} />
+              </span>
             </div>
 
             {#if !isCollapsed}

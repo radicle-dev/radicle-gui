@@ -26,11 +26,20 @@
   export let popoverPositionRight: string | undefined = undefined;
   export let popoverPositionTop: string | undefined = undefined;
   // On mobile, break out of the (possibly narrow, off-screen) anchored
-  // position and span the viewport width, pinned below the header.
+  // position and span the viewport width, pinned below the toggle. Being
+  // fixed also lets the popover escape scrolling containers.
   export let popoverFullWidthOnMobile = false;
 
   export let expanded = false;
   let thisComponent: HTMLDivElement;
+  let anchorTop: string | undefined = undefined;
+
+  function updateAnchor() {
+    if (!popoverFullWidthOnMobile || !expanded || !thisComponent) {
+      return;
+    }
+    anchorTop = `${thisComponent.getBoundingClientRect().bottom + 4}px`;
+  }
 
   function clickOutside(ev: MouseEvent | TouchEvent) {
     const path = ev.composedPath();
@@ -61,6 +70,9 @@
   }
 
   $: expanded = $focusedStack.includes(thisComponent);
+  $: if (expanded) {
+    updateAnchor();
+  }
 
   onDestroy(() => {
     focusedStack.update(stack => stack.filter(c => c !== thisComponent));
@@ -84,15 +96,25 @@
   @media (max-width: 720px) {
     .popover.full-width-mobile {
       position: fixed;
-      top: var(--global-header-height) !important;
+      top: var(--popover-anchor-top, var(--global-header-height)) !important;
       right: 0.5rem !important;
       bottom: auto !important;
       left: 0.5rem !important;
+      display: flex;
+      flex-direction: column;
+      max-height: calc(
+        100dvh - var(--popover-anchor-top, var(--global-header-height)) - 0.5rem
+      );
+      overflow-y: auto;
     }
   }
 </style>
 
-<svelte:window on:click={clickOutside} on:touchstart={clickOutside} />
+<svelte:window
+  on:click={clickOutside}
+  on:touchstart={clickOutside}
+  on:scroll|capture={updateAnchor}
+  on:resize={updateAnchor} />
 
 <div
   bind:this={thisComponent}
@@ -104,6 +126,7 @@
     <div
       class="popover"
       class:full-width-mobile={popoverFullWidthOnMobile}
+      style:--popover-anchor-top={anchorTop}
       style:bottom={popoverPositionBottom}
       style:left={popoverPositionLeft}
       style:right={popoverPositionRight}

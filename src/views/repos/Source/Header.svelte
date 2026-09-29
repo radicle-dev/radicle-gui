@@ -26,6 +26,8 @@
   import type { Repo, Tree } from "@http-client";
   import type { ComponentProps } from "svelte";
 
+  import { onMount } from "svelte";
+
   import Button from "@app/components/Button.svelte";
   import CommitButton from "../components/CommitButton.svelte";
   import Icon from "@app/components/Icon.svelte";
@@ -49,6 +51,30 @@
   export let tree: Tree;
 
   const api = new HttpdClient(node);
+
+  let branchRow: HTMLElement | undefined = undefined;
+  let fadeLeft = false;
+  let fadeRight = false;
+
+  function updateFade() {
+    if (!branchRow) {
+      return;
+    }
+    const overflow = branchRow.scrollWidth - branchRow.clientWidth;
+    fadeLeft = overflow > 1 && branchRow.scrollLeft > 1;
+    fadeRight = overflow > 1 && branchRow.scrollLeft < overflow - 1;
+  }
+
+  onMount(() => {
+    if (!branchRow) {
+      return;
+    }
+    const observer = new ResizeObserver(updateFade);
+    for (const child of branchRow.children) {
+      observer.observe(child);
+    }
+    return () => observer.disconnect();
+  });
   let commitCount: number | undefined = commitCountCache[commit];
 
   function fetchCommitCount(rid: string, sha: string) {
@@ -133,11 +159,54 @@
     align-items: center;
     flex-wrap: wrap;
   }
+  .mobile-branch-row {
+    position: relative;
+    margin: 0 -1rem 0.5rem;
+  }
+  .mobile-branch-row::before,
+  .mobile-branch-row::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2rem;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 1;
+  }
+  .mobile-branch-row::before {
+    left: 0;
+    background: linear-gradient(
+      to right,
+      var(--color-surface-base),
+      transparent
+    );
+  }
+  .mobile-branch-row::after {
+    right: 0;
+    background: linear-gradient(
+      to left,
+      var(--color-surface-base),
+      transparent
+    );
+  }
+  .mobile-branch-row.fade-left::before,
+  .mobile-branch-row.fade-right::after {
+    opacity: 1;
+  }
   .mobile-branch {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    margin-bottom: 0.5rem;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 0 1rem;
+  }
+  .mobile-branch::-webkit-scrollbar {
+    display: none;
+  }
+  .mobile-branch > :global(*) {
+    flex-shrink: 0;
   }
 
   .counter {
@@ -161,35 +230,46 @@
   }
 </style>
 
-<div class="mobile-branch global-hide-on-small-desktop-up" style:gap="1px">
-  {#if selectedBranch}
-    <PeerBranchSelector
-      {peers}
-      {peer}
-      {baseRoute}
-      {onCanonical}
-      {repo}
-      {selectedBranch} />
-  {/if}
-  <div class="global-flex-item" style:gap="1px">
-    <CommitButton
-      variant={commitButtonVariant}
-      styleMinWidth="0"
-      hideSummaryOnMobile
-      {repoId}
-      commit={lastCommit}
-      baseUrl={node} />
-    {#if !onCanonical}
-      <Link route={baseRoute}>
-        <Button
-          variant="not-selected"
-          styleBorderRadius="0 var(--border-radius-sm) var(--border-radius-sm) 0">
-          <Icon name="close" />
-        </Button>
-      </Link>
+<svelte:window on:resize={updateFade} />
+
+<div
+  class="mobile-branch-row global-hide-on-small-desktop-up"
+  class:fade-left={fadeLeft}
+  class:fade-right={fadeRight}>
+  <div
+    class="mobile-branch"
+    style:gap="1px"
+    bind:this={branchRow}
+    on:scroll={updateFade}>
+    {#if selectedBranch}
+      <PeerBranchSelector
+        {peers}
+        {peer}
+        {baseRoute}
+        {onCanonical}
+        {repo}
+        {selectedBranch} />
     {/if}
-    <div style:margin-left="0.5rem">
-      <JobCob baseUrl={node} rid={repo.rid} commit={lastCommit.id} />
+    <div class="global-flex-item" style:gap="1px">
+      <CommitButton
+        variant={commitButtonVariant}
+        styleMinWidth="0"
+        hideSummaryOnMobile
+        {repoId}
+        commit={lastCommit}
+        baseUrl={node} />
+      {#if !onCanonical}
+        <Link route={baseRoute}>
+          <Button
+            variant="not-selected"
+            styleBorderRadius="0 var(--border-radius-sm) var(--border-radius-sm) 0">
+            <Icon name="close" />
+          </Button>
+        </Link>
+      {/if}
+      <div style:margin-left="0.5rem">
+        <JobCob baseUrl={node} rid={repo.rid} commit={lastCommit.id} />
+      </div>
     </div>
   </div>
 </div>
