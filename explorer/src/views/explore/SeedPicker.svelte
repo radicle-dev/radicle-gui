@@ -319,6 +319,7 @@
   popoverPositionTop="2.5rem"
   popoverPositionLeft={variant === "breadcrumb" ? "0" : undefined}
   popoverPositionRight={variant === "breadcrumb" ? undefined : "0"}
+  popoverFullWidthOnMobile={variant === "breadcrumb"}
   popoverPadding="0.25rem"
   popoverBorderRadius="var(--border-radius-md)">
   <div

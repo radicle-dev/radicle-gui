@@ -145,6 +145,7 @@
     justify-content: space-between;
     height: 100%;
     width: 100%;
+    gap: 1rem;
     padding: 0 1rem;
     position: relative;
   }
@@ -158,6 +159,7 @@
     align-items: center;
     gap: 0.75rem;
     height: 100%;
+    min-width: 0;
   }
   .left-divider {
     width: 1px;
@@ -165,6 +167,7 @@
     background-color: var(--color-border-subtle);
   }
   .right-section {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 0.5rem;

@@ -2,6 +2,10 @@
   import type { ActiveTab } from "./Header.svelte";
   import type { BaseUrl, Repo } from "@http-client";
 
+  import { onMount } from "svelte";
+
+  import { activeRouteStore } from "@app/lib/router";
+
   import Button from "@app/components/Button.svelte";
   import Header from "@app/components/Header.svelte";
   import Icon from "@app/components/Icon.svelte";
@@ -11,6 +15,7 @@
   import SeedPicker from "@app/views/explore/SeedPicker.svelte";
   import Separator from "./Separator.svelte";
   import NodeAvatar from "@app/components/NodeAvatar.svelte";
+  import RepoAvatar from "@app/components/RepoAvatar.svelte";
 
   export let activeTab: ActiveTab | undefined = undefined;
   export let baseUrl: BaseUrl;
@@ -19,6 +24,35 @@
   export let stylePaddingBottom: string = "2.5rem";
   export let nodeId: string;
   export let nodeAvatarUrl: string | undefined;
+
+  $: route = $activeRouteStore;
+  $: isRepoHome = route.resource === "repo.source" && route.params.path === "/";
+
+  let trail: HTMLElement | undefined = undefined;
+  let fadeLeft = false;
+  let fadeRight = false;
+
+  function updateFade() {
+    if (!trail) {
+      return;
+    }
+    const overflow = trail.scrollWidth - trail.clientWidth;
+    const offset = Math.abs(trail.scrollLeft);
+    fadeLeft = overflow > 1 && offset < overflow - 1;
+    fadeRight = overflow > 1 && offset > 1;
+  }
+
+  onMount(() => {
+    if (!trail) {
+      return;
+    }
+    const observer = new ResizeObserver(updateFade);
+    observer.observe(trail);
+    for (const child of trail.children) {
+      observer.observe(child);
+    }
+    return () => observer.disconnect();
+  });
 </script>
 
 <style>
@@ -41,7 +75,12 @@
     display: none;
   }
 
-  .breadcrumbs {
+  .breadcrumbs-scroller {
+    position: relative;
+    min-width: 0;
+  }
+  .breadcrumbs,
+  .trail {
     display: flex;
     align-items: center;
     column-gap: 0.25rem;
@@ -54,6 +93,15 @@
     align-items: center;
     gap: 0.25rem;
   }
+  .repo-crumb {
+    gap: 0.375rem;
+  }
+  .node-crumb {
+    margin-right: -0.5rem;
+  }
+  .repo-separator {
+    display: flex;
+  }
   .breadcrumb :global(a:hover) {
     color: var(--color-text-brand);
   }
@@ -62,7 +110,54 @@
       display: none;
     }
     .breadcrumbs {
+      direction: rtl;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .breadcrumbs::-webkit-scrollbar {
       display: none;
+    }
+    .hide-on-mobile {
+      display: none;
+    }
+    .trail {
+      direction: ltr;
+      flex-shrink: 0;
+      flex-wrap: nowrap;
+      width: max-content;
+      min-width: 100%;
+    }
+    .breadcrumbs-scroller::before,
+    .breadcrumbs-scroller::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2rem;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 1;
+    }
+    .breadcrumbs-scroller::before {
+      left: 0;
+      background: linear-gradient(
+        to right,
+        var(--color-surface-base),
+        transparent
+      );
+    }
+    .breadcrumbs-scroller::after {
+      right: 0;
+      background: linear-gradient(
+        to left,
+        var(--color-surface-base),
+        transparent
+      );
+    }
+    .breadcrumbs-scroller.fade-left::before,
+    .breadcrumbs-scroller.fade-right::after {
+      opacity: 1;
     }
     .content {
       overflow-y: scroll;
@@ -79,39 +174,63 @@
   <div class="app-header">
     <Header>
       <svelte:fragment slot="breadcrumbs">
-        <nav class="breadcrumbs" aria-label="Breadcrumb">
-          <span class="breadcrumb">
-            <SeedPicker
-              {baseUrl}
-              mode="node"
-              variant="breadcrumb"
-              ariaLabel="Current node selector"
-              title="Switch the node serving this page">
-              <svelte:fragment slot="icon">
-                <NodeAvatar {nodeId} avatarUrl={nodeAvatarUrl} />
-              </svelte:fragment>
-            </SeedPicker>
-          </span>
+        <div
+          class="breadcrumbs-scroller"
+          class:fade-left={fadeLeft}
+          class:fade-right={fadeRight}>
+          <nav
+            class="breadcrumbs"
+            aria-label="Breadcrumb"
+            bind:this={trail}
+            on:scroll={updateFade}>
+            <div class="trail">
+              <span class="breadcrumb node-crumb">
+                <SeedPicker
+                  {baseUrl}
+                  mode="node"
+                  variant="breadcrumb"
+                  ariaLabel="Current node selector"
+                  title="Switch the node serving this page">
+                  <svelte:fragment slot="icon">
+                    <NodeAvatar
+                      {nodeId}
+                      avatarUrl={nodeAvatarUrl}
+                      styleWidth="1rem"
+                      size={16} />
+                  </svelte:fragment>
+                </SeedPicker>
+              </span>
 
-          <Separator />
+              <span class="repo-separator" class:hide-on-mobile={isRepoHome}>
+                <Separator />
+              </span>
 
-          <span class="breadcrumb" title={repo.rid}>
-            <Link
-              route={{
-                resource: "repo.source",
-                repo: repoId,
-                node: baseUrl,
-              }}>
+              <span
+                class="breadcrumb"
+                class:hide-on-mobile={isRepoHome}
+                title={repo.rid}>
+                <Link
+                  route={{
+                    resource: "repo.source",
+                    repo: repoId,
+                    node: baseUrl,
+                  }}>
+                  <div class="breadcrumb repo-crumb">
+                    <RepoAvatar
+                      name={repo.payloads["xyz.radicle.project"].data.name}
+                      rid={repo.rid}
+                      styleWidth="1rem" />
+                    {repo.payloads["xyz.radicle.project"].data.name}
+                  </div>
+                </Link>
+              </span>
+
               <div class="breadcrumb">
-                {repo.payloads["xyz.radicle.project"].data.name}
+                <slot name="breadcrumb" />
               </div>
-            </Link>
-          </span>
-
-          <div class="breadcrumb">
-            <slot name="breadcrumb" />
-          </div>
-        </nav>
+            </div>
+          </nav>
+        </div>
       </svelte:fragment>
     </Header>
   </div>
