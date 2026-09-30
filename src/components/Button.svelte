@@ -110,7 +110,7 @@
     color: var(--color-text-primary);
   }
   .selected {
-    background-color: var(--color-border-alpha-subtle);
+    background-color: var(--color-surface-mid);
     color: var(--color-text-primary);
     cursor: default;
   }
