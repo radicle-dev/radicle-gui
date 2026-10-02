@@ -3,23 +3,17 @@
   import type { CobFilters } from "./router";
 
   import { HttpdClient } from "@http-client";
-  import {
-    ISSUES_PER_PAGE,
-    currentCobFilters,
-    fetchIssuesPage,
-    hasCobFilters,
-  } from "./router";
-  import { push, replace } from "@app/lib/router";
+  import { ISSUES_PER_PAGE, fetchIssuesPage, hasCobFilters } from "./router";
+  import { replace } from "@app/lib/router";
   import { baseUrlToString } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
-  import CobFilterRow from "./CobFilterRow.svelte";
-  import CobSearch from "./CobSearch.svelte";
   import ErrorMessage from "@app/components/ErrorMessage.svelte";
   import Icon from "@app/components/Icon.svelte";
   import IssueTeaser from "@app/views/repos/Issue/IssueTeaser.svelte";
   import Layout from "./Layout.svelte";
   import Link from "@app/components/Link.svelte";
+  import ListSearch from "./ListSearch.svelte";
   import List from "@app/components/List.svelte";
   import Loading from "@app/components/Loading.svelte";
   import Placeholder from "@app/components/Placeholder.svelte";
@@ -36,16 +30,11 @@
   export let searchAvailable: boolean;
 
   let loading = false;
+  let searchOpen = false;
   let page = 0;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let error: any;
   let allIssues: Issue[];
-  let filtersOpen = false;
-
-  $: filtersActive = Boolean(
-    filters.author || filters.assignee || filters.label,
-  );
-  $: showFilterRow = searchAvailable && (filtersOpen || filtersActive);
 
   $: {
     allIssues = issues;
@@ -73,29 +62,20 @@
     }
   }
 
-  function search(event: CustomEvent<string | undefined>) {
+  function changeFilters(event: CustomEvent<CobFilters>) {
     void replace({
       resource: "repo.issues",
       repo: repoId,
       node: baseUrl,
       status,
-      ...currentCobFilters(),
-      q: event.detail,
-    });
-  }
-
-  function applyFilters(event: CustomEvent<Omit<CobFilters, "q">>) {
-    void push({
-      resource: "repo.issues",
-      repo: repoId,
-      node: baseUrl,
-      status,
-      ...currentCobFilters(),
       ...event.detail,
     });
   }
 
   $: totalForStatus = repo.payloads["xyz.radicle.project"].meta.issues[status];
+  $: hasIssues = Object.values(
+    repo.payloads["xyz.radicle.project"].meta.issues,
+  ).some(count => count > 0);
   $: showEmpty = hasCobFilters(filters)
     ? allIssues.length === 0 && !loading && !error
     : totalForStatus === 0;
@@ -151,6 +131,9 @@
     .placeholder {
       height: calc(100vh - 10rem);
     }
+    .header.searching > :global(a) {
+      display: none;
+    }
   }
 </style>
 
@@ -166,7 +149,7 @@
       Issues
     </Link>
   </svelte:fragment>
-  <div slot="header" class="header">
+  <div slot="header" class="header" class:searching={searchOpen}>
     <Link
       route={{
         resource: "repo.issues",
@@ -203,24 +186,16 @@
         </div>
       </Button>
     </Link>
-    {#if searchAvailable}
-      <CobSearch
-        value={filters.q}
-        placeholder="Search issues…"
-        on:search={search} />
-      <Button
-        variant={showFilterRow ? "gray" : "background"}
-        disabled={filtersActive}
-        on:click={() => (filtersOpen = !filtersOpen)}>
-        <Icon name="filter" />
-        Filter
-      </Button>
-    {/if}
-  </div>
-
-  <div slot="subheader">
-    {#if showFilterRow}
-      <CobFilterRow {filters} on:change={applyFilters} />
+    {#if searchAvailable && (hasIssues || hasCobFilters(filters))}
+      <ListSearch
+        bind:expanded={searchOpen}
+        {baseUrl}
+        rid={repo.rid}
+        delegates={repo.delegates}
+        kind="issues"
+        {filters}
+        placeholder="Search, or filter with author: assignee: label:"
+        on:change={changeFilters} />
     {/if}
   </div>
 

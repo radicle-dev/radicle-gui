@@ -6,21 +6,19 @@
 
   import {
     PATCHES_PER_PAGE,
-    currentCobFilters,
     fetchPatchesPage,
     hasCobFilters,
     patchesSearch,
   } from "./router";
-  import { push, replace } from "@app/lib/router";
+  import { replace } from "@app/lib/router";
   import { baseUrlToString } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
-  import CobFilterRow from "./CobFilterRow.svelte";
-  import CobSearch from "./CobSearch.svelte";
   import ErrorMessage from "@app/components/ErrorMessage.svelte";
   import Icon from "@app/components/Icon.svelte";
   import Layout from "./Layout.svelte";
   import Link from "@app/components/Link.svelte";
+  import ListSearch from "./ListSearch.svelte";
   import List from "@app/components/List.svelte";
   import Loading from "@app/components/Loading.svelte";
   import PatchTeaser from "./Patch/PatchTeaser.svelte";
@@ -38,16 +36,11 @@
   export let searchAvailable: boolean;
 
   let loading = false;
+  let searchOpen = false;
   let page = 0;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let error: any;
   let allPatches: Patch[];
-  let filtersOpen = false;
-
-  $: filtersActive = Boolean(
-    filters.author || filters.assignee || filters.label,
-  );
-  $: showFilterRow = searchAvailable && (filtersOpen || filtersActive);
 
   $: {
     allPatches = patches;
@@ -75,31 +68,19 @@
     }
   }
 
-  function search(event: CustomEvent<string | undefined>) {
+  function changeFilters(event: CustomEvent<CobFilters>) {
     void replace({
       resource: "repo.patches",
       repo: repoId,
       node: baseUrl,
-      search: patchesSearch(status, {
-        ...currentCobFilters(),
-        q: event.detail,
-      }),
-    });
-  }
-
-  function applyFilters(event: CustomEvent<Omit<CobFilters, "q">>) {
-    void push({
-      resource: "repo.patches",
-      repo: repoId,
-      node: baseUrl,
-      search: patchesSearch(status, {
-        ...currentCobFilters(),
-        ...event.detail,
-      }),
+      search: patchesSearch(status, event.detail),
     });
   }
 
   $: totalForStatus = repo.payloads["xyz.radicle.project"].meta.patches[status];
+  $: hasPatches = Object.values(
+    repo.payloads["xyz.radicle.project"].meta.patches,
+  ).some(count => count > 0);
   $: showEmpty = hasCobFilters(filters)
     ? allPatches.length === 0 && !loading && !error
     : totalForStatus === 0;
@@ -155,6 +136,9 @@
     .placeholder {
       height: calc(100vh - 10rem);
     }
+    .header.searching > :global(a) {
+      display: none;
+    }
     .title-counter:not(.active) {
       display: none;
     }
@@ -173,7 +157,7 @@
       Patches
     </Link>
   </svelte:fragment>
-  <div slot="header" class="header">
+  <div slot="header" class="header" class:searching={searchOpen}>
     <Link
       route={{
         resource: "repo.patches",
@@ -242,24 +226,16 @@
         </div>
       </Button>
     </Link>
-    {#if searchAvailable}
-      <CobSearch
-        value={filters.q}
-        placeholder="Search patches…"
-        on:search={search} />
-      <Button
-        variant={showFilterRow ? "gray" : "background"}
-        disabled={filtersActive}
-        on:click={() => (filtersOpen = !filtersOpen)}>
-        <Icon name="filter" />
-        Filter
-      </Button>
-    {/if}
-  </div>
-
-  <div slot="subheader">
-    {#if showFilterRow}
-      <CobFilterRow {filters} on:change={applyFilters} />
+    {#if searchAvailable && (hasPatches || hasCobFilters(filters))}
+      <ListSearch
+        bind:expanded={searchOpen}
+        {baseUrl}
+        rid={repo.rid}
+        delegates={repo.delegates}
+        kind="patches"
+        {filters}
+        placeholder="Search, or filter with author: assignee: label:"
+        on:change={changeFilters} />
     {/if}
   </div>
 

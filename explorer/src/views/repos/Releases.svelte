@@ -49,6 +49,10 @@
     : allReleases.length;
 
   $: releaseCount = repo.payloads["xyz.radicle.project"].meta.releases;
+  $: showSearch =
+    searchAvailable &&
+    (Boolean(q) ||
+      (releaseCount !== undefined ? releaseCount > 0 : allReleases.length > 0));
 
   const api = new HttpdClient(baseUrl);
 
@@ -154,7 +158,7 @@
     </Link>
   </svelte:fragment>
   <svelte:fragment slot="header">
-    {#if showFilters || searchAvailable}
+    {#if showFilters || showSearch}
       <div class="header">
         {#if showFilters}
           <Link
@@ -201,7 +205,7 @@
             </Button>
           </Link>
         {/if}
-        {#if searchAvailable}
+        {#if showSearch}
           <CobSearch
             value={q}
             placeholder="Search releases…"
