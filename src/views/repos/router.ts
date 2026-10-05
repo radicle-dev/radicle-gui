@@ -1361,7 +1361,7 @@ export function repoTitle(loadedRoute: RepoLoadedRoute) {
     title.push("commit");
   } else if (loadedRoute.resource === "repo.history") {
     title.push(project.data.name);
-    title.push("history");
+    title.push("Commits");
   } else if (loadedRoute.resource === "repo.issue") {
     title.push(loadedRoute.params.issue.title);
     title.push("issue");
