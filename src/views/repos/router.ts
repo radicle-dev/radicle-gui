@@ -1358,32 +1358,32 @@ export function repoTitle(loadedRoute: RepoLoadedRoute) {
     }
   } else if (loadedRoute.resource === "repo.commit") {
     title.push(loadedRoute.params.commit.commit.summary);
-    title.push("commit");
+    title.push("Commit");
   } else if (loadedRoute.resource === "repo.history") {
     title.push(project.data.name);
     title.push("Commits");
   } else if (loadedRoute.resource === "repo.issue") {
     title.push(loadedRoute.params.issue.title);
-    title.push("issue");
+    title.push("Issue");
   } else if (loadedRoute.resource === "repo.issues") {
     title.push(project.data.name);
-    title.push("issues");
+    title.push("Issues");
   } else if (loadedRoute.resource === "repo.patch") {
     title.push(loadedRoute.params.patch.title);
-    title.push("patch");
+    title.push("Patch");
   } else if (loadedRoute.resource === "repo.patches") {
     title.push(project.data.name);
-    title.push("patches");
+    title.push("Patches");
   } else if (loadedRoute.resource === "repo.release") {
     title.push(
       loadedRoute.params.release.title ||
         loadedRoute.params.release.tagName ||
         loadedRoute.params.release.id,
     );
-    title.push("release");
+    title.push("Release");
   } else if (loadedRoute.resource === "repo.releases") {
     title.push(project.data.name);
-    title.push("releases");
+    title.push("Releases");
   } else {
     return unreachable(loadedRoute);
   }
