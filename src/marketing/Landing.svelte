@@ -408,11 +408,28 @@
     gap: 2rem;
     padding: 2rem;
     margin-bottom: 6rem;
-    background:
-      url("/marketing/images/garden.png") no-repeat right center,
-      var(--color-accent-citrus-500);
-    background-size: cover;
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    container-type: inline-size;
+    background-color: var(--color-accent-citrus-500);
     border-radius: var(--border-radius-tiny);
+  }
+
+  .garden-promo::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: url("/marketing/images/garden.png") no-repeat right center;
+    background-size: cover;
+    transition: opacity 0.2s ease;
+  }
+
+  @container (max-width: 48rem) {
+    .garden-promo::before {
+      opacity: 0.4;
+    }
   }
 
   .garden-promo-text h3,
@@ -454,6 +471,10 @@
     .hero-image {
       height: auto;
       aspect-ratio: 3 / 2;
+    }
+
+    .garden-promo::before {
+      opacity: 0.4;
     }
 
     .garden-promo {
