@@ -232,6 +232,7 @@ export function routeToPath(route: Route): string {
   } else if (route.resource === "guide") {
     return "/guide";
   } else if (
+    route.resource === "repo.board" ||
     route.resource === "repo.home" ||
     route.resource === "repo.commits" ||
     route.resource === "repo.commit" ||

@@ -1,3 +1,5 @@
+import type { Board } from "@bindings/cob/board/Board";
+import type { PatchLink } from "@bindings/cob/board/PatchLink";
 import type { Action as IssueAction } from "@bindings/cob/issue/Action";
 import type { Issue } from "@bindings/cob/issue/Issue";
 import type { Operation } from "@bindings/cob/Operation";
@@ -19,6 +21,7 @@ import type { Readme } from "@bindings/repo/Readme";
 import type { RepoInfo } from "@bindings/repo/RepoInfo";
 import type { Tree } from "@bindings/source/Tree";
 
+import type { BoardView } from "@app/lib/board";
 import {
   cachedGetCommitDiff,
   cachedGetDiffText,
@@ -132,6 +135,28 @@ export interface LoadedRepoIssueRoute {
   };
 }
 
+export interface RepoBoardRoute {
+  resource: "repo.board";
+  rid: string;
+  view: BoardView;
+  board?: string;
+}
+
+export interface LoadedRepoBoardRoute {
+  resource: "repo.board";
+  params: {
+    repo: RepoInfo;
+    config: Config;
+    boards: Board[];
+    issues: Issue[];
+    patches: Patch[];
+    links: PatchLink[];
+    view: BoardView;
+    selected?: string;
+    sidebarData: SidebarData;
+  };
+}
+
 export interface RepoIssuesRoute {
   resource: "repo.issues";
   rid: string;
@@ -233,6 +258,7 @@ export interface LoadedRepoReleaseRoute {
 }
 
 export type RepoRoute =
+  | RepoBoardRoute
   | RepoHomeRoute
   | RepoCommitsRoute
   | RepoCommitRoute
@@ -244,6 +270,7 @@ export type RepoRoute =
   | RepoReleaseRoute
   | RepoReleasesRoute;
 export type LoadedRepoRoute =
+  | LoadedRepoBoardRoute
   | LoadedRepoHomeRoute
   | LoadedRepoCommitsRoute
   | LoadedRepoCommitRoute
@@ -640,6 +667,39 @@ export async function loadRelease(
   };
 }
 
+export async function loadBoard(
+  route: RepoBoardRoute,
+): Promise<LoadedRepoBoardRoute> {
+  const [sidebarData, repo, boards, issues, patches, links] = await Promise.all(
+    [
+      loadSidebarData(),
+      invoke<RepoInfo>("repo_by_id", { rid: route.rid }),
+      invoke<Board[]>("list_boards", { rid: route.rid }),
+      invoke<PaginatedQuery<Issue[]>>("list_issues", {
+        rid: route.rid,
+        status: "all",
+      }),
+      invoke<PaginatedQuery<Patch[]>>("list_patches", { rid: route.rid }),
+      invoke<PatchLink[]>("board_links", { rid: route.rid }),
+    ],
+  );
+
+  return {
+    resource: "repo.board",
+    params: {
+      sidebarData,
+      config: sidebarData.config,
+      repo,
+      boards,
+      issues: issues.content,
+      patches: patches.content,
+      links,
+      view: route.view,
+      selected: route.board,
+    },
+  };
+}
+
 export function repoRouteToPath(route: RepoRoute): string {
   const pathSegments = ["/repos", route.rid];
   const searchParams = new URLSearchParams();
@@ -670,6 +730,11 @@ export function repoRouteToPath(route: RepoRoute): string {
     return [...pathSegments, "commits", route.commit].join("/");
   } else if (route.resource === "repo.identity") {
     return [...pathSegments, "identity"].join("/");
+  } else if (route.resource === "repo.board") {
+    const url = [...pathSegments, "board"].join("/");
+    if (route.view === "list") searchParams.set("view", "list");
+    if (route.board) searchParams.set("board", route.board);
+    return searchParams.size > 0 ? `${url}?${searchParams}` : url;
   } else if (route.resource === "repo.issue") {
     let url = [...pathSegments, "issues", route.issue].join("/");
     searchParams.set("status", route.status);
@@ -771,6 +836,10 @@ export function repoUrlToRoute(
       };
     } else if (resource === "identity") {
       return { resource: "repo.identity", rid };
+    } else if (resource === "board") {
+      const view = searchParams.get("view") === "list" ? "list" : "board";
+      const board = searchParams.get("board") ?? undefined;
+      return { resource: "repo.board", rid, view, board };
     } else if (resource === "issues") {
       const idOrAction = segments.shift();
       if (idOrAction) {

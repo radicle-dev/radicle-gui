@@ -4,6 +4,7 @@ import type { Config } from "@bindings/config/Config";
 import type { RepoSummary } from "@bindings/repo/RepoSummary";
 
 import {
+  loadBoard,
   loadIdentity,
   loadIssue,
   loadIssues,
@@ -59,6 +60,7 @@ export function isLoadedRepoRoute(
   route: LoadedRoute,
 ): route is LoadedRepoRoute {
   return (
+    route.resource === "repo.board" ||
     route.resource === "repo.home" ||
     route.resource === "repo.commits" ||
     route.resource === "repo.commit" ||
@@ -109,6 +111,8 @@ export async function loadRoute(
     return loadInbox();
   } else if (route.resource === "guide") {
     return loadGuide();
+  } else if (route.resource === "repo.board") {
+    return loadBoard(route);
   } else if (route.resource === "repo.home") {
     return loadRepoHome(route);
   } else if (route.resource === "repo.commits") {
