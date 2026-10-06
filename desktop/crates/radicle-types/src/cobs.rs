@@ -8,6 +8,7 @@ use radicle::cob;
 use radicle::identity;
 use radicle::node::{Alias, AliasStore};
 
+pub mod board;
 pub mod diff;
 pub mod issue;
 pub mod job;

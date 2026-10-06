@@ -225,6 +225,9 @@ pub enum Error {
     /// Artifact node client error.
     #[error(transparent)]
     ArtifactClient(#[from] radicle_artifact_client::ClientError),
+    /// Board error.
+    #[error("{0}")]
+    Board(&'static str),
 }
 
 impl Error {
@@ -258,6 +261,7 @@ impl Error {
             Error::ArtifactCore(radicle_artifact_core::Error::CidMismatch { .. }) => {
                 "ArtifactError.CidMismatch"
             }
+            Error::Board(_) => "BoardError",
             _ => "UnknownError",
         }
     }

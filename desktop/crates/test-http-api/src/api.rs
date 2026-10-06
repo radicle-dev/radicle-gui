@@ -38,6 +38,7 @@ use radicle_types::error::Error;
 use radicle_types::outbound::sqlite::Sqlite;
 use radicle_types::traits::Profile;
 use radicle_types::traits::artifact_node::ArtifactNode;
+use radicle_types::traits::board::Boards;
 use radicle_types::traits::cobs::Cobs;
 use radicle_types::traits::identity::Identity;
 use radicle_types::traits::inbox::Inbox;
@@ -57,6 +58,7 @@ pub struct Context {
     inbox: Arc<InboxService<Sqlite>>,
 }
 
+impl Boards for Context {}
 impl Repo for Context {}
 impl Cobs for Context {}
 impl Identity for Context {}
@@ -171,6 +173,11 @@ pub fn router(shared: Shared) -> Router {
         .route("/seed_artifact", post(seed_artifact_handler))
         .route("/unseed_artifact", post(unseed_artifact_handler))
         .route("/download_artifact", post(download_artifact_handler))
+        .route("/create_board", post(create_board_handler))
+        .route("/move_card", post(move_card_handler))
+        .route("/remove_card", post(remove_card_handler))
+        .route("/rename_board", post(rename_board_handler))
+        .route("/set_board_columns", post(set_board_columns_handler))
         .route_layer(middleware::from_fn_with_state(
             Arc::new(Mutex::new(())),
             serialize_writes,
@@ -243,6 +250,8 @@ pub fn router(shared: Shared) -> Router {
         .route("/artifact_node_status", post(artifact_node_status_handler))
         .route("/seeded_artifacts", post(seeded_artifacts_handler))
         .route("/list_jobs", post(jobs_handler))
+        .route("/list_boards", post(list_boards_handler))
+        .route("/board_links", post(board_links_handler))
         .route("/list_notifications", post(list_notifications_handler))
         .route("/notification_count", post(notification_count_handler))
         .merge(writes)
@@ -1536,4 +1545,137 @@ async fn jobs_handler(
     let jobs = ctx.list_jobs(rid, sha)?;
 
     Ok::<_, Error>(Json(jobs))
+}
+
+#[derive(Serialize, Deserialize)]
+struct ListBoardsBody {
+    pub rid: identity::RepoId,
+}
+
+async fn list_boards_handler(
+    Ctx(ctx): Ctx,
+    Json(ListBoardsBody { rid }): Json<ListBoardsBody>,
+) -> impl IntoResponse {
+    let boards = ctx.list_boards(rid)?;
+
+    Ok::<_, Error>(Json(boards))
+}
+
+#[derive(Serialize, Deserialize)]
+struct CreateBoardBody {
+    pub rid: identity::RepoId,
+    pub name: String,
+    pub opts: CobOptions,
+}
+
+async fn create_board_handler(
+    Ctx(ctx): Ctx,
+    Json(CreateBoardBody { rid, name, opts }): Json<CreateBoardBody>,
+) -> impl IntoResponse {
+    let board = ctx.create_board(rid, name, opts)?;
+
+    Ok::<_, Error>(Json(board))
+}
+
+#[derive(Serialize, Deserialize)]
+struct MoveCardBody {
+    pub rid: identity::RepoId,
+    pub board: radicle::cob::ObjectId,
+    pub card: types::cobs::board::Card,
+    pub column: String,
+    pub before: Option<String>,
+    pub after: Option<String>,
+    pub opts: CobOptions,
+}
+
+async fn move_card_handler(
+    Ctx(ctx): Ctx,
+    Json(MoveCardBody {
+        rid,
+        board,
+        card,
+        column,
+        before,
+        after,
+        opts,
+    }): Json<MoveCardBody>,
+) -> impl IntoResponse {
+    let board = ctx.move_card(rid, board, card, column, before, after, opts)?;
+
+    Ok::<_, Error>(Json(board))
+}
+
+#[derive(Serialize, Deserialize)]
+struct RemoveCardBody {
+    pub rid: identity::RepoId,
+    pub board: radicle::cob::ObjectId,
+    pub card: types::cobs::board::Card,
+    pub opts: CobOptions,
+}
+
+async fn remove_card_handler(
+    Ctx(ctx): Ctx,
+    Json(RemoveCardBody {
+        rid,
+        board,
+        card,
+        opts,
+    }): Json<RemoveCardBody>,
+) -> impl IntoResponse {
+    let board = ctx.remove_card(rid, board, card, opts)?;
+
+    Ok::<_, Error>(Json(board))
+}
+
+async fn board_links_handler(
+    Ctx(ctx): Ctx,
+    Json(ListBoardsBody { rid }): Json<ListBoardsBody>,
+) -> impl IntoResponse {
+    let links = ctx.board_links(rid)?;
+
+    Ok::<_, Error>(Json(links))
+}
+
+#[derive(Serialize, Deserialize)]
+struct RenameBoardBody {
+    pub rid: identity::RepoId,
+    pub board: radicle::cob::ObjectId,
+    pub name: String,
+    pub opts: CobOptions,
+}
+
+async fn rename_board_handler(
+    Ctx(ctx): Ctx,
+    Json(RenameBoardBody {
+        rid,
+        board,
+        name,
+        opts,
+    }): Json<RenameBoardBody>,
+) -> impl IntoResponse {
+    let board = ctx.rename_board(rid, board, name, opts)?;
+
+    Ok::<_, Error>(Json(board))
+}
+
+#[derive(Serialize, Deserialize)]
+struct SetBoardColumnsBody {
+    pub rid: identity::RepoId,
+    pub board: radicle::cob::ObjectId,
+    pub columns: Vec<types::cobs::board::Column>,
+    pub opts: CobOptions,
+}
+
+async fn set_board_columns_handler(
+    Ctx(ctx): Ctx,
+    Json(SetBoardColumnsBody {
+        rid,
+        board,
+        columns,
+        opts,
+    }): Json<SetBoardColumnsBody>,
+) -> impl IntoResponse {
+    let board = ctx.set_board_columns(rid, board, columns, opts)?;
+
+    Ok::<_, Error>(Json(board))
 }
