@@ -81,6 +81,23 @@ echo
 git log --pretty=format:'* `%h` **%s** *<%ae>*' "$range" -- "$exclude"
 
 echo
+echo
+echo "## API changes"
+echo
+echo "For node operators and explorer deployments. Fill in from docs/api-changes.md."
+echo
+echo "### New"
+echo
+echo "* None."
+echo
+echo "### Deprecated"
+echo
+echo "* None. (Name each old field or path and its removal date.)"
+echo
+echo "### Removed"
+echo
+echo "* None."
+echo
 echo "## Checksums"
 echo
 

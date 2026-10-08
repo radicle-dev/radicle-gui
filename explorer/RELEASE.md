@@ -17,6 +17,13 @@ web front-end (`radicle-explorer`) is not released this way: it is deployed
 continuously (rolling release) and must always remain compatible with the
 latest `radicle-httpd`/`radicle-search` release.
 
+## Versioning
+
+Every release bumps the minor version, and a hotfix bumps the patch version.
+A version names a release; it is not a promise about compatibility.
+Explorer supports a release for six months after its release date, see
+[ADR 0001](docs/adr/0001-expand-and-contract-api-changes.md).
+
 ## Prerequisites
 
 - Git signing configured via SSH:
@@ -53,12 +60,18 @@ latest `radicle-httpd`/`radicle-search` release.
 5. Edit changelog and remove irrelevant entries. Note in each entry whether a
    change belongs to `radicle-httpd` or `radicle-search`.
 
-6. Commit release:
+6. Fill in the `## API changes` section from
+   [`docs/api-changes.md`](docs/api-changes.md). In that file, replace each
+   server removal of this release with a date six months from today. In the
+   code, replace each "Server: remove 6 months after release" with the same
+   date.
+
+7. Commit release:
    ```sh
    git commit -m "Release <version>"
    ```
 
-7. Push for review:
+8. Push for review:
    ```sh
    git push rad HEAD:refs/patches
    ```

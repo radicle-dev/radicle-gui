@@ -62,6 +62,14 @@ example.com {
 }
 ```
 
+## Node compatibility
+
+Explorer supports a `radicle-httpd` release for six months after its
+release date, and always while it is the latest release. Seeds that run an
+older release may not load, and explorer asks their operators to
+upgrade. See [ADR 0001](docs/adr/0001-expand-and-contract-api-changes.md)
+and the list of [API changes](docs/api-changes.md).
+
 ## Configuration
 
 There are two ways to configure the UI: **at build time** and **at run time**.
