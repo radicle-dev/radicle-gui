@@ -114,12 +114,46 @@ fn parse_options() -> anyhow::Result<httpd::Options> {
             _ => return Err(arg.unexpected().into()),
         }
     }
+    let inline_blob_limits = inline_blob_limits_from_env()?;
     Ok(httpd::Options {
         aliases,
         listen: listen.unwrap_or_else(|| DualAddr::Tcp(([0, 0, 0, 0], 8080).into())),
         cache,
         search: search_options_from_env()?,
+        inline_blob_limits,
     })
+}
+
+fn inline_blob_limits_from_env() -> anyhow::Result<httpd::InlineBlobLimits> {
+    let defaults = httpd::InlineBlobLimits::default();
+    Ok(httpd::InlineBlobLimits {
+        per_file: parse_bytes_from_env("RADICLE_HTTPD_INLINE_LIMIT_PER_FILE", defaults.per_file)?,
+        per_response: parse_bytes_from_env(
+            "RADICLE_HTTPD_INLINE_LIMIT_PER_RESPONSE",
+            defaults.per_response,
+        )?,
+    })
+}
+
+fn parse_bytes_from_env(var: &str, default: usize) -> anyhow::Result<usize> {
+    match std::env::var(var) {
+        Ok(raw) if !raw.is_empty() => parse_bytes(&raw).ok_or_else(|| {
+            anyhow::anyhow!("{var}={raw:?} is not a size (expected e.g. 524288, 512K, 8M or 1G)")
+        }),
+        Ok(_) | Err(std::env::VarError::NotPresent) => Ok(default),
+        Err(std::env::VarError::NotUnicode(raw)) => bail!("{var}={raw:?} is not valid UTF-8"),
+    }
+}
+
+fn parse_bytes(raw: &str) -> Option<usize> {
+    let raw = raw.trim();
+    let (digits, multiplier) = match raw.char_indices().last()? {
+        (i, 'k' | 'K') => (&raw[..i], 1024),
+        (i, 'm' | 'M') => (&raw[..i], 1024 * 1024),
+        (i, 'g' | 'G') => (&raw[..i], 1024 * 1024 * 1024),
+        _ => (raw, 1),
+    };
+    digits.parse::<usize>().ok()?.checked_mul(multiplier)
 }
 
 /// Read the search backend configuration from the environment. Search is
@@ -172,6 +206,47 @@ mod tests {
 
     // Process-global env vars: each test uses its own variable name so
     // parallel runs don't race.
+
+    #[test]
+    fn bytes_accepts_plain_numbers_and_binary_suffixes() {
+        assert_eq!(parse_bytes("0"), Some(0));
+        assert_eq!(parse_bytes("524288"), Some(524_288));
+        assert_eq!(parse_bytes("512K"), Some(512 * 1024));
+        assert_eq!(parse_bytes("512k"), Some(512 * 1024));
+        assert_eq!(parse_bytes("8M"), Some(8 * 1024 * 1024));
+        assert_eq!(parse_bytes("1G"), Some(1024 * 1024 * 1024));
+        assert_eq!(parse_bytes(" 8M "), Some(8 * 1024 * 1024));
+    }
+
+    #[test]
+    fn bytes_rejects_malformed_sizes() {
+        for raw in ["", "K", "12X", "8MB", "8MiB", "-1", "1.5M", "512 K"] {
+            assert_eq!(parse_bytes(raw), None, "{raw:?}");
+        }
+        assert_eq!(parse_bytes(&format!("{}G", usize::MAX)), None);
+    }
+
+    #[test]
+    fn bytes_env_unset_or_empty_returns_default() {
+        assert_eq!(
+            parse_bytes_from_env("RADICLE_HTTPD_TEST_BYTES_UNSET", 42).unwrap(),
+            42
+        );
+        let var = "RADICLE_HTTPD_TEST_BYTES_EMPTY";
+        unsafe { std::env::set_var(var, "") };
+        let parsed = parse_bytes_from_env(var, 42);
+        unsafe { std::env::remove_var(var) };
+        assert_eq!(parsed.unwrap(), 42);
+    }
+
+    #[test]
+    fn bytes_env_invalid_is_an_error() {
+        let var = "RADICLE_HTTPD_TEST_BYTES_INVALID";
+        unsafe { std::env::set_var(var, "12X") };
+        let parsed = parse_bytes_from_env(var, 42);
+        unsafe { std::env::remove_var(var) };
+        assert!(parsed.is_err());
+    }
 
     #[test]
     fn timeout_unset_returns_default() {

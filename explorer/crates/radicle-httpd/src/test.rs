@@ -327,6 +327,7 @@ fn seed_with_signer(dir: &Path, profile: radicle::Profile, signer: &SigningKey) 
         listen: axum_listener::DualAddr::Tcp(std::net::SocketAddr::from(([0, 0, 0, 0], 8080))),
         cache: Some(crate::DEFAULT_CACHE_SIZE),
         search: None,
+        inline_blob_limits: crate::InlineBlobLimits::default(),
     };
 
     let web_config = crate::api::WebConfig::from_profile(&profile);
@@ -631,6 +632,7 @@ pub fn seed_merge(dir: &Path) -> MergeFixture {
         listen: axum_listener::DualAddr::Tcp(std::net::SocketAddr::from(([0, 0, 0, 0], 8080))),
         cache: Some(crate::DEFAULT_CACHE_SIZE),
         search: None,
+        inline_blob_limits: crate::InlineBlobLimits::default(),
     };
     let web_config = crate::api::WebConfig::from_profile(&profile);
     let ctx = Context::new(Arc::new(profile), web_config, &options)

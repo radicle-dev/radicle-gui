@@ -64,6 +64,22 @@ pub struct Options {
     /// Search backend configuration. `None` disables search at runtime and
     /// falls back to the built-in storage walk.
     pub search: Option<SearchOptions>,
+    pub inline_blob_limits: InlineBlobLimits,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InlineBlobLimits {
+    pub per_file: usize,
+    pub per_response: usize,
+}
+
+impl Default for InlineBlobLimits {
+    fn default() -> Self {
+        Self {
+            per_file: 512 * 1024,
+            per_response: 8 * 1024 * 1024,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -241,6 +257,7 @@ mod routes {
             listen: DualAddr::Tcp(SocketAddr::from(([0, 0, 0, 0], 8080))),
             cache: None,
             search: None,
+            inline_blob_limits: super::InlineBlobLimits::default(),
         };
         let profile = test::profile(tmp.path(), [0xff; 32]);
         let web_config = crate::api::WebConfig::from_profile(&profile);

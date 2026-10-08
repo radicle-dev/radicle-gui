@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **Bounded inlined blobs**: the commit and diff endpoints inline a changed
+  file's content only while it fits `RADICLE_HTTPD_INLINE_LIMIT_PER_FILE`
+  (default 512K) and the response stays within
+  `RADICLE_HTTPD_INLINE_LIMIT_PER_RESPONSE` (default 8M); larger blobs are left
+  out of `files`, so the explorer shows them without syntax highlighting or
+  image previews. Both take plain bytes or K/M/G suffixes, and 0 disables
+  inlining
+
 ## radicle-httpd + radicle-search 0.30.0
 
 - **`tar.zst` archive downloads**: `/raw/{rid}/archive/{ref}.tar.zst` joins the

@@ -27,6 +27,7 @@ use crate::api::search::SearchQueryString;
 use crate::api::Context;
 use crate::api::PeelToCommit;
 use crate::axum_extra::{cached_response, immutable_response, Path, Query};
+use crate::InlineBlobLimits;
 
 const MAX_BODY_LIMIT: usize = 4_194_304;
 
@@ -508,8 +509,8 @@ async fn commit_handler(
 ) -> impl IntoResponse {
     let rid = ctx.resolve_repo(&rid)?;
     let response = api::blocking(move || {
-        let (repo, _) = ctx.repo(rid)?;
-        let repo = Repository::open(repo.path())?;
+        let (storage, _) = ctx.repo(rid)?;
+        let repo = Repository::open(storage.path())?;
         let commit = repo.commit(sha)?;
 
         let diff = repo.diff_commit(commit.id)?;
@@ -520,44 +521,12 @@ async fn commit_handler(
             .map(|b| b.refname().to_string())
             .collect();
 
-        let mut files: HashMap<Oid, BlobRef<'_>> = HashMap::new();
-        diff.files().for_each(|file_diff| match file_diff {
-            diff::FileDiff::Added(added) => {
-                if let Ok(blob) = repo.blob_ref(added.new.oid) {
-                    files.insert(blob.id(), blob);
-                }
-            }
-            diff::FileDiff::Deleted(deleted) => {
-                if let Ok(old_blob) = repo.blob_ref(deleted.old.oid) {
-                    files.insert(old_blob.id(), old_blob);
-                }
-            }
-            diff::FileDiff::Modified(modified) => {
-                if let (Ok(old_blob), Ok(new_blob)) = (
-                    repo.blob_ref(modified.old.oid),
-                    repo.blob_ref(modified.new.oid),
-                ) {
-                    files.insert(old_blob.id(), old_blob);
-                    files.insert(new_blob.id(), new_blob);
-                }
-            }
-            diff::FileDiff::Moved(moved) => {
-                if let (Ok(old_blob), Ok(new_blob)) =
-                    (repo.blob_ref(moved.old.oid), repo.blob_ref(moved.new.oid))
-                {
-                    files.insert(old_blob.id(), old_blob);
-                    files.insert(new_blob.id(), new_blob);
-                }
-            }
-            diff::FileDiff::Copied(copied) => {
-                if let (Ok(old_blob), Ok(new_blob)) =
-                    (repo.blob_ref(copied.old.oid), repo.blob_ref(copied.new.oid))
-                {
-                    files.insert(old_blob.id(), old_blob);
-                    files.insert(new_blob.id(), new_blob);
-                }
-            }
-        });
+        let files = inline_blobs(
+            &repo,
+            &storage.backend,
+            changed_blob_groups(&diff),
+            ctx.inline_blob_limits(),
+        )?;
 
         Ok::<_, Error>(json!({
           "commit": api::json::commit::Commit::new(&commit).as_json(),
@@ -583,52 +552,19 @@ async fn diff_handler(
         let base = repo.commit(base)?;
         let commit = repo.commit(oid)?;
         let diff = repo.diff(base.id, commit.id)?;
-        let mut files: HashMap<Oid, BlobRef<'_>> = HashMap::new();
-        diff.files().for_each(|file_diff| match file_diff {
-            diff::FileDiff::Added(added) => {
-                if let Ok(new_blob) = repo.blob_ref(added.new.oid) {
-                    files.insert(new_blob.id(), new_blob);
-                }
-            }
-            diff::FileDiff::Deleted(deleted) => {
-                if let Ok(old_blob) = repo.blob_ref(deleted.old.oid) {
-                    files.insert(old_blob.id(), old_blob);
-                }
-            }
-            diff::FileDiff::Modified(modified) => {
-                if let (Ok(new_blob), Ok(old_blob)) = (
-                    repo.blob_ref(modified.old.oid),
-                    repo.blob_ref(modified.new.oid),
-                ) {
-                    files.insert(new_blob.id(), new_blob);
-                    files.insert(old_blob.id(), old_blob);
-                }
-            }
-            diff::FileDiff::Moved(moved) => {
-                if let (Ok(new_blob), Ok(old_blob)) =
-                    (repo.blob_ref(moved.new.oid), repo.blob_ref(moved.old.oid))
-                {
-                    files.insert(new_blob.id(), new_blob);
-                    files.insert(old_blob.id(), old_blob);
-                }
-            }
-            diff::FileDiff::Copied(copied) => {
-                if let (Ok(new_blob), Ok(old_blob)) =
-                    (repo.blob_ref(copied.new.oid), repo.blob_ref(copied.old.oid))
-                {
-                    files.insert(new_blob.id(), new_blob);
-                    files.insert(old_blob.id(), old_blob);
-                }
-            }
-        });
+        let files = inline_blobs(
+            &repo,
+            &storage.backend,
+            changed_blob_groups(&diff),
+            ctx.inline_blob_limits(),
+        )?;
 
         // Hide `base` from the walk rather than stopping at the first commit
         // that equals it. A merge commit reaches `base` through one of its
         // parents, so truncating there drops every commit the other parent
         // contributes, and a revision whose head merges the target branch in
         // looks like a single-commit revision.
-        let raw = radicle::git::raw::Repository::open(storage.path())?;
-        let mut walk = raw.revwalk()?;
+        let mut walk = storage.backend.revwalk()?;
         walk.push(commit.id.into())?;
         walk.hide(base.id.into())?;
 
@@ -643,6 +579,59 @@ async fn diff_handler(
     .await?;
 
     Ok::<_, Error>(immutable_response(response))
+}
+
+fn changed_blob_groups(diff: &diff::Diff) -> Vec<Vec<Oid>> {
+    diff.files()
+        .map(|file_diff| match file_diff {
+            diff::FileDiff::Added(added) => vec![added.new.oid],
+            diff::FileDiff::Deleted(deleted) => vec![deleted.old.oid],
+            diff::FileDiff::Modified(modified) => vec![modified.old.oid, modified.new.oid],
+            diff::FileDiff::Moved(moved) => vec![moved.old.oid, moved.new.oid],
+            diff::FileDiff::Copied(copied) => vec![copied.old.oid, copied.new.oid],
+        })
+        .collect()
+}
+
+fn inline_blobs<'r>(
+    repo: &'r Repository,
+    backend: &radicle::git::raw::Repository,
+    groups: impl IntoIterator<Item = Vec<Oid>>,
+    limits: InlineBlobLimits,
+) -> Result<HashMap<Oid, BlobRef<'r>>, Error> {
+    let mut files = HashMap::new();
+    if limits.per_file == 0 || limits.per_response == 0 {
+        return Ok(files);
+    }
+    let odb = backend.odb()?;
+    let mut budget = limits.per_response;
+    for mut group in groups {
+        group.sort();
+        group.dedup();
+        group.retain(|oid| !files.contains_key(oid));
+
+        let Ok(sizes) = group
+            .iter()
+            .map(|oid| odb.read_header((*oid).into()).map(|(size, _)| size))
+            .collect::<Result<Vec<_>, _>>()
+        else {
+            continue;
+        };
+        let total: usize = sizes.iter().sum();
+        if sizes.iter().any(|size| *size > limits.per_file) || total > budget {
+            continue;
+        }
+        let Ok(blobs) = group
+            .iter()
+            .map(|oid| repo.blob_ref(*oid))
+            .collect::<Result<Vec<_>, _>>()
+        else {
+            continue;
+        };
+        budget -= total;
+        files.extend(group.into_iter().zip(blobs));
+    }
+    Ok(files)
 }
 
 /// Get diff stats between two commits.
@@ -2812,5 +2801,118 @@ mod routes {
         let repos = response.json().await;
         assert_eq!(repos.as_array().unwrap().len(), 1);
         assert_eq!(repos[0]["rid"], json!(RID));
+    }
+
+    mod inline_blobs {
+        use radicle_surf::{Oid, Repository};
+
+        use super::super::inline_blobs;
+        use crate::InlineBlobLimits;
+
+        struct Fixture {
+            _dir: tempfile::TempDir,
+            backend: radicle::git::raw::Repository,
+            repo: Repository,
+        }
+
+        impl Fixture {
+            fn new() -> Self {
+                let dir = tempfile::tempdir().unwrap();
+                let backend = radicle::git::raw::Repository::init_bare(dir.path()).unwrap();
+                let repo = Repository::open(dir.path()).unwrap();
+                Self {
+                    _dir: dir,
+                    backend,
+                    repo,
+                }
+            }
+
+            fn blob(&self, size: usize) -> Oid {
+                self.backend
+                    .blob("x".repeat(size).as_bytes())
+                    .unwrap()
+                    .into()
+            }
+        }
+
+        fn limits(per_file: usize, per_response: usize) -> InlineBlobLimits {
+            InlineBlobLimits {
+                per_file,
+                per_response,
+            }
+        }
+
+        #[test]
+        fn skips_blobs_over_the_per_file_limit() {
+            let f = Fixture::new();
+            let (small, large) = (f.blob(10), f.blob(11));
+            let files = inline_blobs(
+                &f.repo,
+                &f.backend,
+                vec![vec![small], vec![large]],
+                limits(10, 100),
+            )
+            .unwrap();
+            assert!(files.contains_key(&small));
+            assert!(!files.contains_key(&large));
+        }
+
+        #[test]
+        fn stops_once_the_per_response_budget_is_spent() {
+            let f = Fixture::new();
+            let (a, b, c) = (f.blob(6), f.blob(5), f.blob(4));
+            let files = inline_blobs(
+                &f.repo,
+                &f.backend,
+                vec![vec![a], vec![b], vec![c]],
+                limits(10, 10),
+            )
+            .unwrap();
+            assert!(files.contains_key(&a));
+            assert!(!files.contains_key(&b));
+            assert!(files.contains_key(&c));
+        }
+
+        #[test]
+        fn inlines_both_sides_of_a_file_or_neither() {
+            let f = Fixture::new();
+            let (old, new) = (f.blob(5), f.blob(20));
+            let files =
+                inline_blobs(&f.repo, &f.backend, vec![vec![old, new]], limits(10, 100)).unwrap();
+            assert!(files.is_empty());
+
+            let files =
+                inline_blobs(&f.repo, &f.backend, vec![vec![old, new]], limits(20, 24)).unwrap();
+            assert!(files.is_empty());
+
+            let files =
+                inline_blobs(&f.repo, &f.backend, vec![vec![old, new]], limits(20, 25)).unwrap();
+            assert_eq!(files.len(), 2);
+        }
+
+        #[test]
+        fn zero_limits_inline_nothing() {
+            let f = Fixture::new();
+            let empty = f.blob(0);
+            for limits in [limits(0, 100), limits(100, 0)] {
+                let files = inline_blobs(&f.repo, &f.backend, vec![vec![empty]], limits).unwrap();
+                assert!(files.is_empty());
+            }
+        }
+
+        #[test]
+        fn counts_a_blob_shared_by_two_files_once() {
+            let f = Fixture::new();
+            let shared = f.blob(6);
+            let other = f.blob(4);
+            let files = inline_blobs(
+                &f.repo,
+                &f.backend,
+                vec![vec![shared], vec![shared, other]],
+                limits(10, 10),
+            )
+            .unwrap();
+            assert_eq!(files.len(), 2);
+        }
     }
 }
