@@ -216,6 +216,9 @@ impl Context {
         //
         // Those clients require every field of `meta`, so when one is missing
         // the project payload is left out entirely, as before the expand phase.
+        //
+        // `meta.releases` is the bucket object, not the old number. This breaks
+        // clients older than 0.29.0 on purpose; see Exceptions in docs/adr/0001.
         let head = default_branch
             .as_ref()
             .and_then(|_| repo.head().ok())
