@@ -1,6 +1,18 @@
 #!/bin/sh
 set -e
 
+usage="Usage: $0 <version> [--from-version <version>]"
+
+if [ $# -lt 1 ]; then
+  echo "$usage" >&2
+  exit 1
+fi
+
+# Version to generate the changelog for. The release tag sets it, not
+# Cargo.toml.
+version="$1"
+shift
+
 # Version from which to generate the changelog.
 from=""
 
@@ -17,18 +29,11 @@ while [ $# -gt 0 ]; do
       ;;
     *)
       echo "error: unknown argument '$1'" >&2
+      echo "$usage" >&2
       exit 1
       ;;
   esac
 done
-
-# Get version from Cargo.toml
-version=$(grep '^version = ' "$(dirname "$0")/../Cargo.toml" | head -1 | sed 's/version = "\(.*\)"/\1/')
-
-if [ -z "$version" ]; then
-  echo "error: could not determine version from Cargo.toml" >&2
-  exit 1
-fi
 
 # Current/latest tag or HEAD
 current="releases/httpd/${version}"
@@ -80,6 +85,23 @@ echo
 # shellcheck disable=SC2016
 git log --pretty=format:'* `%h` **%s** *<%ae>*' "$range" -- "$exclude"
 
+echo
+echo
+echo "## API changes"
+echo
+echo "For node operators and explorer deployments. Fill in from docs/api-changes.md."
+echo
+echo "### New"
+echo
+echo "* None."
+echo
+echo "### Deprecated"
+echo
+echo "* None. (Name each old field or path and its removal date.)"
+echo
+echo "### Removed"
+echo
+echo "* None."
 echo
 echo "## Checksums"
 echo

@@ -72,7 +72,11 @@ Adding or changing an API endpoint typically touches three layers:
 **Backwards compatibility:** Only add to the backend API — never rename or
 remove fields/endpoints unless explicitly deprecating. The frontend must handle
 older nodes gracefully: treat new API fields as optional and fall back when
-they're absent.
+they're absent. Put that fallback in `http-client/lib/compat.ts`, tagged with
+when it can go (`Client: remove when explorer drops httpd 0.30.`). Breaking
+changes go through expand and contract, see
+`docs/adr/0001-expand-and-contract-api-changes.md`, and get an entry in
+`docs/api-changes.md`.
 
 ## Pre-push checklist
 
