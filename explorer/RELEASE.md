@@ -2,9 +2,9 @@
 
 `radicle-httpd` and `radicle-search` are released **together** from this
 workspace: a single tag, a single changelog, and one build run that produces
-artifacts for both binaries. They share the same version number, bumped in
-lockstep. On [files.radicle.dev][files] each binary gets its own release folder
-— `releases/radicle-httpd/<version>/` and, as a sibling,
+artifacts for both binaries. They share the same version number, set by the
+release tag. On [files.radicle.dev][files] each binary gets its own release
+folder — `releases/radicle-httpd/<version>/` and, as a sibling,
 `releases/radicle-search/<version>/` — so existing `radicle-httpd` download URLs
 are unaffected and `radicle-search` is downloaded independently.
 
@@ -16,6 +16,16 @@ Releases cover **only** the `radicle-httpd` and `radicle-search` binaries. The
 web front-end (`radicle-explorer`) is not released this way: it is deployed
 continuously (rolling release) and must always remain compatible with the latest
 `radicle-httpd`/`radicle-search` release.
+
+## Versioning
+
+Versions follow [semantic versioning](https://semver.org). The version covers
+the HTTP API, the CLI and the config: bump the minor version for additions, and
+the major version for removals or changes. Before 1.0, `0.y` counts as the
+major, so bump `0.y.z` to `0.y.(z+1)` for additions and to `0.(y+1).0` for
+removals or changes. The release tag sets the version; do not change it in
+`Cargo.toml`. See [ADR 0001](docs/adr/0001-expand-and-contract-api-changes.md)
+for which releases explorer supports.
 
 ## Prerequisites
 
@@ -35,34 +45,27 @@ continuously (rolling release) and must always remain compatible with the latest
    git checkout -b release/httpd/<version>
    ```
 
-2. Bump the version in **both** crates to the same value, so the two binaries
-   stay coupled:
-   - `crates/radicle-httpd/Cargo.toml`
-   - `crates/radicle-search/Cargo.toml`
-
-3. Update lockfiles:
+2. Generate changelog:
 
    ```sh
-   cargo build
+   crates/radicle-httpd/build/changelog <version> >> CHANGELOG.md
    ```
 
-4. Generate changelog (the version is read from
-   `crates/radicle-httpd/Cargo.toml`):
-
-   ```sh
-   crates/radicle-httpd/build/changelog >> CHANGELOG.md
-   ```
-
-5. Edit changelog and remove irrelevant entries. Note in each entry whether a
+3. Edit changelog and remove irrelevant entries. Note in each entry whether a
    change belongs to `radicle-httpd` or `radicle-search`.
 
-6. Commit release:
+4. Fill in the `## API changes` section from
+   [`docs/api-changes.md`](docs/api-changes.md). If the release bumps the major,
+   write the target date to drop the previous major in that file, three months
+   from today.
+
+5. Commit release:
 
    ```sh
    git commit -m "Release <version>"
    ```
 
-7. Push for review:
+6. Push for review:
    ```sh
    git push rad HEAD:refs/patches
    ```
