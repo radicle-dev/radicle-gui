@@ -15,6 +15,7 @@
   import Placeholder from "@app/components/Placeholder.svelte";
   import ReleaseTeaser from "@app/views/repos/Release/ReleaseTeaser.svelte";
   import Separator from "./Separator.svelte";
+  import UntrustedWarning from "@app/views/repos/Release/UntrustedWarning.svelte";
 
   export let baseUrl: BaseUrl;
   export let releases: Release[];
@@ -76,6 +77,10 @@
     align-items: center;
     gap: 0.25rem;
     padding: 1rem;
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .warning {
+    padding: 0.75rem 1rem;
     border-bottom: 1px solid var(--color-border-subtle);
   }
   .counter {
@@ -178,6 +183,12 @@
             </div>
           </Button>
         </Link>
+      </div>
+    {/if}
+    {#if scope === "untrusted"}
+      <div class="warning">
+        <UntrustedWarning
+          text="Not from delegates. Only download from authors you trust." />
       </div>
     {/if}
   </svelte:fragment>

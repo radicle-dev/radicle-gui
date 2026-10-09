@@ -21,6 +21,7 @@
   import Link from "@app/components/Link.svelte";
   import NodeId from "@app/components/NodeId.svelte";
   import Separator from "./Separator.svelte";
+  import UntrustedWarning from "./Release/UntrustedWarning.svelte";
 
   export let baseUrl: BaseUrl;
   export let release: Release;
@@ -71,14 +72,19 @@
   $: otherArtifacts = release.artifacts.filter(
     a => !delegateIds.has(a.author.id),
   );
-  // Show the scope asked for, delegates by default, unless it is empty.
+  // Show the scope asked for, delegates by default, unless it is empty and the
+  // other one is not.
   $: wanted = scope ?? "trusted";
+  $: [wantedArtifacts, fallbackArtifacts] =
+    wanted === "trusted"
+      ? [delegateArtifacts, otherArtifacts]
+      : [otherArtifacts, delegateArtifacts];
   $: activeScope =
-    (wanted === "trusted" ? delegateArtifacts : otherArtifacts).length > 0
-      ? wanted
-      : wanted === "trusted"
+    wantedArtifacts.length === 0 && fallbackArtifacts.length > 0
+      ? wanted === "trusted"
         ? "untrusted"
-        : "trusted";
+        : "trusted"
+      : wanted;
   $: authorArtifacts =
     activeScope === "trusted" ? delegateArtifacts : otherArtifacts;
 
@@ -98,6 +104,20 @@
     delegateIds,
   ).length;
   $: otherCount = visible(otherArtifacts, showRedacted, delegateIds).length;
+
+  // A non-delegate's release is untrusted as a whole, as its creator chose its
+  // title, tag and commit. A delegate's release is untrusted only while it
+  // shows artifacts by non-delegates.
+  $: untrustedWarning = !delegateIds.has(release.creator.id)
+    ? "Not from a delegate. Only download if you trust the author."
+    : activeScope === "untrusted"
+      ? "Not from delegates. Only download if you trust the authors."
+      : undefined;
+
+  // Anyone can attest their own artifact, so only delegates count.
+  function delegateAttestations(artifact: Artifact, delegates: Set<string>) {
+    return artifact.attestations.filter(a => delegates.has(a.id)).length;
+  }
 
   // Filter only when both scopes hold something.
   $: showFilters = delegateArtifacts.length > 0 && otherArtifacts.length > 0;
@@ -198,6 +218,10 @@
   }
   .redacted-toggle {
     margin-left: auto;
+  }
+  .untrusted-warning {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-border-subtle);
   }
   .filter-divider {
     border-bottom: 1px solid var(--color-border-subtle);
@@ -449,6 +473,11 @@
       </CobHeader>
 
       <div class="artifacts">
+        {#if untrustedWarning}
+          <div class="untrusted-warning">
+            <UntrustedWarning text={untrustedWarning} />
+          </div>
+        {/if}
         {#if showFilters || redactedCount > 0}
           <div class="filter">
             {#if showFilters}
@@ -536,6 +565,10 @@
           {@const locationCount = artifact.locations.length}
           {@const cliOnly =
             locationCount > 0 && !artifact.locations.some(l => isWebUrl(l.url))}
+          {@const attestedByDelegates = delegateAttestations(
+            artifact,
+            delegateIds,
+          )}
           {@const redactions = delegatesFirst(
             artifact.redactions,
             r => r.user.id,
@@ -548,6 +581,15 @@
                 <Badge size="tiny" variant="negative">
                   <Icon name="warning" />
                   {redactedByLabel(artifact, delegateIds)}
+                </Badge>
+              {/if}
+              {#if attestedByDelegates > 0}
+                <Badge size="tiny" variant="positive">
+                  <Icon name="checkmark" />
+                  Attested by {attestedByDelegates} delegate{attestedByDelegates ===
+                  1
+                    ? ""
+                    : "s"}
                 </Badge>
               {/if}
               <div class="artifact-actions">

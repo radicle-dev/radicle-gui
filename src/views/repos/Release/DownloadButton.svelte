@@ -9,6 +9,7 @@
   import Popover from "@app/components/Popover.svelte";
   import Radio from "@app/components/Radio.svelte";
   import ExternalLink from "@app/components/ExternalLink.svelte";
+  import UntrustedWarning from "./UntrustedWarning.svelte";
 
   export let artifact: Artifact;
   export let rid: string;
@@ -25,6 +26,8 @@
     (a, b) =>
       Number(delegateIds.has(b.user.id)) - Number(delegateIds.has(a.user.id)),
   );
+  $: authorTrusted = delegateIds.has(artifact.author.id);
+  $: linksByOthers = webLocations.some(l => !delegateIds.has(l.user.id));
   // Any location at all can be fetched with the CLI, web locations included.
   $: downloadable = artifact.locations.length > 0;
   $: command = `rad artifact -r ${rid} download --cid ${artifact.cid}`;
@@ -49,6 +52,9 @@
   }
   .warning :global(svg) {
     flex-shrink: 0;
+  }
+  .untrusted {
+    margin-bottom: 0.75rem;
   }
   .locations {
     display: flex;
@@ -90,6 +96,12 @@
   </Button>
 
   <div slot="popover" style:width="24rem" class="popover">
+    {#if !authorTrusted}
+      <div class="untrusted">
+        <UntrustedWarning
+          text="Not from a delegate. Only download if you trust the author." />
+      </div>
+    {/if}
     <div style:margin-bottom="1.5rem">
       <Radio ariaLabel="Toggle download method" styleGap="2px">
         <Button
@@ -131,8 +143,14 @@
     {:else}
       <div class="warning">
         <Icon name="warning" />
-        These downloads are not verified.
+        These downloads are not checked against the CID.
       </div>
+      {#if authorTrusted && linksByOthers}
+        <div class="untrusted">
+          <UntrustedWarning
+            text="Links without a delegate badge are not from a delegate. Only use them if you trust who added them." />
+        </div>
+      {/if}
       <div class="locations">
         {#each webLocations as location (location.url)}
           <div class="location">
