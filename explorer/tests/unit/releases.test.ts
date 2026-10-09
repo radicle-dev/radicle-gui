@@ -1,7 +1,12 @@
 import type { Artifact } from "@http-client";
 
 import { describe, expect, test } from "vitest";
-import { artifactView, redactedByTrusted } from "@app/lib/releases";
+import {
+  artifactView,
+  attestedBy,
+  redactedByTrusted,
+  releaseWarning,
+} from "@app/lib/releases";
 
 const delegate = "did:key:z6MkDelegate";
 const other = "did:key:z6MkOther";
@@ -107,5 +112,32 @@ describe("artifactView", () => {
       counts: { trusted: 0, untrusted: 0 },
       showFilters: false,
     });
+  });
+});
+
+describe("attestedBy", () => {
+  test("counts only delegate attestations", () => {
+    expect(attestedBy([{ id: delegate }, { id: other }], delegates)).toBe(1);
+  });
+
+  test("counts nothing without attestations", () => {
+    expect(attestedBy([], delegates)).toBe(0);
+  });
+});
+
+describe("releaseWarning", () => {
+  test.each(["trusted" as const, "untrusted" as const])(
+    "warns about a release by a non-delegate in the %s scope",
+    scope => {
+      expect(releaseWarning(other, delegates, scope)).toBe("release");
+    },
+  );
+
+  test("warns about others' artifacts on a delegate's release", () => {
+    expect(releaseWarning(delegate, delegates, "untrusted")).toBe("artifacts");
+  });
+
+  test("trusts a delegate's release with delegate artifacts", () => {
+    expect(releaseWarning(delegate, delegates, "trusted")).toBeUndefined();
   });
 });

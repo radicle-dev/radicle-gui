@@ -1,4 +1,4 @@
-import type { Artifact, ReleaseScope } from "@http-client";
+import type { Artifact, Author, ReleaseScope } from "@http-client";
 
 export interface ArtifactView {
   shown: Artifact[];
@@ -50,4 +50,26 @@ export function artifactView(
     // one click back from it.
     showFilters: scope === "untrusted" || byScope.untrusted.length > 0,
   };
+}
+
+// Anyone can attest their own artifact, so only delegates count.
+export function attestedBy(
+  attestations: Author[],
+  delegates: Set<string>,
+): number {
+  return attestations.filter(a => delegates.has(a.id)).length;
+}
+
+// A non-delegate's release is untrusted as a whole, as its creator chose its
+// title, tag and commit. A delegate's release is untrusted only while it
+// shows artifacts by non-delegates.
+export function releaseWarning(
+  creator: string,
+  delegates: Set<string>,
+  artifactScope: ReleaseScope,
+): "release" | "artifacts" | undefined {
+  if (!delegates.has(creator)) {
+    return "release";
+  }
+  return artifactScope === "untrusted" ? "artifacts" : undefined;
 }

@@ -8,7 +8,12 @@
   } from "@http-client";
 
   import * as utils from "@app/lib/utils";
-  import { artifactView, redactedByTrusted } from "@app/lib/releases";
+  import {
+    artifactView,
+    attestedBy,
+    redactedByTrusted,
+    releaseWarning,
+  } from "@app/lib/releases";
 
   import Badge from "@app/components/Badge.svelte";
   import Button from "@app/components/Button.svelte";
@@ -22,6 +27,7 @@
   import Link from "@app/components/Link.svelte";
   import NodeId from "@app/components/NodeId.svelte";
   import Separator from "./Separator.svelte";
+  import UntrustedWarning from "./Release/UntrustedWarning.svelte";
 
   export let baseUrl: BaseUrl;
   export let release: Release;
@@ -59,6 +65,14 @@
   $: delegateCount = view.counts.trusted;
   $: otherCount = view.counts.untrusted;
   $: showFilters = view.showFilters;
+
+  $: warning = releaseWarning(release.creator.id, delegateIds, activeScope);
+  $: untrustedWarning =
+    warning === "release"
+      ? "Not from a delegate. Only download if you trust the author."
+      : warning === "artifacts"
+        ? "Not from delegates. Only download if you trust the authors."
+        : undefined;
 
   // Format a byte count as a human-readable size (mirrors the CLI display).
   function formatBytes(bytes: number): string {
@@ -156,6 +170,10 @@
   }
   .redacted-toggle {
     margin-left: auto;
+  }
+  .untrusted-warning {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-border-subtle);
   }
   .filter-divider {
     border-bottom: 1px solid var(--color-border-subtle);
@@ -407,6 +425,11 @@
       </CobHeader>
 
       <div class="artifacts">
+        {#if untrustedWarning}
+          <div class="untrusted-warning">
+            <UntrustedWarning text={untrustedWarning} />
+          </div>
+        {/if}
         {#if showFilters || redactedCount > 0}
           <div class="filter">
             {#if showFilters}
@@ -498,6 +521,10 @@
           {@const locationCount = artifact.locations.length}
           {@const cliOnly =
             locationCount > 0 && !artifact.locations.some(l => isWebUrl(l.url))}
+          {@const attestedByDelegates = attestedBy(
+            artifact.attestations,
+            delegateIds,
+          )}
           {@const redactions = delegatesFirst(
             artifact.redactions,
             r => r.user.id,
@@ -510,6 +537,15 @@
                 <Badge size="tiny" variant="negative">
                   <Icon name="warning" />
                   {redactedByLabel(artifact, delegateIds)}
+                </Badge>
+              {/if}
+              {#if attestedByDelegates > 0}
+                <Badge size="tiny" variant="positive">
+                  <Icon name="checkmark" />
+                  Attested by {attestedByDelegates} delegate{attestedByDelegates ===
+                  1
+                    ? ""
+                    : "s"}
                 </Badge>
               {/if}
               <div class="artifact-actions">
