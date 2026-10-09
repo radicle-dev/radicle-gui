@@ -365,7 +365,7 @@
                   title="Open node view"
                   stopPropagation
                   on:click={() => openNodeView(item)}>
-                  <Icon name="open-external" />
+                  <Icon name="arrow-right" />
                 </IconButton>
                 {#if isBookmarked(item, $bookmarkedSeeds)}
                   <IconButton
@@ -437,7 +437,7 @@
                   title="Open node view"
                   stopPropagation
                   on:click={() => openNodeView(item)}>
-                  <Icon name="open-external" />
+                  <Icon name="arrow-right" />
                 </IconButton>
               </div>
             </DropdownListItem>
