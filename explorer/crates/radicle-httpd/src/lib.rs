@@ -65,6 +65,22 @@ pub struct Options {
     /// falls back to the built-in storage walk.
     pub search: Option<SearchOptions>,
     pub inline_blob_limits: InlineBlobLimits,
+    pub diff_limits: DiffLimits,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DiffLimits {
+    pub per_file: usize,
+    pub lines_per_response: usize,
+}
+
+impl Default for DiffLimits {
+    fn default() -> Self {
+        Self {
+            per_file: 1024 * 1024,
+            lines_per_response: 50_000,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -258,6 +274,7 @@ mod routes {
             cache: None,
             search: None,
             inline_blob_limits: super::InlineBlobLimits::default(),
+            diff_limits: super::DiffLimits::default(),
         };
         let profile = test::profile(tmp.path(), [0xff; 32]);
         let web_config = crate::api::WebConfig::from_profile(&profile);

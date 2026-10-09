@@ -115,13 +115,43 @@ fn parse_options() -> anyhow::Result<httpd::Options> {
         }
     }
     let inline_blob_limits = inline_blob_limits_from_env()?;
+    let diff_limits = diff_limits_from_env()?;
     Ok(httpd::Options {
         aliases,
         listen: listen.unwrap_or_else(|| DualAddr::Tcp(([0, 0, 0, 0], 8080).into())),
         cache,
         search: search_options_from_env()?,
         inline_blob_limits,
+        diff_limits,
     })
+}
+
+fn diff_limits_from_env() -> anyhow::Result<httpd::DiffLimits> {
+    let defaults = httpd::DiffLimits::default();
+    let var = "RADICLE_HTTPD_DIFF_LIMIT_PER_FILE";
+    let per_file = parse_bytes_from_env(var, defaults.per_file)?;
+    if per_file == 0 {
+        bail!("{var}=0 is not allowed (expected a size such as 1M)");
+    }
+    let lines_per_response = parse_count_from_env(
+        "RADICLE_HTTPD_DIFF_LINE_LIMIT_PER_RESPONSE",
+        defaults.lines_per_response,
+    )?;
+    Ok(httpd::DiffLimits {
+        per_file,
+        lines_per_response,
+    })
+}
+
+fn parse_count_from_env(var: &str, default: usize) -> anyhow::Result<usize> {
+    match std::env::var(var) {
+        Ok(raw) if !raw.is_empty() => raw
+            .trim()
+            .parse()
+            .map_err(|_| anyhow::anyhow!("{var}={raw:?} is not a non-negative integer")),
+        Ok(_) | Err(std::env::VarError::NotPresent) => Ok(default),
+        Err(std::env::VarError::NotUnicode(raw)) => bail!("{var}={raw:?} is not valid UTF-8"),
+    }
 }
 
 fn inline_blob_limits_from_env() -> anyhow::Result<httpd::InlineBlobLimits> {
@@ -246,6 +276,33 @@ mod tests {
         let parsed = parse_bytes_from_env(var, 42);
         unsafe { std::env::remove_var(var) };
         assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn diff_line_limit_rejects_non_integers() {
+        let var = "RADICLE_HTTPD_TEST_COUNT_INVALID";
+        unsafe { std::env::set_var(var, "50K") };
+        let parsed = parse_count_from_env(var, 1);
+        unsafe { std::env::remove_var(var) };
+        assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn diff_line_limit_parses_integers() {
+        let var = "RADICLE_HTTPD_TEST_COUNT_VALID";
+        unsafe { std::env::set_var(var, "50000") };
+        let parsed = parse_count_from_env(var, 1);
+        unsafe { std::env::remove_var(var) };
+        assert_eq!(parsed.unwrap(), 50_000);
+    }
+
+    #[test]
+    fn diff_limit_per_file_rejects_zero() {
+        let var = "RADICLE_HTTPD_DIFF_LIMIT_PER_FILE";
+        unsafe { std::env::set_var(var, "0") };
+        let limits = diff_limits_from_env();
+        unsafe { std::env::remove_var(var) };
+        assert!(limits.is_err());
     }
 
     #[test]

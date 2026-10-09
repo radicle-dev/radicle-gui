@@ -27,7 +27,7 @@ pub(crate) use radicle_search::query::SearchClient;
 
 use crate::api::error::Error;
 use crate::cache::Cache;
-use crate::{InlineBlobLimits, Options};
+use crate::{DiffLimits, InlineBlobLimits, Options};
 
 pub const RADICLE_VERSION: &str = env!("RADICLE_VERSION");
 // This version has to be updated on every breaking change to the radicle-httpd API.
@@ -82,6 +82,7 @@ pub struct Context {
     /// advertise a repo's short name in its info.
     repo_aliases: Arc<HashMap<String, RepoId>>,
     inline_blob_limits: InlineBlobLimits,
+    diff_limits: DiffLimits,
 }
 
 impl Context {
@@ -126,11 +127,16 @@ impl Context {
             search,
             repo_aliases: Arc::new(options.aliases.clone()),
             inline_blob_limits: options.inline_blob_limits,
+            diff_limits: options.diff_limits,
         })
     }
 
     pub(crate) fn inline_blob_limits(&self) -> InlineBlobLimits {
         self.inline_blob_limits
+    }
+
+    pub(crate) fn diff_limits(&self) -> DiffLimits {
+        self.diff_limits
     }
 
     /// Resolve a repo path segment (RID or alias) to a [`RepoId`], mapping an

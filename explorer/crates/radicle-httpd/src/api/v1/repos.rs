@@ -27,7 +27,7 @@ use crate::api::search::SearchQueryString;
 use crate::api::Context;
 use crate::api::PeelToCommit;
 use crate::axum_extra::{cached_response, immutable_response, Path, Query};
-use crate::InlineBlobLimits;
+use crate::{DiffLimits, InlineBlobLimits};
 
 const MAX_BODY_LIMIT: usize = 4_194_304;
 
@@ -513,7 +513,12 @@ async fn commit_handler(
         let repo = Repository::open(storage.path())?;
         let commit = repo.commit(sha)?;
 
-        let diff = repo.diff_commit(commit.id)?;
+        let diff = diff_commits(
+            &storage.backend,
+            commit.parents.first().copied(),
+            commit.id,
+            ctx.diff_limits(),
+        )?;
         let glob = Glob::all_heads().branches().and(Glob::all_remotes());
         let branches: Vec<String> = repo
             .revision_branches(commit.id, glob)?
@@ -528,9 +533,17 @@ async fn commit_handler(
             ctx.inline_blob_limits(),
         )?;
 
+        let diff_json = with_complete_stats(
+            api::json::diff::Diff::new(&diff).as_json(),
+            &diff,
+            storage.backend.path(),
+            commit.parents.first().copied(),
+            commit.id,
+        );
+
         Ok::<_, Error>(json!({
           "commit": api::json::commit::Commit::new(&commit).as_json(),
-          "diff": api::json::diff::Diff::new(&diff).as_json(),
+          "diff": diff_json,
           "files": files,
           "branches": branches
         }))
@@ -551,7 +564,12 @@ async fn diff_handler(
         let repo = Repository::open(storage.path())?;
         let base = repo.commit(base)?;
         let commit = repo.commit(oid)?;
-        let diff = repo.diff(base.id, commit.id)?;
+        let diff = diff_commits(
+            &storage.backend,
+            Some(base.id),
+            commit.id,
+            ctx.diff_limits(),
+        )?;
         let files = inline_blobs(
             &repo,
             &storage.backend,
@@ -574,11 +592,137 @@ async fn diff_handler(
             .map(|c| api::json::commit::Commit::new(&c).as_json())
             .collect::<Vec<_>>();
 
-        Ok::<_, Error>(json!({ "diff": diff, "files": files, "commits": commits }))
+        let diff_json = with_complete_stats(
+            json!(diff),
+            &diff,
+            storage.backend.path(),
+            Some(base.id),
+            commit.id,
+        );
+
+        Ok::<_, Error>(json!({ "diff": diff_json, "files": files, "commits": commits }))
     })
     .await?;
 
     Ok::<_, Error>(immutable_response(response))
+}
+
+fn diff_commits(
+    backend: &radicle::git::raw::Repository,
+    from: Option<Oid>,
+    to: Oid,
+    limits: DiffLimits,
+) -> Result<diff::Diff, Error> {
+    let new_tree = backend.find_commit(to.into())?.tree()?;
+    let old_tree = from
+        .map(|from| backend.find_commit(from.into()).and_then(|c| c.tree()))
+        .transpose()?;
+
+    let mut opts = radicle::git::raw::DiffOptions::new();
+    opts.max_size(i64::try_from(limits.per_file).unwrap_or(i64::MAX));
+    let mut git_diff =
+        backend.diff_tree_to_tree(old_tree.as_ref(), Some(&new_tree), Some(&mut opts))?;
+
+    let mut find_opts = radicle::git::raw::DiffFindOptions::new();
+    find_opts.renames(true);
+    find_opts.copies(true);
+    git_diff.find_similar(Some(&mut find_opts))?;
+
+    let diff = diff::Diff::try_from(git_diff).map_err(radicle_surf::Error::from)?;
+    Ok(cap_diff_lines(diff, limits.lines_per_response))
+}
+
+fn with_complete_stats(
+    mut diff_json: serde_json::Value,
+    diff: &diff::Diff,
+    repo_dir: &std::path::Path,
+    base: Option<Oid>,
+    head: Oid,
+) -> serde_json::Value {
+    if !diff.files().any(is_binary_file_diff) {
+        return diff_json;
+    }
+    let base = match base {
+        Some(base) => base,
+        None => match radicle::git::raw::Oid::hash_object(radicle::git::raw::ObjectType::Tree, &[])
+        {
+            Ok(empty_tree) => empty_tree.into(),
+            Err(_) => return diff_json,
+        },
+    };
+    if let Some((files_changed, insertions, deletions)) = numstat(repo_dir, base, head) {
+        diff_json["stats"] = json!({
+            "filesChanged": files_changed,
+            "insertions": insertions,
+            "deletions": deletions,
+        });
+    }
+    diff_json
+}
+
+fn is_binary_file_diff(file: &diff::FileDiff) -> bool {
+    let content = match file {
+        diff::FileDiff::Added(f) => &f.diff,
+        diff::FileDiff::Deleted(f) => &f.diff,
+        diff::FileDiff::Modified(f) => &f.diff,
+        diff::FileDiff::Moved(f) => &f.diff,
+        diff::FileDiff::Copied(f) => &f.diff,
+    };
+    matches!(content, diff::DiffContent::Binary)
+}
+
+fn diff_content_lines(content: &diff::DiffContent) -> usize {
+    match content {
+        diff::DiffContent::Plain { hunks, .. } => hunks.iter().map(|h| h.lines.len()).sum(),
+        diff::DiffContent::Binary | diff::DiffContent::Empty => 0,
+    }
+}
+
+fn file_diff_lines(file: &diff::FileDiff) -> usize {
+    match file {
+        diff::FileDiff::Added(f) => diff_content_lines(&f.diff),
+        diff::FileDiff::Deleted(f) => diff_content_lines(&f.diff),
+        diff::FileDiff::Modified(f) => diff_content_lines(&f.diff),
+        diff::FileDiff::Moved(f) => diff_content_lines(&f.diff),
+        diff::FileDiff::Copied(f) => diff_content_lines(&f.diff),
+    }
+}
+
+fn cap_diff_lines(diff: diff::Diff, budget: usize) -> diff::Diff {
+    if diff.files().map(file_diff_lines).sum::<usize>() <= budget {
+        return diff;
+    }
+
+    let mut remaining = budget;
+    let mut capped = diff::Diff::default();
+    for file in diff.into_files() {
+        let lines = file_diff_lines(&file);
+        let keep = lines <= remaining;
+        if keep {
+            remaining -= lines;
+        }
+        let content = |content| {
+            if keep {
+                content
+            } else {
+                diff::DiffContent::Binary
+            }
+        };
+        match file {
+            diff::FileDiff::Added(f) => capped.insert_added(f.path, content(f.diff), f.new),
+            diff::FileDiff::Deleted(f) => capped.insert_deleted(f.path, content(f.diff), f.old),
+            diff::FileDiff::Modified(f) => {
+                capped.insert_modified(f.path, content(f.diff), f.old, f.new)
+            }
+            diff::FileDiff::Moved(f) => {
+                capped.insert_moved(f.old_path, f.new_path, f.old, f.new, content(f.diff))
+            }
+            diff::FileDiff::Copied(f) => {
+                capped.insert_copied(f.old_path, f.new_path, f.old, f.new, content(f.diff))
+            }
+        }
+    }
+    capped
 }
 
 fn changed_blob_groups(diff: &diff::Diff) -> Vec<Vec<Oid>> {
@@ -2913,6 +3057,125 @@ mod routes {
             )
             .unwrap();
             assert_eq!(files.len(), 2);
+        }
+    }
+
+    mod diff_commits {
+        use radicle::git::raw::{FileMode, Repository, Signature};
+        use radicle_surf::diff::{DiffContent, FileDiff};
+        use radicle_surf::Oid;
+
+        use super::super::diff_commits;
+        use crate::DiffLimits;
+
+        fn commit_files(repo: &Repository, files: &[(&str, usize)]) -> Oid {
+            let mut builder = repo.treebuilder(None).unwrap();
+            for (name, size) in files {
+                let blob = repo.blob("x\n".repeat(size / 2).as_bytes()).unwrap();
+                builder
+                    .insert(name, blob, i32::from(FileMode::Blob))
+                    .unwrap();
+            }
+            let tree = repo.find_tree(builder.write().unwrap()).unwrap();
+            let sig = Signature::now("Alice", "alice@radicle.xyz").unwrap();
+            repo.commit(None, &sig, &sig, "Add files", &tree, &[])
+                .unwrap()
+                .into()
+        }
+
+        fn diff_kinds(per_file: usize) -> Vec<(String, &'static str)> {
+            diff_kinds_with(DiffLimits {
+                per_file,
+                lines_per_response: usize::MAX,
+            })
+        }
+
+        fn diff_kinds_with(limits: DiffLimits) -> Vec<(String, &'static str)> {
+            let dir = tempfile::tempdir().unwrap();
+            let repo = Repository::init_bare(dir.path()).unwrap();
+            let commit = commit_files(&repo, &[("big", 2000), ("small", 1000)]);
+            diff_commits(&repo, None, commit, limits)
+                .unwrap()
+                .into_files()
+                .into_iter()
+                .map(|file| match file {
+                    FileDiff::Added(added) => (
+                        added.path.display().to_string(),
+                        match added.diff {
+                            DiffContent::Plain { .. } => "plain",
+                            DiffContent::Binary => "binary",
+                            DiffContent::Empty => "empty",
+                        },
+                    ),
+                    other => panic!("unexpected file diff: {other:?}"),
+                })
+                .collect()
+        }
+
+        #[test]
+        fn files_over_the_per_file_limit_are_marked_binary() {
+            assert_eq!(
+                diff_kinds(1000),
+                vec![("big".into(), "binary"), ("small".into(), "plain")]
+            );
+        }
+
+        #[test]
+        fn files_past_the_line_budget_are_marked_binary() {
+            let limits = |lines_per_response| DiffLimits {
+                per_file: usize::MAX,
+                lines_per_response,
+            };
+            assert_eq!(
+                diff_kinds_with(limits(1500)),
+                vec![("big".into(), "plain"), ("small".into(), "plain")]
+            );
+            assert_eq!(
+                diff_kinds_with(limits(999)),
+                vec![("big".into(), "binary"), ("small".into(), "plain")]
+            );
+            assert_eq!(
+                diff_kinds_with(limits(0)),
+                vec![("big".into(), "binary"), ("small".into(), "binary")]
+            );
+        }
+
+        #[test]
+        fn stats_count_lines_of_files_marked_binary() {
+            let dir = tempfile::tempdir().unwrap();
+            let repo = Repository::init_bare(dir.path()).unwrap();
+            let commit = commit_files(&repo, &[("big", 2000), ("small", 1000)]);
+            let diff = diff_commits(
+                &repo,
+                None,
+                commit,
+                DiffLimits {
+                    per_file: 1000,
+                    lines_per_response: usize::MAX,
+                },
+            )
+            .unwrap();
+            assert_eq!(diff.stats().insertions, 500);
+
+            let json = super::super::with_complete_stats(
+                serde_json::json!({ "stats": {} }),
+                &diff,
+                dir.path(),
+                None,
+                commit,
+            );
+            assert_eq!(
+                json["stats"],
+                serde_json::json!({ "filesChanged": 2, "insertions": 1500, "deletions": 0 })
+            );
+        }
+
+        #[test]
+        fn files_within_the_per_file_limit_keep_their_hunks() {
+            assert_eq!(
+                diff_kinds(2000),
+                vec![("big".into(), "plain"), ("small".into(), "plain")]
+            );
         }
     }
 }

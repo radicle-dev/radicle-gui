@@ -9,6 +9,13 @@
   out of `files`, so the explorer shows them without syntax highlighting or
   image previews. Both take plain bytes or K/M/G suffixes, and 0 disables
   inlining
+- **Bounded diffs**: the commit and diff endpoints return a file as
+  `{"type": "binary"}` when it exceeds `RADICLE_HTTPD_DIFF_LIMIT_PER_FILE`
+  (default 1M, K/M/G suffixes, 0 is rejected) or once the response's hunk lines
+  reach `RADICLE_HTTPD_DIFF_LINE_LIMIT_PER_RESPONSE` (default 50000; 0 marks
+  every file with lines binary), so very large commits no longer exhaust httpd's
+  memory; the explorer shows such files as "Binary file", and diff stats still
+  count them. 
 
 ## radicle-httpd + radicle-search 0.30.0
 
