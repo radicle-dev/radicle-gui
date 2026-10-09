@@ -13,6 +13,19 @@ pub fn config(ctx: tauri::State<AppState>) -> Config {
 }
 
 #[tauri::command]
+pub fn set_preferred_seeds(
+    ctx: tauri::State<AppState>,
+    seeds: Vec<String>,
+) -> Result<Config, Error> {
+    ctx.set_preferred_seeds(seeds)
+}
+
+#[tauri::command]
+pub fn set_public_explorer(ctx: tauri::State<AppState>, explorer: String) -> Result<Config, Error> {
+    ctx.set_public_explorer(explorer)
+}
+
+#[tauri::command]
 pub fn alias(ctx: tauri::State<AppState>, nid: NodeId) -> Option<radicle::node::Alias> {
     ctx.alias(nid)
 }

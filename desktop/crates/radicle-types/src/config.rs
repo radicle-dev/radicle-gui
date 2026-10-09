@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use radicle::crypto::PublicKey;
 use radicle::explorer::Explorer;
 use serde::Serialize;
@@ -5,6 +7,43 @@ use ts_rs::TS;
 
 use radicle::node::Alias;
 use radicle::node::config::{ConnectAddress, DefaultSeedingPolicy};
+
+use crate::error::Error;
+
+/// Check an explorer template. Unlike `radicle::explorer::Explorer::from_str`,
+/// this accepts a template that names its host rather than using `$host`.
+pub fn validate_explorer(template: &str) -> Result<(), Error> {
+    if !template.starts_with("http://") && !template.starts_with("https://") {
+        return Err(Error::InvalidConfig(
+            "the explorer must start with http:// or https://".into(),
+        ));
+    }
+    if !template.contains("$rid") {
+        return Err(Error::InvalidConfig(
+            "the explorer must contain $rid".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Replace one top-level key of `config.json`, leaving every other key as
+/// the user wrote it.
+pub fn set_value(path: &Path, key: &str, value: serde_json::Value) -> Result<(), Error> {
+    let mut raw: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
+    let object = raw
+        .as_object_mut()
+        .ok_or_else(|| Error::InvalidConfig("config.json is not an object".into()))?;
+    object.insert(key.into(), value);
+
+    serde_json::from_value::<radicle::profile::Config>(raw.clone())
+        .map_err(|e| Error::InvalidConfig(e.to_string()))?;
+
+    let mut contents = serde_json::to_vec_pretty(&raw)?;
+    contents.push(b'\n');
+    std::fs::write(path, contents)?;
+
+    Ok(())
+}
 
 /// Service configuration.
 #[derive(Debug, TS, Serialize, PartialEq)]
