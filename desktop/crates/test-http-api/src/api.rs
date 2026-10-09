@@ -179,6 +179,8 @@ pub fn router(shared: Shared) -> Router {
     Router::new()
         .route("/startup", post(startup_handler))
         .route("/config", post(config_handler))
+        .route("/set_preferred_seeds", post(set_preferred_seeds_handler))
+        .route("/set_public_explorer", post(set_public_explorer_handler))
         .route("/alias", post(alias_handler))
         .route("/search_aliases", post(search_aliases_handler))
         .route("/authenticate", post(auth_handler))
@@ -284,6 +286,30 @@ async fn config_handler(Ctx(ctx): Ctx) -> impl IntoResponse {
     let config = ctx.config();
 
     Ok::<_, Error>(Json(config))
+}
+
+#[derive(Deserialize)]
+struct PreferredSeedsBody {
+    pub seeds: Vec<String>,
+}
+
+async fn set_preferred_seeds_handler(
+    Ctx(ctx): Ctx,
+    Json(PreferredSeedsBody { seeds }): Json<PreferredSeedsBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.set_preferred_seeds(seeds)?))
+}
+
+#[derive(Deserialize)]
+struct PublicExplorerBody {
+    pub explorer: String,
+}
+
+async fn set_public_explorer_handler(
+    Ctx(ctx): Ctx,
+    Json(PublicExplorerBody { explorer }): Json<PublicExplorerBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.set_public_explorer(explorer)?))
 }
 
 async fn startup_handler(Ctx(ctx): Ctx) -> impl IntoResponse {

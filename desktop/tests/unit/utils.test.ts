@@ -261,6 +261,19 @@ describe("explorer links", () => {
     );
   });
 
+  test("keeps a host written into the template", () => {
+    expect(
+      explorerLink(
+        repo,
+        config({
+          publicExplorer:
+            "https://radicle.network/nodes/oak.radicle.garden/$rid$path",
+          preferredSeeds: [`${nid}@seed.example.com:8776`],
+        }),
+      ),
+    ).toBe(`https://radicle.network/nodes/oak.radicle.garden/${rid}`);
+  });
+
   test("explorerHost returns the host of the template", () => {
     expect(explorerHost(config({}))).toBe("radicle.network");
   });

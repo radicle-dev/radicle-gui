@@ -12,7 +12,7 @@ import md5 from "md5";
 import twemojiModule from "twemoji";
 
 import type { RadReference } from "@app/lib/radUri";
-import { explorerUrl, isNodeId, isRepoId } from "@app/lib/radUri";
+import { explorerUrlAt, isNodeId, isRepoId } from "@app/lib/radUri";
 
 import NodeId from "@app/components/NodeId.svelte";
 
@@ -359,17 +359,28 @@ export function explorerLink(
   reference: RadReference,
   config: Config,
 ): string | undefined {
-  return explorerUrl(reference, explorerBase(config), explorerSeed(config));
+  return explorerUrlAt(reference, explorerNode(config));
 }
 
-function explorerBase(config: Config): string {
-  const nodes = config.publicExplorer.indexOf("/nodes/$host");
-  if (nodes !== -1) return config.publicExplorer.slice(0, nodes);
-  try {
-    return new URL(config.publicExplorer).origin;
-  } catch {
-    return config.publicExplorer;
+// The explorer URL of the node to link through: the template up to `$rid`,
+// with `$host` filled in from the preferred seed. A template may name a host
+// outright instead, e.g. ".../nodes/oak.radicle.garden/$rid$path".
+function explorerNode(config: Config): string {
+  const template = config.publicExplorer;
+  const rid = template.indexOf("$rid");
+  if (rid !== -1) {
+    return template
+      .slice(0, rid)
+      .replace("$host", explorerSeed(config))
+      .replace(/\/+$/, "");
   }
+  let origin = template;
+  try {
+    origin = new URL(template).origin;
+  } catch {
+    // Fall through with the template as written.
+  }
+  return `${origin}/nodes/${explorerSeed(config)}`;
 }
 
 function explorerSeed(config: Config): string {

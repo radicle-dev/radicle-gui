@@ -27,14 +27,32 @@ pub trait Profile {
 
     fn config(&self) -> Config {
         let p = self.profile();
+        // Settings can rewrite `config.json` while the app runs, so read it
+        // again rather than trusting the copy loaded at startup.
+        let cfg = radicle::profile::Config::load(&p.home().config()).unwrap_or(p.config);
 
         Config {
             public_key: p.public_key,
-            alias: p.config.node.alias.clone(),
-            seeding_policy: p.config.node.seeding_policy,
-            public_explorer: p.config.public_explorer.clone(),
-            preferred_seeds: p.config.preferred_seeds.clone(),
+            alias: cfg.node.alias.clone(),
+            seeding_policy: cfg.node.seeding_policy,
+            public_explorer: cfg.public_explorer.clone(),
+            preferred_seeds: cfg.preferred_seeds.clone(),
         }
+    }
+
+    fn set_preferred_seeds(&self, seeds: Vec<String>) -> Result<Config, Error> {
+        let p = self.profile();
+        crate::config::set_value(&p.home().config(), "preferredSeeds", seeds.into())?;
+
+        Ok(self.config())
+    }
+
+    fn set_public_explorer(&self, explorer: String) -> Result<Config, Error> {
+        crate::config::validate_explorer(&explorer)?;
+        let p = self.profile();
+        crate::config::set_value(&p.home().config(), "publicExplorer", explorer.into())?;
+
+        Ok(self.config())
     }
 
     fn check_cobs_cache(&self) -> Result<(), Error> {

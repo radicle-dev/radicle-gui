@@ -345,8 +345,8 @@ async function config(): Promise<Config> {
   return withTestBackend(tauri.invoke, "config", {});
 }
 
-// The node config is static for the session, so a single-entry cache collapses
-// the many callers (e.g. every NodeId hover card) into one in-flight request.
+// A single-entry cache collapses the many callers (e.g. every NodeId hover
+// card) into one in-flight request. Clear it after writing the config.
 export const cachedConfig = cached(config, () => "config", { max: 1 });
 
 async function diffStats(

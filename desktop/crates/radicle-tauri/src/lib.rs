@@ -119,6 +119,8 @@ pub fn run() {
             profile::alias,
             profile::config,
             profile::search_aliases,
+            profile::set_preferred_seeds,
+            profile::set_public_explorer,
             repo::clean,
             repo::diff_stats,
             repo::list_commits,

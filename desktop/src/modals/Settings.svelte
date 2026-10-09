@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Config } from "@bindings/config/Config";
   import type { GitInfo } from "@bindings/config/GitInfo";
   import type { ComponentProps } from "svelte";
 
@@ -13,9 +14,11 @@
   import BadgeCounterSwitch from "@app/components/BadgeCounterSwitch.svelte";
   import Button from "@app/components/Button.svelte";
   import CodeFontSwitch from "@app/components/CodeFontSwitch.svelte";
+  import ConfigInput from "@app/components/ConfigInput.svelte";
   import ExternalLink from "@app/components/ExternalLink.svelte";
   import FontSizeSwitch from "@app/components/FontSizeSwitch.svelte";
   import Icon from "@app/components/Icon.svelte";
+  import PreferredSeedsInput from "@app/components/PreferredSeedsInput.svelte";
   import RepoListSwitch from "@app/components/RepoListSwitch.svelte";
   import SegmentedSwitch from "@app/components/SegmentedSwitch.svelte";
   import ThemeSwitch from "@app/components/ThemeSwitch.svelte";
@@ -97,6 +100,11 @@
     justify-content: space-between;
     gap: 1rem;
   }
+  .row.stacked {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
   .row-label {
     display: flex;
     flex-direction: column;
@@ -169,6 +177,34 @@
         </span>
       </div>
       <AnnounceSwitch />
+    </div>
+    <div class="row stacked">
+      <div class="row-label">
+        <span class="row-title">Preferred seeds</span>
+        <span class="row-description">
+          Seeds to use when one needs to be picked, in order
+        </span>
+      </div>
+      <PreferredSeedsInput />
+    </div>
+    <div class="row stacked">
+      <div class="row-label">
+        <span class="row-title">Explorer</span>
+        <span class="row-description">
+          Where links that open in a browser go
+        </span>
+      </div>
+      <ConfigInput
+        name="public-explorer"
+        placeholder="https://radicle.network/nodes/$host/$rid$path"
+        read={config => config.publicExplorer}
+        save={explorer => invoke<Config>("set_public_explorer", { explorer })}
+        validate={value =>
+          !/^https?:\/\//.test(value)
+            ? "Start with http:// or https://"
+            : !value.includes("$rid")
+              ? "Include $rid where the repository goes"
+              : undefined} />
     </div>
     <div class="row">
       <div class="row-label">

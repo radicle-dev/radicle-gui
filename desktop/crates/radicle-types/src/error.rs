@@ -218,6 +218,10 @@ pub enum Error {
     #[error(transparent)]
     ParseObjectId(#[from] radicle::cob::object::ParseObjectId),
 
+    /// A config change that would leave `config.json` unreadable.
+    #[error("invalid config: {0}")]
+    InvalidConfig(String),
+
     /// URL parse error.
     #[error(transparent)]
     UrlParse(#[from] url::ParseError),
@@ -251,6 +255,7 @@ impl Error {
             Error::AliasError(radicle::node::AliasError::InvalidCharacter) => {
                 "AliasError.InvalidAlias"
             }
+            Error::InvalidConfig(_) => "ConfigError.Invalid",
             Error::FileTooLarge(_) => "PayloadError.TooLarge",
             Error::ReviewExists => "PatchError.ReviewExists",
             Error::CommitNotFound(_) => "RepoError.CommitNotFound",

@@ -353,7 +353,15 @@ export function explorerUrl(
   base: string,
   host: string,
 ): string | undefined {
-  const node = `${base.replace(/\/+$/, "")}/nodes/${host}`;
+  return explorerUrlAt(reference, `${base.replace(/\/+$/, "")}/nodes/${host}`);
+}
+
+// Like `explorerUrl`, for a caller that already has the node's URL, i.e. the
+// part of an explorer template before `$rid`.
+export function explorerUrlAt(
+  reference: RadReference,
+  node: string,
+): string | undefined {
   if (reference.type === "did") {
     return `${node}/users/${formatDid(reference.node)}`;
   }
