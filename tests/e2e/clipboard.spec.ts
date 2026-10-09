@@ -87,6 +87,19 @@ test("copy to clipboard", async ({ page, browserName, context }) => {
     await expectClipboard("Inline `code` has `back-ticks around` it.\n");
   }
 
+  // Link to a patch comment.
+  {
+    await page.goto(`${cobUrl}/patches`);
+    await page
+      .getByRole("link", { name: "Taking another stab at the README" })
+      .click();
+    const review = page.locator(".card", { hasText: "rejected revision" });
+    const reviewId = await review.getAttribute("id");
+    await review.hover();
+    await review.getByRole("button", { name: "Copy link to comment" }).click();
+    await expectClipboard(`${page.url()}#${reviewId}`);
+  }
+
   // Clear the system clipboard contents so developers don't wonder why there's
   // random stuff in their clipboard after running tests.
   await page.evaluate<string>("navigator.clipboard.writeText('')");

@@ -154,3 +154,43 @@ test("commit listing ordering keeping stable on browser navigation", async ({
     .waitFor();
   await expectCorrectCommitListing();
 });
+
+test("link to a comment in an older revision", async ({ page }) => {
+  await page.goto(`${cobUrl}/patches`);
+  await page
+    .getByRole("link", { name: "Taking another stab at the README" })
+    .click();
+  await page.getByLabel("expand").first().click();
+  const review = page.locator(".card", { hasText: "accepted revision" });
+  const reviewId = (await review.getAttribute("id")) ?? "";
+  expect(reviewId).toMatch(/^[a-f0-9]{40}$/);
+  const patchUrl = page.url();
+
+  await page.goto(`${patchUrl}#${reviewId}`);
+  await expect(review).toBeVisible();
+  await expect(review).toHaveClass(/targeted/);
+  await expect(review).toBeInViewport();
+
+  await page.goto(patchUrl);
+  await expect(review).toBeHidden();
+  await page.evaluate(id => (window.location.hash = id), reviewId);
+  await expect(review).toBeVisible();
+  await expect(review).toHaveClass(/targeted/);
+  await expect(review).toBeInViewport();
+});
+
+test("malformed fragment does not break the patch page", async ({ page }) => {
+  await page.goto(`${cobUrl}/patches`);
+  await page
+    .getByRole("link", { name: "Taking another stab at the README" })
+    .click();
+  await page
+    .getByRole("heading", { name: "Taking another stab at the README" })
+    .waitFor();
+
+  await page.goto(`${page.url()}#%`);
+  await expect(
+    page.getByRole("heading", { name: "Taking another stab at the README" }),
+  ).toBeVisible();
+  await expect(page.locator(".card.targeted")).toHaveCount(0);
+});

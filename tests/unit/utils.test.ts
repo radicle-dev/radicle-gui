@@ -429,3 +429,22 @@ describe("untwemoji", () => {
     expect(node.innerHTML).toEqual("ab");
   });
 });
+
+describe("fragmentId", () => {
+  test.each([
+    { hash: "", expected: undefined },
+    { hash: "#", expected: undefined },
+    { hash: "#delegate", expected: "delegate" },
+    { hash: "delegate", expected: "delegate" },
+    {
+      hash: "#0a1b2c3d4e5f60718293a4b5c6d7e8f901234567",
+      expected: "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567",
+    },
+    { hash: "#caf%C3%A9", expected: "café" },
+    { hash: "#%", expected: undefined },
+    { hash: "#%zz", expected: undefined },
+    { hash: "#%E0%A4%A", expected: undefined },
+  ])("fragmentId($hash) => $expected", ({ hash, expected }) => {
+    expect(utils.fragmentId(hash)).toEqual(expected);
+  });
+});

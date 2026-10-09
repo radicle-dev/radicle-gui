@@ -1,12 +1,17 @@
 <script lang="ts">
   import type { BaseUrl, Comment } from "@http-client";
 
+  import debounce from "lodash/debounce";
+  import { onMount } from "svelte";
+
   import * as utils from "@app/lib/utils";
 
   type Side = "left" | "right";
   type SelectionAnchor = { side: Side; lineNumber: number };
   type SelectionRange = { start: SelectionAnchor; end?: SelectionAnchor };
 
+  import Icon from "@app/components/Icon.svelte";
+  import IconButton from "@app/components/IconButton.svelte";
   import Id from "@app/components/Id.svelte";
   import Markdown from "@app/components/Markdown.svelte";
   import NodeId from "@app/components/NodeId.svelte";
@@ -40,6 +45,26 @@
     }
   }
   $: selectionRange = rangeAnchorsFromCodeLocation(location);
+
+  let linkCopied = false;
+  let targeted = false;
+
+  const restoreLinkIcon = debounce(() => {
+    linkCopied = false;
+  }, 1000);
+
+  async function copyLink() {
+    const { origin, pathname, search } = window.location;
+    await utils.toClipboard(`${origin}${pathname}${search}#${id}`);
+    linkCopied = true;
+    restoreLinkIcon();
+  }
+
+  function updateTargeted() {
+    targeted = utils.fragmentId(window.location.hash) === id;
+  }
+
+  onMount(updateTargeted);
 </script>
 
 <style>
@@ -48,6 +73,23 @@
     flex-direction: column;
     padding: 0.5rem 0;
     gap: 0.5rem;
+    border-radius: var(--border-radius-sm);
+    scroll-margin-top: 5rem;
+  }
+  .card.targeted {
+    box-shadow: 0 0 0 2px var(--color-border-brand);
+  }
+  .copy-link {
+    margin-left: auto;
+  }
+  @media (hover: hover) {
+    .copy-link {
+      opacity: 0;
+    }
+    .card:hover .copy-link,
+    .copy-link:has(:global(:focus-visible)) {
+      opacity: 1;
+    }
   }
   .card-header {
     display: flex;
@@ -118,7 +160,14 @@
   }
 </style>
 
-<div class="card" class:card-empty-body={!body} {id} class:reply={isReply}>
+<svelte:window on:hashchange={updateTargeted} />
+
+<div
+  class="card"
+  class:card-empty-body={!body}
+  class:targeted
+  {id}
+  class:reply={isReply}>
   <div style:position="relative">
     {#if isReply}
       <div class="reply-dot"></div>
@@ -163,6 +212,15 @@
           • edited
         </div>
       {/if}
+      <div class="copy-link">
+        <IconButton
+          title={linkCopied ? "Link copied" : "Copy link to comment"}
+          ariaLabel="Copy link to comment"
+          stylePadding="0.25rem"
+          on:click={copyLink}>
+          <Icon name={linkCopied ? "checkmark" : "link"} />
+        </IconButton>
+      </div>
     </div>
   </div>
 

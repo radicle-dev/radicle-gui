@@ -13,7 +13,7 @@
   import * as utils from "@app/lib/utils";
   import { HttpdClient } from "@http-client";
   import { cachedGetDiff } from "@app/views/repos/router";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
 
   import CobCommitTeaser from "@app/views/repos/Cob/CobCommitTeaser.svelte";
   import CommentComponent from "@app/components/Comment.svelte";
@@ -55,7 +55,41 @@
   export let previousRevOid: string | undefined = undefined;
   export let first: boolean;
 
-  let expanded = initiallyExpanded;
+  function timelinesContain(commentId: string | undefined): boolean {
+    if (commentId === undefined) {
+      return false;
+    }
+    const inThread = (thread: { root: Comment; replies: Comment[] }) =>
+      thread.root.id === commentId ||
+      thread.replies.some(reply => reply.id === commentId);
+    return timelines.some(element => {
+      switch (element.type) {
+        case "thread":
+          return inThread(element.inner);
+        case "review": {
+          const review = element.inner[1];
+          return review.id === commentId || review.threads.some(inThread);
+        }
+        case "merge":
+          return false;
+      }
+    });
+  }
+
+  let expanded =
+    initiallyExpanded ||
+    timelinesContain(utils.fragmentId(window.location.hash));
+
+  async function expandToHash() {
+    const commentId = utils.fragmentId(window.location.hash);
+    if (expanded || commentId === undefined || !timelinesContain(commentId)) {
+      return;
+    }
+    expanded = true;
+    await tick();
+    utils.scrollIntoView(commentId);
+  }
+
   const api = new HttpdClient(baseUrl);
   const lastEdit = revisionEdits.at(-1);
 
@@ -272,6 +306,8 @@
     }
   }
 </style>
+
+<svelte:window on:hashchange={expandToHash} />
 
 <div class="revision" style:margin-bottom={expanded ? "2rem" : "0.5rem"}>
   <div class="revision-box" class:expanded>

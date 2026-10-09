@@ -246,6 +246,18 @@ export function scrollIntoView(id: string, options?: ScrollIntoViewOptions) {
   if (lineElement) lineElement.scrollIntoView(options);
 }
 
+export function fragmentId(hash: string): string | undefined {
+  const fragment = hash.startsWith("#") ? hash.slice(1) : hash;
+  if (fragment === "") {
+    return undefined;
+  }
+  try {
+    return decodeURIComponent(fragment);
+  } catch {
+    return undefined;
+  }
+}
+
 // Check whether the given path has a markdown file extension.
 export function isMarkdownPath(path: string): boolean {
   return /\.(md|mkd|markdown)$/i.test(path);

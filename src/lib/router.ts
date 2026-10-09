@@ -219,8 +219,9 @@ async function navigate(
       window.scrollTo(0, restoreScrollY ?? 0);
       return;
     }
-    if (hash.length > 1) {
-      const el = document.querySelector(hash);
+    const fragment = utils.fragmentId(hash);
+    if (fragment !== undefined) {
+      const el = document.getElementById(fragment);
       if (el) {
         const top =
           el.getBoundingClientRect().top +
