@@ -50,6 +50,17 @@ pub fn init(alias: String, passphrase: Passphrase) -> Result<(), Error> {
         Seed::new(bytes)
     });
     let profile = radicle::Profile::init(home, alias, Some(passphrase.clone()), seed)?;
+    let config = profile.home().config();
+    crate::config::set_value(
+        &config,
+        "preferredSeeds",
+        serde_json::json!([crate::config::DEFAULT_PREFERRED_SEED]),
+    )?;
+    crate::config::set_value(
+        &config,
+        "publicExplorer",
+        crate::config::DEFAULT_PUBLIC_EXPLORER.into(),
+    )?;
     match ssh::agent::Agent::connect() {
         Ok(mut agent) => register(&mut agent, &profile, passphrase.clone())?,
         Err(e) if e.is_not_running() => return Err(Error::AgentNotRunning),

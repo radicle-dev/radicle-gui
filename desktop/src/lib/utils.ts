@@ -332,7 +332,7 @@ export function safeHttpUrl(url: string): string | undefined {
 }
 
 // Seed to fall back to when `config.preferredSeeds` is empty.
-const DEFAULT_SEED = "rosa.radicle.network";
+const DEFAULT_SEED = "oak.radicle.garden";
 
 // The host of the first entry in `config.preferredSeeds`, if any, parsed from
 // its "<NID>@<host>:<port>" address form. Used to pick a seed that's actually

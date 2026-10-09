@@ -16,7 +16,7 @@ const config = {
   publicExplorer: "https://radicle.network/nodes/$host/$rid$path",
   preferredSeeds: [],
 } as unknown as Config;
-const explorer = `https://radicle.network/nodes/rosa.radicle.network/${rid}`;
+const explorer = `https://radicle.network/nodes/oak.radicle.garden/${rid}`;
 
 function target(link: string, local = true) {
   return deepLinkTarget(parseDeepLink(link)!, local, config);

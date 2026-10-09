@@ -190,7 +190,7 @@ describe("serialising", () => {
     } as unknown as Config;
 
     expect(entityUrl({ type: "repo", rid }, config)).toBe(
-      `https://example.com/explorer/nodes/rosa.radicle.network/${rid}`,
+      `https://example.com/explorer/nodes/oak.radicle.garden/${rid}`,
     );
   });
 });

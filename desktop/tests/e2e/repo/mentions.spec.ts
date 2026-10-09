@@ -188,7 +188,7 @@ test("a pasted explorer file URL opens the file in-app", async ({
     page.getByRole("menuitem", { name: "Open in radicle.network" }),
   ).toHaveAttribute(
     "href",
-    `https://radicle.network/nodes/rosa.radicle.network/${rid}/tree/main/notes.txt#L3`,
+    `https://radicle.network/nodes/oak.radicle.garden/${rid}/tree/main/notes.txt#L3`,
   );
   await expect(
     page.getByRole("menuitem", { name: "Copy rad: URI" }),
@@ -211,7 +211,7 @@ test("every reference type renders and links where it should", async ({
   const nid = peer.nodeId;
   const missingRid = "rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5";
   const missingOid = "f".repeat(40);
-  const explorer = `https://radicle.network/nodes/rosa.radicle.network`;
+  const explorer = `https://radicle.network/nodes/oak.radicle.garden`;
   const repo = `/repos/${rid}`;
 
   const references: [string, string][] = [

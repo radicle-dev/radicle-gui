@@ -257,7 +257,7 @@ describe("explorer links", () => {
 
   test("falls back to the default seed", () => {
     expect(explorerLink(repo, config({}))).toBe(
-      `https://radicle.network/nodes/rosa.radicle.network/${rid}`,
+      `https://radicle.network/nodes/oak.radicle.garden/${rid}`,
     );
   });
 

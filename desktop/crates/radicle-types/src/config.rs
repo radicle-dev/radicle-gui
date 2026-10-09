@@ -10,6 +10,15 @@ use radicle::node::config::{ConnectAddress, DefaultSeedingPolicy};
 
 use crate::error::Error;
 
+/// Seed written into a profile created by the app.
+pub const DEFAULT_PREFERRED_SEED: &str =
+    "z6MkrH73xTTzF5MMKrYWyu6rbSs7U6fF5TZKQWmvSab5PHkZ@seed2.oak.radicle.garden:8776";
+
+/// Explorer written into a profile created by the app. Oak's web API is not
+/// served from its seed hosts, so the host is named outright instead of `$host`.
+pub const DEFAULT_PUBLIC_EXPLORER: &str =
+    "https://radicle.network/nodes/oak.radicle.garden/$rid$path";
+
 /// Check an explorer template. Unlike `radicle::explorer::Explorer::from_str`,
 /// this accepts a template that names its host rather than using `$host`.
 pub fn validate_explorer(template: &str) -> Result<(), Error> {
