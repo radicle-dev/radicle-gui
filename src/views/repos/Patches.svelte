@@ -206,7 +206,7 @@
 
   {#if repo.payloads["xyz.radicle.project"].meta.patches[status] === 0}
     <div class="placeholder">
-      <Placeholder iconName="no-patches" caption={`No ${status} patches`} />
+      <Placeholder iconName="patch" caption={`No ${status} patches`} />
     </div>
   {/if}
 

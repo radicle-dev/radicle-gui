@@ -167,7 +167,7 @@
 
   {#if repo.payloads["xyz.radicle.project"].meta.issues[status] === 0}
     <div class="placeholder">
-      <Placeholder iconName="no-issues" caption={`No ${status} issues`} />
+      <Placeholder iconName="issue" caption={`No ${status} issues`} />
     </div>
   {/if}
 

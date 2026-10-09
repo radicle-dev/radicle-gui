@@ -558,7 +558,7 @@
           {:else}
             <div style:margin="4rem 0">
               <Placeholder
-                iconName="no-patches"
+                iconName="patch"
                 caption="No activity on this patch yet" />
             </div>
           {/each}

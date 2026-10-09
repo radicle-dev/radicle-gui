@@ -197,7 +197,7 @@
       </div>
     {:else}
       <div style:margin="4rem 0" style:width="100%">
-        <Placeholder iconName="binary-file" caption="Binary file" />
+        <Placeholder iconName="binary" caption="Binary file" />
       </div>
     {/if}
   {:else if preview && blob.content}
@@ -218,7 +218,7 @@
     </table>
   {:else}
     <div style:margin="4rem 0" style:width="100%">
-      <Placeholder iconName="empty-file" caption="Empty file" />
+      <Placeholder iconName="document" caption="Empty file" />
     </div>
   {/if}
 </File>

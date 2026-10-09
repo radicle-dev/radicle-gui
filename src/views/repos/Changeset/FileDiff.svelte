@@ -531,12 +531,12 @@
         </div>
       {:else}
         <div style:margin="1rem 0">
-          <Placeholder iconName="empty-file" caption="Empty file" inline />
+          <Placeholder iconName="document" caption="Empty file" inline />
         </div>
       {/if}
     {:else}
       <div style:margin="1rem 0">
-        <Placeholder iconName="binary-file" caption="Binary file" inline />
+        <Placeholder iconName="binary" caption="Binary file" inline />
       </div>
     {/if}
   </div>

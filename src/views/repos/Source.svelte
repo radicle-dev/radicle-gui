@@ -224,23 +224,23 @@
         {:else if blobResult.error.status === 413}
           <div class="placeholder">
             <Placeholder
-              iconName="exclamation-circle"
+              iconName="warning"
               caption="This file is too big to be displayed.
               If you want to view this file, clone this repository locally." />
           </div>
         {:else if path === "/"}
           <div class="placeholder">
-            <Placeholder iconName="no-file" caption="No README found." />
+            <Placeholder iconName="document" caption="No README found." />
           </div>
         {:else}
           <div class="placeholder">
-            <Placeholder iconName="no-file" caption="File not found." />
+            <Placeholder iconName="document" caption="File not found." />
           </div>
         {/if}
       </div>
     {:else}
       <div class="placeholder">
-        <Placeholder iconName="no-file" caption="No files at this revision." />
+        <Placeholder iconName="document" caption="No files at this revision." />
       </div>
     {/if}
   </div>

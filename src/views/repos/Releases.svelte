@@ -202,7 +202,7 @@
   {#if allReleases.length === 0 && !error}
     <div class="placeholder">
       <Placeholder
-        iconName="desert"
+        iconName="parcel"
         caption={showFilters && !allAuthors
           ? "No releases by delegates"
           : "No releases"} />

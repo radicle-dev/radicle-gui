@@ -143,7 +143,7 @@
   {:else}
     <div class="container">
       <Placeholder
-        iconName="desert"
+        iconName="repository"
         caption="This user doesn’t have any repositories on this node." />
     </div>
   {/if}

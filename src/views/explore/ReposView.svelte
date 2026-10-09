@@ -288,7 +288,9 @@
         </div>
       {:else}
         <div class="loading">
-          <Placeholder iconName="desert" caption="No repositories to show." />
+          <Placeholder
+            iconName="repository"
+            caption="No repositories to show." />
         </div>
       {/if}
     {:catch error}
