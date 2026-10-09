@@ -38,6 +38,8 @@
     priorityOf,
   } from "@app/lib/board";
   import { promptNewBoard } from "@app/lib/boardActions";
+  import type { BoardViewSettings } from "@app/lib/boardView";
+  import { activeFilterCount, loadView, saveView } from "@app/lib/boardView";
   import { nodeRunning } from "@app/lib/events";
   import { invoke } from "@app/lib/invoke";
   import { show } from "@app/lib/modal";
@@ -51,11 +53,13 @@
   } from "@app/lib/utils";
 
   import { announce } from "@app/components/AnnounceSwitch.svelte";
+  import BoardDisplayMenu from "@app/components/BoardDisplayMenu.svelte";
+  import BoardFilterMenu from "@app/components/BoardFilterMenu.svelte";
   import Button from "@app/components/Button.svelte";
-  import Checkbox from "@app/components/Checkbox.svelte";
   import ContextMenu from "@app/components/ContextMenu.svelte";
   import Icon from "@app/components/Icon.svelte";
   import NodeId from "@app/components/NodeId.svelte";
+  import Popover from "@app/components/Popover.svelte";
   import PriorityIcon from "@app/components/PriorityIcon.svelte";
   import ScrollArea from "@app/components/ScrollArea.svelte";
   import TextInput from "@app/components/TextInput.svelte";
@@ -147,12 +151,38 @@
       board: id,
     });
   }
-  const columns: Column[] = $derived(board?.columns ?? DEFAULT_COLUMNS);
+  // Columns being reordered by dragging a title, and columns saved but not
+  // yet echoed back by the board.
+  let columnPreview: Column[] | undefined = $state();
+  let pendingColumns: Column[] | undefined = $state();
+  const columns: Column[] = $derived(
+    columnPreview ?? pendingColumns ?? board?.columns ?? DEFAULT_COLUMNS,
+  );
 
   let filter = $state("");
-  let onlyMine = $state(false);
-  let showCanceled = $state(false);
   const collapsed: Record<string, boolean> = $state({});
+
+  // svelte-ignore state_referenced_locally
+  let settings: BoardViewSettings = $state(loadView(repo.rid));
+  $effect(() => {
+    saveView(repo.rid, $state.snapshot(settings));
+  });
+
+  const me = $derived(`did:key:${config.publicKey}`);
+  const manual = $derived(settings.ordering === "manual");
+
+  function setView(next: BoardView) {
+    void router.push({
+      resource: "repo.board",
+      rid: repo.rid,
+      view: next,
+      board: selected,
+    });
+  }
+
+  function shows(property: BoardViewSettings["properties"][number]): boolean {
+    return settings.properties.includes(property);
+  }
 
   const isDelegate = $derived(
     !!roles.isDelegate(
@@ -193,18 +223,42 @@
     );
   }
 
-  const visibleColumns = $derived(
-    columns.filter(c => showCanceled || c.closes !== "other"),
-  );
+  function assigneesOf(item: BoardItem) {
+    return item.kind === "issue"
+      ? item.issue.assignees
+      : item.kind === "patch"
+        ? item.patch.assignees
+        : [];
+  }
 
   function matches(item: BoardItem): boolean {
-    const assignees =
-      item.kind === "issue"
-        ? item.issue.assignees
-        : item.kind === "patch"
-          ? item.patch.assignees
-          : [];
-    if (onlyMine && !assignees.some(a => isMe(a.did, config.publicKey))) {
+    const assignees = assigneesOf(item);
+    const { types, assignees: people, priorities, labels } = settings.filters;
+    if (
+      types.length > 0 &&
+      (item.kind === "unresolved" || !types.includes(item.kind))
+    ) {
+      return false;
+    }
+    if (
+      people.length > 0 &&
+      !(
+        (people.includes("none") && assignees.length === 0) ||
+        assignees.some(a => people.includes(a.did))
+      )
+    ) {
+      return false;
+    }
+    if (
+      priorities.length > 0 &&
+      !priorities.includes(priorityOf(itemLabels(item)))
+    ) {
+      return false;
+    }
+    if (
+      labels.length > 0 &&
+      !displayLabels(itemLabels(item)).some(l => labels.includes(l))
+    ) {
       return false;
     }
     const query = filter.trim().toLowerCase();
@@ -223,6 +277,58 @@
       Object.entries(groups).map(([id, list]) => [id, list.filter(matches)]),
     );
   });
+
+  const RANK: Record<string, number> = {
+    urgent: 0,
+    high: 1,
+    medium: 2,
+    low: 3,
+    none: 4,
+  };
+
+  function compare(a: BoardItem, b: BoardItem): number {
+    let order = 0;
+    if (settings.ordering === "priority") {
+      order =
+        RANK[priorityOf(itemLabels(a))] - RANK[priorityOf(itemLabels(b))] ||
+        itemTimestamp(b) - itemTimestamp(a);
+    } else if (settings.ordering === "created") {
+      order = itemTimestamp(b) - itemTimestamp(a);
+    } else if (settings.ordering === "title") {
+      order = itemTitle(a).localeCompare(itemTitle(b));
+    }
+    return settings.descending ? -order : order;
+  }
+
+  // Board order, or the chosen ordering on top of it.
+  function arrange(
+    groups: Record<string, BoardItem[]>,
+  ): Record<string, BoardItem[]> {
+    if (manual) return groups;
+    return Object.fromEntries(
+      Object.entries(groups).map(([id, list]) => [id, [...list].sort(compare)]),
+    );
+  }
+
+  // Everyone assigned to anything here, filtered or not, so the filter menu
+  // doesn't change shape as filters are picked.
+  const people = $derived.by(() => {
+    const seen: Record<string, string> = {};
+    for (const a of [...issues, ...patches].flatMap(i => i.assignees)) {
+      seen[a.did] = a.alias ?? `${a.did.slice(8, 16)}…`;
+    }
+    return Object.entries(seen).map(([did, name]) => ({ did, name }));
+  });
+
+  const allLabels = $derived(
+    [
+      ...new Set(
+        [...issues.map(i => i.labels), ...patches.map(p => p.labels)].flatMap(
+          displayLabels,
+        ),
+      ),
+    ].sort(),
+  );
 
   const itemCount = $derived(
     Object.values(grouped).reduce((n, list) => n + list.length, 0),
@@ -254,7 +360,7 @@
   // A move that has been dropped but whose board update hasn't come back yet.
   let optimistic: Move | undefined = $state();
 
-  const settled = $derived(applyMove(grouped, optimistic));
+  const settled = $derived(arrange(applyMove(grouped, optimistic)));
 
   async function reload() {
     try {
@@ -301,8 +407,14 @@
   async function moveItem(item: BoardItem, columnId: string, index: number) {
     const column = columns.find(c => c.id === columnId);
     if (!column) return;
-    const without = (settled[columnId] ?? []).filter(i => i.key !== item.key);
-    const { before, after } = neighbourPositions(without, index);
+    // With another ordering on, a drop can't pick a spot, so the card goes to
+    // the end of the column's board order.
+    const source = manual ? settled : grouped;
+    const without = (source[columnId] ?? []).filter(i => i.key !== item.key);
+    const { before, after } = neighbourPositions(
+      without,
+      manual ? index : without.length,
+    );
 
     optimistic = { item, column: columnId, index };
     try {
@@ -455,6 +567,33 @@
       });
     } else if (item.kind === "patch") {
       openPatch(item.patch, item.card.rid);
+    } else {
+      void seedCard(item);
+    }
+  }
+
+  let seeding: string[] = $state([]);
+
+  // Seeds the repository of a card we can't resolve, then keeps looking the
+  // card up until the fetch brings it in.
+  async function seedCard(item: BoardItem) {
+    const rid = item.card.rid;
+    if (seeding.includes(rid)) return;
+    seeding = [...seeding, rid];
+    try {
+      await invoke<null>("seed", { rid, opts });
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const resolved = await resolve(item.card);
+        if (resolved.kind !== "unresolved") {
+          foreign = new Map([...foreign, [item.key, resolved]]);
+          return;
+        }
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    } catch (error) {
+      console.error("Seeding the card's repository failed", error);
+    } finally {
+      seeding = seeding.filter(r => r !== rid);
     }
   }
 
@@ -545,6 +684,109 @@
     });
   }
 
+  async function saveColumns(next: Column[]) {
+    pendingColumns = next;
+    try {
+      const target = await ensureBoard();
+      replaceBoard(
+        await invoke<Board>("set_board_columns", {
+          rid: repo.rid,
+          board: target.id,
+          columns: next,
+          opts,
+        }),
+      );
+    } catch (error) {
+      console.error("Saving the columns failed", error);
+      await reload();
+    } finally {
+      pendingColumns = undefined;
+    }
+  }
+
+  let renaming: { id: string; value: string } | undefined = $state();
+
+  function startRename(column: Column) {
+    if (!isDelegate || view !== "board") return;
+    renaming = { id: column.id, value: column.name };
+  }
+
+  function finishRename(save: boolean) {
+    const current = renaming;
+    renaming = undefined;
+    if (!save || !current) return;
+    const name = current.value.trim();
+    const column = columns.find(c => c.id === current.id);
+    if (!name || !column || column.name === name) return;
+    void saveColumns(
+      columns.map(c => (c.id === current.id ? { ...c, name } : c)),
+    );
+  }
+
+  let columnGrab:
+    { id: string; x: number; active: boolean; offsetX: number } | undefined =
+    $state();
+
+  function onTitlePointerDown(event: PointerEvent, column: Column) {
+    if (!isDelegate || event.button !== 0 || renaming) return;
+    const rect = (
+      (event.currentTarget as HTMLElement).closest(".column") as HTMLElement
+    ).getBoundingClientRect();
+    columnGrab = {
+      id: column.id,
+      x: event.clientX,
+      active: false,
+      offsetX: event.clientX - rect.left,
+    };
+  }
+
+  // Moves the dragged column among the visible ones as the pointer crosses
+  // their middles; hidden columns keep their place in the full order.
+  function onColumnDragMove(event: PointerEvent): boolean {
+    if (!columnGrab) return false;
+    if (!columnGrab.active) {
+      if (Math.abs(event.clientX - columnGrab.x) < DRAG_THRESHOLD) return true;
+      columnGrab.active = true;
+      columnPreview = [...columns];
+    }
+    const id = columnGrab.id;
+    const others = [
+      ...(boardEl?.querySelectorAll<HTMLElement>("[data-column]") ?? []),
+    ].filter(el => el.dataset.column !== id);
+    let index = 0;
+    for (const el of others) {
+      const rect = el.getBoundingClientRect();
+      const matrix = new DOMMatrix(getComputedStyle(el).transform);
+      if (rect.left - matrix.m41 + rect.width / 2 < event.clientX) index++;
+    }
+    const order = (columnPreview ?? columns).filter(c => c.id !== id);
+    const dragged = columns.find(c => c.id === id)!;
+    const anchor = others[index - 1]?.dataset.column;
+    const at = anchor ? order.findIndex(c => c.id === anchor) + 1 : 0;
+    const next = [...order.slice(0, at), dragged, ...order.slice(at)];
+    if (next.some((c, i) => c.id !== columnPreview?.[i]?.id)) {
+      columnPreview = next;
+    }
+    return true;
+  }
+
+  function onColumnDragEnd(cancel: boolean): boolean {
+    if (!columnGrab) return false;
+    const { active } = columnGrab;
+    columnGrab = undefined;
+    const next = columnPreview;
+    columnPreview = undefined;
+    if (active) {
+      suppressClick = true;
+      setTimeout(() => (suppressClick = false));
+      const before = board?.columns ?? DEFAULT_COLUMNS;
+      if (!cancel && next && next.some((c, i) => c.id !== before[i]?.id)) {
+        void saveColumns(next);
+      }
+    }
+    return true;
+  }
+
   function editColumns() {
     boardMenu = undefined;
     show({
@@ -616,13 +858,74 @@
 
   const display = $derived(
     drag?.over !== undefined && drag.index !== undefined
-      ? applyMove(settled, {
-          item: drag.item,
-          column: drag.over,
-          index: drag.index,
-        })
+      ? arrange(
+          applyMove(settled, {
+            item: drag.item,
+            column: drag.over,
+            index: drag.index,
+          }),
+        )
       : settled,
   );
+
+  const visibleColumns = $derived(
+    columns.filter(
+      c =>
+        (settings.showCanceled || c.closes !== "other") &&
+        (settings.showCompleted || c.closes !== "solved") &&
+        (settings.showEmpty ||
+          drag !== undefined ||
+          (display[c.id]?.length ?? 0) > 0),
+    ),
+  );
+
+  // List groups. Grouping by status follows the columns and supports
+  // dragging; the other groupings are for reading only.
+  const listGroups = $derived.by(() => {
+    const shown = visibleColumns.flatMap(c => display[c.id] ?? []);
+    const byKey = (
+      entries: { id: string; name: string }[],
+      keyOf: (item: BoardItem) => string,
+    ) =>
+      entries
+        .map(e => ({
+          ...e,
+          items: shown.filter(item => keyOf(item) === e.id),
+        }))
+        .filter(g => settings.showEmpty || g.items.length > 0);
+
+    switch (settings.grouping) {
+      case "status":
+        return visibleColumns.map(c => ({
+          id: c.id,
+          name: c.name,
+          items: display[c.id] ?? [],
+        }));
+      case "priority":
+        return byKey(
+          PRIORITIES.map(p => ({ id: p.id, name: p.label })),
+          item => priorityOf(itemLabels(item)),
+        );
+      case "assignee":
+        return byKey(
+          [
+            ...people.map(p => ({ id: p.did, name: p.name })),
+            { id: "none", name: "No assignee" },
+          ],
+          item => assigneesOf(item)[0]?.did ?? "none",
+        );
+      case "label":
+        return byKey(
+          [
+            ...allLabels.map(l => ({ id: l, name: l })),
+            { id: "none", name: "No label" },
+          ],
+          item => displayLabels(itemLabels(item))[0] ?? "none",
+        );
+      default:
+        return [{ id: "all", name: "All cards", items: shown }];
+    }
+  });
 
   // A card the viewer can't move still follows the pointer a little and
   // springs back, so the grab registers without the card leaving its spot.
@@ -664,6 +967,7 @@
 
   function onPointerDown(event: PointerEvent, item: BoardItem) {
     if (event.button !== 0 || landing) return;
+    if (view === "list" && settings.grouping !== "status") return;
     if (!canMove(item)) {
       const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
       lockedGrab = {
@@ -756,6 +1060,7 @@
   }
 
   function onWindowPointerMove(event: PointerEvent) {
+    if (onColumnDragMove(event)) return;
     if (lockedGrab) {
       const dx = event.clientX - lockedGrab.x;
       const dy = event.clientY - lockedGrab.y;
@@ -800,6 +1105,7 @@
 
   function sameSpot(item: BoardItem, column: string, index: number): boolean {
     if (item.column !== column) return false;
+    if (!manual) return true;
     const list = settled[column] ?? [];
     return list.findIndex(i => i.key === item.key) === index;
   }
@@ -834,12 +1140,18 @@
   }
 
   function onWindowPointerUp() {
+    if (onColumnDragEnd(false)) return;
     releaseNudge();
     pending = undefined;
     void land(false);
   }
 
   function onWindowKeydown(event: KeyboardEvent) {
+    if (event.key === "Escape" && columnGrab) {
+      event.preventDefault();
+      onColumnDragEnd(true);
+      return;
+    }
     if (event.key === "Escape" && nudge) {
       releaseNudge();
       return;
@@ -883,37 +1195,6 @@
     color: var(--color-text-secondary);
     padding-right: 0.25rem;
   }
-  .tabs {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-  }
-  .check-option {
-    white-space: nowrap;
-    margin-right: 0.5rem;
-  }
-  .tab {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    font: var(--txt-body-m-regular);
-    color: var(--color-text-secondary);
-    padding: 0.25rem 0.5rem;
-    border-radius: var(--border-radius-sm);
-    text-decoration: none;
-    cursor: pointer;
-    white-space: nowrap;
-    background: none;
-    border: 0;
-  }
-  .tab:hover {
-    background-color: var(--color-surface-subtle);
-    color: var(--color-text-primary);
-  }
-  .tab.active {
-    background-color: var(--color-surface-subtle);
-    color: var(--color-text-primary);
-  }
 
   .board {
     flex: 1;
@@ -922,35 +1203,74 @@
     overflow-x: auto;
   }
   .column {
+    --column-bg: var(--color-surface-canvas);
     display: flex;
     flex-direction: column;
     flex: 0 0 18rem;
     min-height: 0;
+    overflow-y: auto;
     border-right: 1px solid var(--color-border-subtle);
+    background-color: var(--column-bg);
     transition: background-color 0.1s;
   }
   .column.over {
-    background-color: var(--color-surface-subtle);
+    --column-bg: var(--color-surface-subtle);
   }
+  /* Sticky, and fading out at the bottom, so cards scroll under the title
+     instead of being cut off at a hard edge. */
   .column-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 1rem 1rem 0.75rem;
+    padding: 1rem 1rem 1.5rem;
+    margin-bottom: -0.75rem;
     font: var(--txt-body-m-semibold);
     color: var(--color-text-primary);
+    background: linear-gradient(to bottom, var(--column-bg) 60%, transparent);
+    pointer-events: none;
   }
   .count {
     color: var(--color-text-tertiary);
     font: var(--txt-body-m-regular);
+  }
+  .column.lifted {
+    position: relative;
+    z-index: 2;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  }
+  .column-title {
+    pointer-events: auto;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .column-title.movable {
+    cursor: grab;
+  }
+  .column.lifted .column-title {
+    cursor: grabbing;
+  }
+  .column-rename {
+    pointer-events: auto;
+    flex: 1;
+    min-width: 0;
+    height: 1.75rem;
+    margin: -0.25rem 0;
+    padding: 0 0.375rem;
+    border: 1px solid var(--color-border-brand);
+    border-radius: var(--border-radius-sm);
+    background-color: var(--color-surface-canvas);
+    color: var(--color-text-primary);
+    font: var(--txt-body-m-semibold);
+    outline: none;
   }
   .cards {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
     padding: 0 0.75rem 0.75rem;
-    overflow-y: auto;
-    flex: 1;
   }
   .card {
     display: flex;
@@ -1195,7 +1515,8 @@
   .row-date {
     color: var(--color-text-tertiary);
     white-space: nowrap;
-    width: 6rem;
+    width: 2.5rem;
+    flex-shrink: 0;
     text-align: right;
   }
 
@@ -1303,7 +1624,9 @@
   {/if}
   {#if item.kind === "unresolved"}
     <span class="unresolved" title={item.card.rid}>
-      Seed this repository to see the card
+      {seeding.includes(item.card.rid)
+        ? "Seeding…"
+        : "Click to seed this repository"}
     </span>
   {/if}
 {/snippet}
@@ -1319,10 +1642,12 @@
 {/snippet}
 
 {#snippet rowContent(item: BoardItem)}
-  {#if item.kind !== "unresolved"}
+  {#if item.kind !== "unresolved" && shows("priority")}
     <PriorityIcon priority={priorityOf(itemLabels(item))} />
   {/if}
-  <span class="row-id">{shortId(item.card.oid)}</span>
+  {#if shows("id")}
+    <span class="row-id">{shortId(item.card.oid)}</span>
+  {/if}
   {#if item.kind === "patch"}
     <Icon name="patch" />
   {/if}
@@ -1332,16 +1657,25 @@
   {/if}
   {@render pendingNote(item)}
   <div class="card-meta">
-    {@render repoChip(item)}
-    {@render patchChips(item)}
-    {@render labels(item)}
+    {#if settings.grouping !== "status"}
+      <span class="chip">
+        {columns.find(c => c.id === item.column)?.name}
+      </span>
+    {/if}
+    {#if shows("repository")}{@render repoChip(item)}{/if}
+    {#if shows("patches")}{@render patchChips(item)}{/if}
+    {#if shows("labels")}{@render labels(item)}{/if}
   </div>
-  <div style:width="4rem" style:display="flex">
-    {@render assignees(item)}
-  </div>
-  <span class="row-date" title={absoluteTimestamp(itemTimestamp(item))}>
-    {formatTimestamp(itemTimestamp(item))}
-  </span>
+  {#if shows("assignees")}
+    <div style:width="4rem" style:display="flex">
+      {@render assignees(item)}
+    </div>
+  {/if}
+  {#if shows("created")}
+    <span class="row-date" title={absoluteTimestamp(itemTimestamp(item))}>
+      {formatTimestamp(itemTimestamp(item))}
+    </span>
+  {/if}
 {/snippet}
 
 {#snippet cardContent(item: BoardItem)}
@@ -1356,29 +1690,35 @@
     {#if item.kind === "patch"}
       <Icon name="patch" />
     {/if}
-    <span>{shortId(item.card.oid)}</span>
-    <span>·</span>
-    <span title={absoluteTimestamp(itemTimestamp(item))}>
-      {formatTimestamp(itemTimestamp(item))}
-    </span>
-    {@render assignees(item)}
+    {#if shows("id")}
+      <span>{shortId(item.card.oid)}</span>
+    {/if}
+    {#if shows("id") && shows("created")}
+      <span>·</span>
+    {/if}
+    {#if shows("created")}
+      <span title={absoluteTimestamp(itemTimestamp(item))}>
+        {formatTimestamp(itemTimestamp(item))}
+      </span>
+    {/if}
+    {#if shows("assignees")}{@render assignees(item)}{/if}
     {#if !canMove(item)}
       <span class="lock"><Icon name="lock" /></span>
     {/if}
   </div>
   <div class="card-title">{itemTitle(item)}</div>
   <div class="card-meta">
-    {#if item.kind !== "unresolved"}
+    {#if item.kind !== "unresolved" && shows("priority")}
       <span
         title={PRIORITIES.find(p => p.id === priority)?.label}
         style:display="flex">
         <PriorityIcon {priority} />
       </span>
     {/if}
-    {@render repoChip(item)}
-    {@render patchChips(item)}
-    {@render labels(item)}
-    {#if comments > 0}
+    {#if shows("repository")}{@render repoChip(item)}{/if}
+    {#if shows("patches")}{@render patchChips(item)}{/if}
+    {#if shows("labels")}{@render labels(item)}{/if}
+    {#if comments > 0 && shows("comments")}
       <span class="chip" style:gap="0.25rem">
         <Icon name="comment" />{comments}
       </span>
@@ -1407,41 +1747,44 @@
           </button>
         {/if}
       {/if}
-      <div class="tabs">
-        <a
-          class="tab"
-          class:active={view === "board"}
-          href={router.routeToPath({
-            resource: "repo.board",
-            rid: repo.rid,
-            view: "board",
-            board: selected,
-          })}>
-          <Icon name="dashboard" />Columns
-        </a>
-        <a
-          class="tab"
-          class:active={view === "list"}
-          href={router.routeToPath({
-            resource: "repo.board",
-            rid: repo.rid,
-            view: "list",
-            board: selected,
-          })}>
-          <Icon name="menu" />List
-        </a>
-      </div>
       <div class="global-flex" style:margin-left="auto" style:gap="0.5rem">
-        <span class="check-option">
-          <Checkbox bind:checked={onlyMine}>Assigned to me</Checkbox>
-        </span>
-        <span class="check-option">
-          <Checkbox bind:checked={showCanceled}>Show canceled</Checkbox>
-        </span>
+        <Popover placement="bottom-end" popoverPadding="0">
+          {#snippet toggle(onclick)}
+            <Button
+              styleHeight="2rem"
+              variant="ghost"
+              active={activeFilterCount(settings.filters) > 0}
+              {onclick}>
+              <Icon name="filter" />Filter
+              {#if activeFilterCount(settings.filters) > 0}
+                <span class="global-counter-badge">
+                  {activeFilterCount(settings.filters)}
+                </span>
+              {/if}
+            </Button>
+          {/snippet}
+          {#snippet popover()}
+            <BoardFilterMenu
+              bind:filters={settings.filters}
+              {people}
+              labels={allLabels}
+              {me} />
+          {/snippet}
+        </Popover>
+        <Popover placement="bottom-end" popoverPadding="0">
+          {#snippet toggle(onclick)}
+            <Button styleHeight="2rem" variant="ghost" {onclick}>
+              <Icon name="settings" />Display
+            </Button>
+          {/snippet}
+          {#snippet popover()}
+            <BoardDisplayMenu {view} bind:settings onView={setView} />
+          {/snippet}
+        </Popover>
         <div style:width="14rem">
           <TextInput
             styleHeight="2rem"
-            placeholder="Filter"
+            placeholder="Search"
             modShortcuts
             onDismiss={() => (filter = "")}
             bind:value={filter}>
@@ -1450,7 +1793,7 @@
                 style:color="var(--color-text-tertiary)"
                 style:padding-left="0.5rem"
                 style:display="flex">
-                <Icon name="filter" />
+                <Icon name="search" />
               </div>
             {/snippet}
           </TextInput>
@@ -1482,9 +1825,40 @@
             class="column"
             class:over={drag?.over === column.id &&
               drag.item.column !== column.id}
-            data-column={column.id}>
+            class:lifted={columnPreview !== undefined &&
+              columnGrab?.id === column.id}
+            data-column={column.id}
+            animate:flip={{ duration: 200, easing: cubicOut }}>
             <div class="column-header">
-              {column.name}
+              {#if renaming?.id === column.id}
+                <!-- svelte-ignore a11y_autofocus -->
+                <input
+                  class="column-rename"
+                  aria-label="Column name"
+                  autofocus
+                  bind:value={renaming.value}
+                  onblur={() => finishRename(true)}
+                  onkeydown={e => {
+                    if (e.key === "Enter") finishRename(true);
+                    if (e.key === "Escape") {
+                      e.stopPropagation();
+                      finishRename(false);
+                    }
+                  }} />
+              {:else}
+                <span
+                  class="column-title"
+                  class:movable={isDelegate}
+                  role="heading"
+                  aria-level="2"
+                  title={isDelegate
+                    ? "Drag to reorder, double-click to rename"
+                    : undefined}
+                  onpointerdown={e => onTitlePointerDown(e, column)}
+                  ondblclick={() => startRename(column)}>
+                  {column.name}
+                </span>
+              {/if}
               <span class="count">{display[column.id]?.length ?? 0}</span>
             </div>
             <div class="cards">
@@ -1518,24 +1892,29 @@
     {:else}
       <ScrollArea style="height: 100%; min-width: 0;">
         <div class="list" bind:this={listEl}>
-          {#each visibleColumns as column (column.id)}
+          {#each listGroups as group (group.id)}
             <section
               class="group"
-              class:over={drag?.over === column.id &&
-                drag.item.column !== column.id}
-              data-column={column.id}>
-              <button
-                class="group-header"
-                onclick={() => (collapsed[column.id] = !collapsed[column.id])}>
-                <Icon
-                  name={collapsed[column.id]
-                    ? "chevron-right"
-                    : "chevron-down"} />
-                {column.name}
-                <span class="count">{display[column.id]?.length ?? 0}</span>
-              </button>
-              {#if !collapsed[column.id]}
-                {#each display[column.id] ?? [] as item (item.key)}
+              class:over={settings.grouping === "status" &&
+                drag?.over === group.id &&
+                drag.item.column !== group.id}
+              data-column={settings.grouping === "status"
+                ? group.id
+                : undefined}>
+              {#if settings.grouping !== "none"}
+                <button
+                  class="group-header"
+                  onclick={() => (collapsed[group.id] = !collapsed[group.id])}>
+                  <Icon
+                    name={collapsed[group.id]
+                      ? "chevron-right"
+                      : "chevron-down"} />
+                  {group.name}
+                  <span class="count">{group.items.length}</span>
+                </button>
+              {/if}
+              {#if !collapsed[group.id]}
+                {#each group.items as item (item.key)}
                   <div
                     class="row"
                     class:placeholder={drag?.item.key === item.key}

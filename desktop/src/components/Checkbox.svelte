@@ -7,6 +7,7 @@
     checked?: boolean;
     disabled?: boolean;
     children?: Snippet;
+    onchange?: (checked: boolean) => void;
   }
 
   /* eslint-disable prefer-const */
@@ -14,6 +15,7 @@
     checked = $bindable(false),
     disabled = false,
     children,
+    onchange,
   }: Props = $props();
   /* eslint-enable prefer-const */
 </script>
@@ -80,7 +82,11 @@
 </style>
 
 <label class="checkbox">
-  <input type="checkbox" bind:checked {disabled} />
+  <input
+    type="checkbox"
+    bind:checked
+    {disabled}
+    onchange={() => onchange?.(checked)} />
   <span class="box"><Icon name="checkmark" /></span>
   {#if children}
     <span class="label">{@render children()}</span>
