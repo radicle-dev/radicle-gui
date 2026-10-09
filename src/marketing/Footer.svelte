@@ -101,7 +101,7 @@
         Twitter <span class="link-arrow link-arrow-up-right">↗</span>
       </a>
       <a
-        href="https://mastodon.social/@radicle"
+        href="https://toot.radicle.dev/@radicle"
         target="_blank"
         rel="noopener noreferrer"
         class="txt-medium-14 arrow-link">
