@@ -498,7 +498,11 @@
         {#if view.shown.length === 0}
           <div class="empty-artifacts">
             <Icon name="attach" />
-            No artifacts
+            {!view.showFilters
+              ? "No artifacts"
+              : view.scope === "trusted"
+                ? "No artifacts by delegates"
+                : "No artifacts by others"}
           </div>
         {/if}
 

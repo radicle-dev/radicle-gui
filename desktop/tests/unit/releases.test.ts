@@ -1,5 +1,4 @@
 import type { Artifact } from "@bindings/cob/release/Artifact";
-import type { ReleaseCounts } from "@bindings/cob/release/ReleaseCounts";
 import type { Commit } from "@bindings/repo/Commit";
 
 import { describe, expect, test } from "vitest";
@@ -15,7 +14,6 @@ import {
   matchCommits,
   parseMetadataValue,
   redactedByDelegate,
-  releaseListScope,
   releaseWarning,
   webLocations,
 } from "@app/lib/releases";
@@ -40,27 +38,6 @@ function artifact(cid: string, overrides: Partial<Artifact> = {}): Artifact {
   };
 }
 
-function counts(delegate: number, other: number): ReleaseCounts {
-  return { delegate, delegateRedacted: 0, other, otherRedacted: 0 };
-}
-
-describe("releaseListScope", () => {
-  test("keeps a requested scope", () => {
-    expect(releaseListScope("trusted", counts(0, 3))).toBe("trusted");
-  });
-
-  test("opens on untrusted when only others released", () => {
-    expect(releaseListScope(undefined, counts(0, 3))).toBe("untrusted");
-  });
-
-  test.each([
-    [1, 3],
-    [0, 0],
-  ])("opens on trusted with %d delegate and %d other", (d, o) => {
-    expect(releaseListScope(undefined, counts(d, o))).toBe("trusted");
-  });
-});
-
 describe("artifactView", () => {
   const ours = artifact("ours");
   const ourRedacted = artifact("ours-redacted", { redacted: true });
@@ -73,10 +50,15 @@ describe("artifactView", () => {
     expect(view.showFilters).toBe(true);
   });
 
-  test("falls back to the other scope when the wanted one is empty", () => {
+  test("keeps the wanted scope when it is empty", () => {
     const view = artifactView([theirs], delegates, "trusted", false);
-    expect(view.scope).toBe("untrusted");
-    expect(view.shown).toEqual([theirs]);
+    expect(view.scope).toBe("trusted");
+    expect(view.shown).toEqual([]);
+    expect(view.showFilters).toBe(true);
+  });
+
+  test("hides the filter without artifacts by others", () => {
+    const view = artifactView([ours], delegates, "trusted", false);
     expect(view.showFilters).toBe(false);
   });
 

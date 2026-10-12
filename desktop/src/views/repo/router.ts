@@ -24,7 +24,6 @@ import {
   cachedGetDiffText,
   invoke,
 } from "@app/lib/invoke";
-import { releaseListScope } from "@app/lib/releases";
 import type { LoadedRoute, SidebarData } from "@app/lib/router/definitions";
 import { loadSidebarData } from "@app/lib/router/definitions";
 import { unreachable } from "@app/lib/utils";
@@ -570,8 +569,8 @@ export function listReleases(
 export async function loadReleases(
   route: RepoReleasesRoute,
 ): Promise<LoadedRepoReleasesRoute> {
-  let scope = route.scope ?? "trusted";
-  const [sidebarData, repo, firstPage, releaseCounts] = await Promise.all([
+  const scope = route.scope ?? "trusted";
+  const [sidebarData, repo, releases, releaseCounts] = await Promise.all([
     loadSidebarData(),
     invoke<RepoInfo>("repo_by_id", {
       rid: route.rid,
@@ -581,15 +580,8 @@ export async function loadReleases(
       rid: route.rid,
     }),
   ]);
-  let releases = firstPage;
-
-  const fallback = releaseListScope(route.scope, releaseCounts);
-  if (fallback !== scope) {
-    scope = fallback;
-    releases = await listReleases(route.rid, scope, 0, RELEASES_PER_PAGE);
-  }
-
-  const showFilters = releaseCounts.delegate > 0 && releaseCounts.other > 0;
+  // Others is one click away whenever it has releases; see docs/adr/0004.
+  const showFilters = releaseCounts.other > 0;
 
   return {
     resource: "repo.releases",
