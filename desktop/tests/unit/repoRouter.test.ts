@@ -101,27 +101,15 @@ describe("repoRouteToPath and repoUrlToRoute round trip", () => {
         rid,
         release: "abc",
         scope: undefined,
-        artifactScope: undefined,
       },
     ],
     [
-      "/repos/RID/releases/abc?scope=trusted",
-      {
-        resource: "repo.release",
-        rid,
-        release: "abc",
-        scope: "trusted",
-        artifactScope: undefined,
-      },
-    ],
-    [
-      "/repos/RID/releases/abc?scope=untrusted&artifacts=untrusted",
+      "/repos/RID/releases/abc?scope=untrusted",
       {
         resource: "repo.release",
         rid,
         release: "abc",
         scope: "untrusted",
-        artifactScope: "untrusted",
       },
     ],
   ])("%s", (template, route) => {
@@ -173,27 +161,12 @@ describe("repoUrlToRoute", () => {
     });
   });
 
-  test("leaves the trusted artifact scope out of the URL", () => {
-    expect(
-      repoRouteToPath({
-        resource: "repo.release",
-        rid,
-        release: "abc",
-        scope: undefined,
-        artifactScope: "trusted",
-      }),
-    ).toBe(`/repos/${rid}/releases/abc`);
-  });
-
   test("ignores an unknown release scope", () => {
-    expect(
-      parse(`/repos/${rid}/releases/abc?scope=bogus&artifacts=bogus`),
-    ).toEqual({
+    expect(parse(`/repos/${rid}/releases/abc?scope=bogus`)).toEqual({
       resource: "repo.release",
       rid,
       release: "abc",
       scope: undefined,
-      artifactScope: undefined,
     });
   });
 

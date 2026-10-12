@@ -183,7 +183,7 @@
           onState={list.persistScroll}>
           {#snippet row(release)}
             <div class="row">
-              <ReleaseTeaser {release} {scope} {delegateIds} rid={repo.rid} />
+              <ReleaseTeaser {release} {delegateIds} rid={repo.rid} />
             </div>
           {/snippet}
         </VirtualList>

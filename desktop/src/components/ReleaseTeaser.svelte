@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { Release } from "@bindings/cob/release/Release";
-  import type { ReleaseScope } from "@bindings/cob/release/ReleaseScope";
 
   import { push } from "@app/lib/router";
   import {
@@ -16,13 +15,12 @@
   import NodeId from "@app/components/NodeId.svelte";
 
   interface Props {
-    scope: ReleaseScope;
     delegateIds: Set<string>;
     release: Release;
     rid: string;
   }
 
-  const { scope, delegateIds, release, rid }: Props = $props();
+  const { delegateIds, release, rid }: Props = $props();
 
   const title = $derived(release.title || release.tagName || release.id);
 </script>
@@ -79,7 +77,6 @@
       resource: "repo.release",
       rid,
       release: release.id,
-      scope,
     });
   }}>
   <div class="global-chip icon">
