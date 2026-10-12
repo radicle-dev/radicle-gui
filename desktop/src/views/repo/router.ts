@@ -24,7 +24,6 @@ import {
   cachedGetDiffText,
   invoke,
 } from "@app/lib/invoke";
-import { releaseListScope } from "@app/lib/releases";
 import type { LoadedRoute, SidebarData } from "@app/lib/router/definitions";
 import { loadSidebarData } from "@app/lib/router/definitions";
 import { unreachable } from "@app/lib/utils";
@@ -215,9 +214,7 @@ export interface RepoReleaseRoute {
   resource: "repo.release";
   rid: string;
   release: string;
-  // The release list the user came from, shown in the breadcrumb.
   scope?: ReleaseScope;
-  artifactScope?: ReleaseScope;
 }
 
 export interface LoadedRepoReleaseRoute {
@@ -227,7 +224,6 @@ export interface LoadedRepoReleaseRoute {
     config: Config;
     release: Release;
     scope?: ReleaseScope;
-    artifactScope?: ReleaseScope;
     sidebarData: SidebarData;
   };
 }
@@ -570,8 +566,8 @@ export function listReleases(
 export async function loadReleases(
   route: RepoReleasesRoute,
 ): Promise<LoadedRepoReleasesRoute> {
-  let scope = route.scope ?? "trusted";
-  const [sidebarData, repo, firstPage, releaseCounts] = await Promise.all([
+  const scope = route.scope ?? "trusted";
+  const [sidebarData, repo, releases, releaseCounts] = await Promise.all([
     loadSidebarData(),
     invoke<RepoInfo>("repo_by_id", {
       rid: route.rid,
@@ -581,15 +577,9 @@ export async function loadReleases(
       rid: route.rid,
     }),
   ]);
-  let releases = firstPage;
-
-  const fallback = releaseListScope(route.scope, releaseCounts);
-  if (fallback !== scope) {
-    scope = fallback;
-    releases = await listReleases(route.rid, scope, 0, RELEASES_PER_PAGE);
-  }
-
-  const showFilters = releaseCounts.delegate > 0 && releaseCounts.other > 0;
+  // Others is one click away whenever it has releases, and Delegates is one
+  // click back from it; see docs/adr/0004.
+  const showFilters = scope === "untrusted" || releaseCounts.other > 0;
 
   return {
     resource: "repo.releases",
@@ -623,7 +613,6 @@ export async function loadRelease(
     return loadReleases({
       resource: "repo.releases",
       rid: route.rid,
-      scope: route.scope,
     });
   }
 
@@ -635,7 +624,6 @@ export async function loadRelease(
       config: sidebarData.config,
       release,
       scope: route.scope,
-      artifactScope: route.artifactScope,
     },
   };
 }
@@ -706,11 +694,6 @@ export function repoRouteToPath(route: RepoRoute): string {
     let url = [...pathSegments, "releases", route.release].join("/");
     if (route.scope) {
       searchParams.set("scope", route.scope);
-    }
-    if (route.artifactScope === "untrusted") {
-      searchParams.set("artifacts", "untrusted");
-    }
-    if (searchParams.size > 0) {
       url += `?${searchParams}`;
     }
     return url;
@@ -818,17 +801,7 @@ export function repoUrlToRoute(
       const id = segments.shift();
       const scope = parseReleaseScope(searchParams.get("scope"));
       if (id) {
-        const artifactScope =
-          searchParams.get("artifacts") === "untrusted"
-            ? "untrusted"
-            : undefined;
-        return {
-          resource: "repo.release",
-          rid,
-          release: id,
-          scope,
-          artifactScope,
-        };
+        return { resource: "repo.release", rid, release: id, scope };
       } else {
         return { resource: "repo.releases", rid, scope };
       }

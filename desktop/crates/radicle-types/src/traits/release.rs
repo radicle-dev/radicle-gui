@@ -30,14 +30,13 @@ impl ReleaseFilter {
 pub trait Releases: Profile {
     /// List a repository's releases, newest first.
     ///
-    /// Scoped to releases created by a delegate and artifacts authored by a
-    /// delegate, or with an untrusted `filter` to those by non-delegates, so
-    /// the two scopes never overlap. Artifacts redacted by a trusted party are
-    /// hidden unless `filter` shows them. A release with no artifact in scope
-    /// shows every author's. A release whose artifacts were all redacted is
-    /// hidden with them; a release with no artifacts is shown. This is the view
-    /// `rad-artifact list` gives. Without `take` the full list is returned and
-    /// `skip` is ignored.
+    /// Scoped to releases created by a delegate, or with an untrusted `filter`
+    /// to those by non-delegates, so the two scopes never overlap. Each release
+    /// lists only the artifacts authored by a delegate, in either scope.
+    /// Artifacts redacted by a trusted party are hidden unless `filter` shows
+    /// them. A release whose artifacts were all redacted is hidden with them; a
+    /// release with no artifacts is shown. Without `take` the full list is
+    /// returned and `skip` is ignored.
     fn list_releases(
         &self,
         rid: identity::RepoId,
@@ -60,19 +59,14 @@ pub trait Releases: Profile {
             .filter_map(Result::ok)
             .filter(|(_, release)| filters.shows_release(release));
 
-        // With no artifact by an author in scope, fall back to every author, as
-        // the release page does, so a teaser never counts fewer artifacts than
-        // its page lists. A redacted artifact in scope keeps the scope.
-        let fallback = Filters {
-            scope: Scope::All,
+        // A release page opens on the delegates' artifacts, so a teaser counts
+        // those in either scope.
+        let artifact_filters = Filters {
+            scope: Scope::Trusted,
             ..filters
         };
         let summary = |(id, release): (radicle::cob::ObjectId, radicle_artifact::Release)| {
-            let has_trusted = release
-                .artifacts()
-                .values()
-                .any(|artifact| filters.trust.admits(filters.scope, artifact.author()));
-            let artifacts = if has_trusted { filters } else { fallback }
+            let artifacts = artifact_filters
                 .artifacts(&release)
                 .map(|(cid, artifact)| {
                     cobs::release::Artifact::new(cid, artifact, store.delegates(), &aliases)
@@ -195,8 +189,8 @@ mod test {
     }
 
     #[test]
-    fn list_falls_back_to_every_author_without_delegate_artifact() {
-        assert_eq!(listed_artifacts(|_, _| {}), 1);
+    fn list_never_widens_to_non_delegate_artifact() {
+        assert_eq!(listed_artifacts(|_, _| {}), 0);
     }
 
     #[test]
@@ -291,6 +285,40 @@ mod test {
 
         assert_eq!(listed(ReleaseScope::Trusted), [ours]);
         assert_eq!(listed(ReleaseScope::Untrusted), [theirs]);
+    }
+
+    #[test]
+    fn list_others_releases_with_delegate_artifacts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let profile = test::profile(&tmp.path().join("home"), [0xff; 32]);
+        let signer = SigningKey::from_seed(Seed::new([0xff; 32]));
+        let other = SigningKey::from_seed(Seed::new([0xee; 32]));
+        let (rid, _, _, head) =
+            fixtures::project(tmp.path().join("project"), &profile.storage, &signer).unwrap();
+        {
+            let repo = profile.storage.repository(rid).unwrap();
+            let mut releases = ArtifactStore::open(&repo).unwrap();
+            let mut theirs = releases
+                .create(radicle::git::Oid::from(head), None, &other)
+                .unwrap();
+            theirs
+                .register_artifact(Cid::from_str(CID).unwrap(), "bin".into(), &signer)
+                .unwrap();
+            theirs
+                .register_artifact(Cid::from_str(OTHER_CID).unwrap(), "eve".into(), &other)
+                .unwrap();
+        }
+
+        let filter = ReleaseFilter {
+            scope: ReleaseScope::Untrusted,
+            show_redacted: false,
+        };
+        let list = AppState { profile }
+            .list_releases(rid, Some(filter), None, None)
+            .unwrap();
+        let artifacts = &list.content[0].artifacts;
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].name, "bin");
     }
 
     #[test]

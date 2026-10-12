@@ -53,11 +53,18 @@ without alarm. It shows:
 counts delegates only, as anyone can make keys that attest their own artifact.
 The full list still shows every attestation.
 
-**Keep untrusted content visible.** Others' releases and artifacts stay listed
-by default, behind their own filter.
+**Open on Delegates, and never switch scope by itself.** The releases list and
+the artifacts of a release always open on Delegates, also when Delegates is
+empty. The Others filter shows whenever Others has content, so untrusted content
+is one deliberate click away. An empty Delegates scope tells the user that the
+delegates published nothing. Opening on Others would hide that, and would show
+untrusted content the user did not ask for.
 
 ## Alternatives considered
 
+- **Open on Others when Delegates is empty.** This avoids an empty page, but
+  shows untrusted content without the user asking for it, and hides that the
+  delegates published nothing.
 - **Hide Others by default**, behind a global setting. This protects users best,
   and avoids showing links to malware at all, which is a reputation risk a
   warning doesn't remove. It also hides legitimate contributions, such as builds
@@ -77,4 +84,6 @@ by default, behind their own filter.
   its title, tag and commit are not trusted.
 - Delegation is the only trust signal. Release managers who are not delegates
   show as Others until releases can use canonical ref rules.
-- radicle-explorer should show the same warnings so that both clients agree.
+- An empty Delegates scope shows an empty page, also when Others has content.
+- radicle-explorer shows the same warnings and opens on the same scope, so that
+  both clients agree.
