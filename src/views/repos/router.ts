@@ -301,6 +301,7 @@ export type RepoLoadedRoute =
         repo: Repo;
         repoId: string;
         releases: Release[];
+        lastPageFull: boolean;
         scope: ReleaseScope;
         showFilters: boolean;
         nodeId: string;
@@ -522,20 +523,16 @@ function sourceUnavailable(
   };
 }
 
-// A missing release count means the node cannot serve releases, for one of two
-// reasons. A node that reports no counts at all predates the release API; one
-// that reports the others was built without release support. Naming the right
-// one keeps us from telling an operator to upgrade a current node.
-function releasesNotSupported(repo: Repo, node: BaseUrl): NotFoundRoute {
-  const outdated = repo.cobs === undefined;
-
+// A missing release count means the node cannot serve releases: it predates
+// the release API or was built without release support. Older nodes' counts
+// reach us through the same fallback, so we cannot tell the two apart.
+function releasesNotSupported(node: BaseUrl): NotFoundRoute {
   return {
     resource: "notFound",
     params: {
       title: "Releases are not available on this node",
-      description: outdated
-        ? "This node is running an older version that doesn't support browsing releases yet.\nSelect a different node to continue."
-        : "This node was built without release support.\nSelect a different node to continue.",
+      description:
+        "This node is running an older version or was built without release support.\nSelect a different node to continue.",
       baseUrl: node,
     },
   };
@@ -554,7 +551,7 @@ export function releasesQuery(scope: ReleaseScope, page: number) {
 
 // Keep only the releases in the author scope. A newer node has done this
 // already; an older one answers the untrusted scope with every author. Its pages
-// then come back short, so "More" can stop early there.
+// then come back short, so page on the length of the response, not of this.
 export function scopeReleases(
   releases: Release[],
   repo: Repo,
@@ -589,13 +586,13 @@ async function loadReleasesView(
   // either way its absence means no release API.
   const releasesMeta = repo.cobs?.releases;
   if (releasesMeta === undefined) {
-    return releasesNotSupported(repo, route.node);
+    return releasesNotSupported(route.node);
   }
   if ("error" in releasesResult) {
     throw releasesResult.error;
   }
 
-  let releases = scopeReleases(releasesResult.releases, repo, scope);
+  let page = releasesResult.releases;
 
   // With no scope asked for and no delegate releases, open on the others'
   // rather than on an empty list.
@@ -606,11 +603,7 @@ async function loadReleasesView(
     releasesMeta.other > 0
   ) {
     scope = "untrusted";
-    releases = scopeReleases(
-      await api.repo.getAllReleases(route.repo, releasesQuery(scope, 0)),
-      repo,
-      scope,
-    );
+    page = await api.repo.getAllReleases(route.repo, releasesQuery(scope, 0));
   }
 
   // Offer the author filter only where both scopes hold releases.
@@ -624,7 +617,8 @@ async function loadReleasesView(
     params: {
       baseUrl: route.node,
       repoId: route.repo,
-      releases,
+      releases: scopeReleases(page, repo, scope),
+      lastPageFull: page.length === RELEASES_PER_PAGE,
       scope,
       showFilters,
       repo,
@@ -678,7 +672,7 @@ async function loadReleaseView(
   ]);
 
   if (repo.cobs?.releases === undefined) {
-    return releasesNotSupported(repo, route.node);
+    return releasesNotSupported(route.node);
   }
   if ("error" in releaseResult) {
     throw releaseResult.error;

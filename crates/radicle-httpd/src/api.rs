@@ -295,13 +295,16 @@ impl Context {
     }
 }
 
-/// Add the bucketed release counts to a repo's `cobs` object.
+/// Add the bucketed release counts to a repo's `cobs` object. A count this
+/// node cannot determine is omitted, like the issue and patch counts.
 #[cfg(feature = "artifacts")]
 fn add_releases_count(cobs: &mut Value, repo: &Repository, profile: &Profile) {
-    let counts = Releases::open_cached(repo, cache_db_path(profile.cobs()))
+    let Some(counts) = Releases::open_cached(repo, cache_db_path(profile.cobs()))
         .ok()
         .and_then(|releases| releases.counts().ok())
-        .unwrap_or_default();
+    else {
+        return;
+    };
 
     cobs["releases"] = json!({
         "delegate": counts.delegate,

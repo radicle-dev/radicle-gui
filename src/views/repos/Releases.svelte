@@ -19,6 +19,7 @@
 
   export let baseUrl: BaseUrl;
   export let releases: Release[];
+  export let lastPageFull: boolean;
   export let repo: Repo;
   export let repoId: string;
   export let scope: ReleaseScope;
@@ -31,9 +32,11 @@
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let error: any;
   let allReleases: Release[];
+  let morePages: boolean;
 
   $: {
     allReleases = releases;
+    morePages = lastPageFull;
     page = 0;
   }
 
@@ -56,6 +59,7 @@
         releasesQuery(scope, next),
       );
       allReleases = [...allReleases, ...scopeReleases(response, repo, scope)];
+      morePages = response.length === RELEASES_PER_PAGE;
       page = next;
     } catch (e) {
       error = e;
@@ -65,10 +69,9 @@
   }
 
   // The count for the current filter isn't in repo metadata, so offer "More"
-  // whenever every loaded page came back full; a short page means we've reached
-  // the end.
-  $: showMoreButton =
-    !loading && !error && allReleases.length === (page + 1) * RELEASES_PER_PAGE;
+  // while the last page came back full; a short page means we've reached the
+  // end.
+  $: showMoreButton = !loading && !error && morePages;
 </script>
 
 <style>
