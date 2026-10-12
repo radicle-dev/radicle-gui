@@ -72,19 +72,9 @@
   $: otherArtifacts = release.artifacts.filter(
     a => !delegateIds.has(a.author.id),
   );
-  // Show the scope asked for, delegates by default, unless it is empty and the
-  // other one is not.
-  $: wanted = scope ?? "trusted";
-  $: [wantedArtifacts, fallbackArtifacts] =
-    wanted === "trusted"
-      ? [delegateArtifacts, otherArtifacts]
-      : [otherArtifacts, delegateArtifacts];
-  $: activeScope =
-    wantedArtifacts.length === 0 && fallbackArtifacts.length > 0
-      ? wanted === "trusted"
-        ? "untrusted"
-        : "trusted"
-      : wanted;
+  // Show the scope asked for, delegates by default, even when it is empty.
+  // Switching to others by itself would show untrusted content unasked.
+  $: activeScope = scope ?? "trusted";
   $: authorArtifacts =
     activeScope === "trusted" ? delegateArtifacts : otherArtifacts;
 
@@ -119,8 +109,8 @@
     return artifact.attestations.filter(a => delegates.has(a.id)).length;
   }
 
-  // Filter only when both scopes hold something.
-  $: showFilters = delegateArtifacts.length > 0 && otherArtifacts.length > 0;
+  // Others is one click away whenever it holds something.
+  $: showFilters = otherArtifacts.length > 0;
 
   // Format a byte count as a human-readable size (mirrors the CLI display).
   function formatBytes(bytes: number): string {
@@ -550,7 +540,11 @@
         {#if shownArtifacts.length === 0}
           <div class="empty-artifacts">
             <Icon name="attach" />
-            No artifacts
+            {!showFilters
+              ? "No artifacts"
+              : activeScope === "trusted"
+                ? "No artifacts by delegates"
+                : "No artifacts by others"}
           </div>
         {/if}
 

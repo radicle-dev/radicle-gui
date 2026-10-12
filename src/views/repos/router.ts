@@ -568,7 +568,9 @@ async function loadReleasesView(
   route: RepoReleasesRoute,
 ): Promise<RepoLoadedRoute | NotFoundRoute> {
   const api = new HttpdClient(route.node);
-  let scope = route.scope ?? "trusted";
+  // Open on delegates even when they have no releases, so untrusted content
+  // shows only when asked for.
+  const scope = route.scope ?? "trusted";
 
   // Fetch releases alongside the repo so the common path stays parallel; the
   // repo's `cobs.releases` then tells us whether a failure is an unsupported
@@ -591,26 +593,13 @@ async function loadReleasesView(
   if ("error" in releasesResult) {
     throw releasesResult.error;
   }
+  const page = releasesResult.releases;
 
-  let page = releasesResult.releases;
-
-  // With no scope asked for and no delegate releases, open on the others'
-  // rather than on an empty list.
-  if (
-    route.scope === undefined &&
-    typeof releasesMeta !== "number" &&
-    releasesMeta.delegate === 0 &&
-    releasesMeta.other > 0
-  ) {
-    scope = "untrusted";
-    page = await api.repo.getAllReleases(route.repo, releasesQuery(scope, 0));
-  }
-
-  // Offer the author filter only where both scopes hold releases.
+  // Others is one click away whenever it holds releases.
   const showFilters =
-    typeof releasesMeta === "number"
-      ? await legacyShowFilters(api, route.repo, repo)
-      : releasesMeta.delegate > 0 && releasesMeta.other > 0;
+    typeof releasesMeta !== "number"
+      ? releasesMeta.other > 0
+      : scope === "untrusted" || (await legacyHasOthers(api, route.repo, repo));
 
   return {
     resource: "repo.releases",
@@ -629,32 +618,22 @@ async function loadReleasesView(
 }
 
 // Older nodes report a single release count without the delegate and
-// non-delegate buckets, so the filter is decided from the first page of every
-// author. A full page means the list may go on, so keep the filter rather than
-// have it appear or vanish as the user pages. Remove this once nodes without
-// the buckets are no longer supported.
-async function legacyShowFilters(
+// non-delegate buckets, so look for others in the first page of every author.
+// A full page means others may come later, and only the filter depends on
+// this, so a full page or a failed fetch keeps the filter. Remove this once
+// nodes without the buckets are no longer supported.
+async function legacyHasOthers(
   api: HttpdClient,
   repoId: string,
   repo: Repo,
 ): Promise<boolean> {
-  const delegateIds = new Set(repo.delegates.map(d => d.id));
   const everyAuthor = await api.repo
-    .getAllReleases(repoId, {
-      allAuthors: true,
-      page: 0,
-      perPage: RELEASES_PER_PAGE,
-    })
-    .catch(
-      // Only the filter depends on this, so a failure must not take the page
-      // down with it.
-      () => undefined,
-    );
+    .getAllReleases(repoId, releasesQuery("untrusted", 0))
+    .catch(() => undefined);
   if (everyAuthor === undefined || everyAuthor.length === RELEASES_PER_PAGE) {
     return true;
   }
-  const byDelegate = everyAuthor.filter(r => delegateIds.has(r.creator.id));
-  return byDelegate.length > 0 && byDelegate.length < everyAuthor.length;
+  return scopeReleases(everyAuthor, repo, "untrusted").length > 0;
 }
 
 async function loadReleaseView(
