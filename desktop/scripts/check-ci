@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Runs the same checks as CI and keeps the full output with per-step timings in
+# tests/tmp/check-ci.log. That log lives outside tests/artifacts, which
+# Playwright clears when the e2e run starts.
+set -uo pipefail
+
+cd "$(dirname "$0")/.." || exit
+
+log=tests/tmp/check-ci.log
+mkdir -p "$(dirname "$log")"
+echo "check-ci started $(date -u +%Y-%m-%dT%H:%M:%SZ) at $(git rev-parse --short HEAD)" >"$log"
+
+if [ -t 1 ]; then
+  bold=$'\e[1m' dim=$'\e[2m' green=$'\e[32m' red=$'\e[31m' reset=$'\e[0m'
+else
+  bold="" dim="" green="" red="" reset=""
+fi
+
+# Prints to the terminal with styling and to the log without.
+say() {
+  printf '%s\n' "$1"
+  printf '%s\n' "$2" >>"$log"
+}
+
+width=$(tput cols 2>/dev/null || echo 80)
+[ "$width" -gt 100 ] && width=100
+
+# A full-width rule with a title, like "━━ check-js ━━━━━━".
+rule() {
+  local text="━━ $1 "
+  local fill=$((width - ${#text}))
+  [ "$fill" -lt 3 ] && fill=3
+  printf '%s%s' "$text" "$(printf '━%.0s' $(seq 1 "$fill"))"
+}
+
+steps=(
+  "check-js|scripts/check-js"
+  "check-rs|scripts/check-rs"
+  "test:unit|npm run test:unit"
+  "install-binaries|scripts/install-binaries"
+  "test:e2e|npm run test:e2e"
+)
+summary=()
+status=0
+total_start=$SECONDS
+
+for step in "${steps[@]}"; do
+  name=${step%%|*}
+  command=${step#*|}
+  if [ "$status" -ne 0 ]; then
+    summary+=("$(printf '%s- %-18s skipped%s' "$dim" "$name" "$reset")|$(printf -- '- %-18s skipped' "$name")")
+    continue
+  fi
+
+  say "" ""
+  say "${bold}$(rule "$name")${reset}" "$(rule "$name")"
+  say "${dim}  \$ $command${reset}" "  \$ $command"
+  say "" ""
+  start=$SECONDS
+  bash -c "$command" 2>&1 | awk '{ print "  " $0; fflush() }' | tee -a "$log"
+  status=${PIPESTATUS[0]}
+  took=$((SECONDS - start))
+
+  if [ "$status" -eq 0 ]; then
+    summary+=("$(printf '%s✓%s %-18s %4ss' "$green" "$reset" "$name" "$took")|$(printf '✓ %-18s %4ss' "$name" "$took")")
+  else
+    summary+=("$(printf '%s✗ %-18s %4ss  exit %s%s' "$red" "$name" "$took" "$status" "$reset")|$(printf '✗ %-18s %4ss  exit %s' "$name" "$took" "$status")")
+  fi
+done
+
+say "" ""
+say "${bold}$(rule summary)${reset}" "$(rule summary)"
+say "" ""
+for line in "${summary[@]}"; do
+  say "  ${line%%|*}" "  ${line#*|}"
+done
+say "" ""
+
+took=$((SECONDS - total_start))
+if [ "$status" -eq 0 ]; then
+  say "  ${bold}${green}All checks passed in ${took}s${reset} ${dim}· log: $log${reset}" "  All checks passed in ${took}s"
+else
+  say "  ${bold}${red}Checks failed after ${took}s${reset} ${dim}· log: $log${reset}" "  Checks failed after ${took}s"
+fi
+exit "$status"

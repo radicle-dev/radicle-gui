@@ -1,0 +1,48 @@
+[package]
+name = "radicle-tauri"
+version = "0.0.0"
+authors = ["Rudolfs Osins <rudolfs@osins.org>", "Sebastian Martinez <me@sebastinez.dev>"]
+license = "MIT OR Apache-2.0"
+edition.workspace = true
+publish = false
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "lib"]
+doctest = false
+
+[build-dependencies]
+tauri-build = { version = "2.6.1", features = ["isolation"] }
+
+[dependencies]
+anyhow = { version = "1.0.90" }
+base64 = { version = "0.22.1" }
+either = { version = "1.15" }
+git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"] }
+infer = { version = "0.19.0" }
+log = { version = "0.4.22" }
+radicle = { version = "0.25", features = ["tor", "i2p"] }
+radicle-types = { version = "0.1.0", path = "../radicle-types" }
+serde = { version = "1.0.0", features = ["derive"] }
+serde_json = { version = "1.0.0" }
+tauri = { version = "2.11.1", features = ["isolation"] }
+tauri-plugin-clipboard-manager = { version = "2.3.2" }
+tauri-plugin-deep-link = { version = "2.4.10" }
+tauri-plugin-dialog = { version = "2.7.0" }
+tauri-plugin-log = { version = "2.8.0" }
+tauri-plugin-shell = { version = "2.3.5" }
+tauri-plugin-single-instance = { version = "2.4.5", features = ["deep-link"] }
+tauri-plugin-window-state = { version = "2.4.1" }
+thiserror = { version = "2.0.12" }
+ts-rs = { version = "12.0.1", features = ["serde-json-impl", "no-serde-warnings"] }
+ssh-key = { version = "0.6.3" }
+zeroize = { version = "1.8.1", features = ["serde"] }
+
+[features]
+# by default Tauri runs in production mode
+# when `tauri dev` runs it is executed with `cargo run --no-default-features` if `devPath` is an URL
+default = ["custom-protocol"]
+# this feature is used for production builds where `devPath` points to the filesystem
+# DO NOT remove this
+custom-protocol = ["tauri/custom-protocol"]
+devtools = ["tauri/devtools"]

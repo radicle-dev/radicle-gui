@@ -1,0 +1,26 @@
+{{!--
+  Custom .desktop template for Linux bundles, referenced from
+  tauri.linux.conf.json (bundle.linux.deb.desktopTemplate).
+
+  On Linux, Tauri derives the package name (deb/rpm) from `productName`, with
+  no way to set the two independently (https://github.com/tauri-apps/tauri/issues/13999,
+  still open). We override `productName` to "radicle-desktop" in
+  tauri.linux.conf.json so the package and its artifacts are named
+  "radicle-desktop". The cost is that the launcher/menu entry would otherwise
+  read "radicle-desktop" too.
+
+  This template is Tauri's built-in default with a single change: `Name` is
+  hardcoded to "Radicle" instead of `{{name}}`, so the app shows as "Radicle"
+  in the desktop environment while the package stays "radicle-desktop". Keep
+  every other line in sync with Tauri's default template on major upgrades.
+--}}
+[Desktop Entry]
+Categories={{categories}}
+{{#if comment}}
+Comment={{comment}}
+{{/if}}
+Exec={{exec}}
+Icon={{icon}}
+Name=Radicle
+Terminal=false
+Type=Application

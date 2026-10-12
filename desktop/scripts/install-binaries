@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -e
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
+RELEASE=$(cat "$REPO_ROOT/tests/support/heartwood-release")
+BINARY_PATH=$REPO_ROOT/tests/tmp/bin
+OS=$(uname)
+
+install() {
+  if test -d "$BINARY_PATH/$1/$2"; then
+    echo ✅ "Folder $BINARY_PATH/$1/$2 exists already skipping download."
+  else
+    mkdir -p "$BINARY_PATH/$1/$2"
+    case "$OS" in
+    Darwin)
+      ARCH="aarch64-apple-darwin"
+      ;;
+    Linux)
+      ARCH="x86_64-unknown-linux-musl"
+      ;;
+    *)
+      echo "There are no precompiled binaries for your OS: $OS, compile $1 manually and make sure it's in PATH." && exit 1
+      ;;
+    esac
+    case "$1" in
+    heartwood)
+      FETCH_URL="https://files.radicle.dev/releases/$2/radicle-$ARCH.tar.xz"
+      FILENAME="radicle-$2-$ARCH"
+      ;;
+    *)
+      echo "No precompiled binary found with the name $1." && exit 1
+      ;;
+    esac
+
+    echo Downloading "$1" v"$2" from "$FETCH_URL into /tests/tmp/bin/$1/$2"
+    curl --fail -s "$FETCH_URL" | tar -xJ --strip-components=2 -C "$BINARY_PATH/$1/$2" "$FILENAME/bin/" || (echo "Download failed" && exit 1)
+  fi
+}
+
+show_usage() {
+  echo
+  echo "Installs binaries required for running e2e test suite."
+  echo
+  echo "USAGE:"
+  echo "  install-binaries [-h]"
+  echo
+  echo "OPTIONS:"
+  echo "  -h --help              Print this Help."
+  echo
+}
+
+while [ $# -ne 0 ]; do
+  case "$1" in
+  --help | -h)
+    show_usage
+    exit
+    ;;
+  esac
+done
+
+install "heartwood" "$RELEASE"
+
+echo

@@ -1,0 +1,22 @@
+[package]
+name = "test-http-api"
+description = "HTTP Test API"
+homepage = "https://radicle.dev"
+version = "0.1.0"
+edition.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+anyhow = { version = "1.0.90" }
+axum = { version = "0.8.1", default-features = false, features = ["json", "query", "tokio", "http1"] }
+hyper = { version = "1.6", default-features = false }
+lexopt = { version = "0.3.0" }
+radicle = { version = "0.25" }
+radicle-types = { path = "../radicle-types" }
+serde = { version = "1.0.0", features = ["derive"] }
+serde_json = { version = "1.0.0", features = ["preserve_order"] }
+thiserror = { version = "2.0.12" }
+tokio = { version = "1.45", default-features = false, features = ["macros", "rt-multi-thread", "sync"] }
+tower-http = { version = "0.6.8", default-features = false, features = ["cors", "set-header"] }

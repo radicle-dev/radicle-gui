@@ -1,0 +1,81 @@
+{
+  "productName": "Radicle",
+  "mainBinaryName": "radicle-desktop",
+  "identifier": "xyz.radicle.desktop",
+  "version": "0.17.0",
+  "build": {
+    "beforeDevCommand": "npm start",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../../build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Radicle",
+        "minWidth": 960,
+        "minHeight": 600,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "connect-src": "'self' ipc: http://ipc.localhost https://files.radicle.dev",
+        "img-src": "'self' blob: data: https:",
+        "script-src": "'wasm-unsafe-eval'",
+        "style-src": "'unsafe-inline' 'self'"
+      },
+      "pattern": {
+        "use": "isolation",
+        "options": {
+          "dir": "../../isolation"
+        }
+      }
+    }
+  },
+  "bundle": {
+    "category": "DeveloperTool",
+    "homepage": "https://radicle.dev/desktop",
+    "linux": {
+      "deb": {
+        "depends": [
+          "radicle"
+        ]
+      },
+      "appimage": {
+        "files": {
+          "/usr/lib/libjpeg.so.8": "/usr/lib/x86_64-linux-gnu/libjpeg.so.8"
+        }
+      }
+    },
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/16x16.png",
+      "icons/16x16@2x.png",
+      "icons/24x24.png",
+      "icons/32x32.png",
+      "icons/32x32@2x.png",
+      "icons/48x48.png",
+      "icons/64x64.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/256x256.png",
+      "icons/256x256@2x.png",
+      "icons/512x512.png",
+      "icons/512x512@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["rad"]
+      }
+    }
+  }
+}

@@ -1,0 +1,58 @@
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+
+      - run: |
+          apt-get update && apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            xz-utils \
+            libssl-dev \
+            libxdo-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-dev \
+            openssh-client
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Cache heartwood binaries
+        uses: actions/cache@v5
+        with:
+          path: tests/tmp/bin
+          key: heartwood-${{ hashFiles('tests/support/heartwood-release') }}
+
+      - run: scripts/install-binaries
+      - run: npm run build:http
+      - run: mkdir -p tests/artifacts
+
+      - name: Run e2e tests
+        run: npm run test:e2e
+
+      # Kept for passing runs too: a test that passed on retry still leaves
+      # the failed attempt's logs and trace behind.
+      - name: Upload test artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: e2e-artifacts
+          path: tests/artifacts
+          retention-days: 7

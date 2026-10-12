@@ -1,0 +1,26 @@
+{
+  "extends": "@tsconfig/svelte/tsconfig.json",
+  "include": ["src", "tests", "./*.js", "./*.ts"],
+  "exclude": ["node_modules/*", "isolation/*"],
+  "compilerOptions": {
+    "noEmit": true,
+    "target": "es2024",
+    "module": "es2022",
+    "types": ["vite/client"],
+    "sourceMap": true,
+    "moduleResolution": "bundler",
+    "strict": true,
+    "resolveJsonModule": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "useDefineForClassFields": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@app/*": ["./src/*"],
+      "@bindings/*": ["./crates/radicle-types/bindings/*"],
+      "@tests/*": ["./tests/*"]
+    }
+  }
+}

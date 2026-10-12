@@ -1,0 +1,390 @@
+#!/usr/bin/env bash
+#
+# Interactive, phased release orchestrator for radicle-desktop.
+#
+# Automates the mechanical steps of the release process and pauses at the human
+# gates (CI/patch approval, DMG smoke-test, the cross-repo apt signing, delegate
+# tag approval, Zulip announce). Each phase prints what to do next and the exact
+# flag to resume with. State is not persisted: the version comes from --version
+# (prep) or tauri.conf.json (later phases), and commit SHAs are derived from git.
+#
+# Usage:
+#   scripts/release --phase prep --version X.Y.Z
+#   scripts/release --phase build
+#   scripts/release --phase apt
+#   scripts/release --phase publish
+#   scripts/release --phase tag
+#
+#   scripts/release --list      List the phases in order
+#   scripts/release --help      Show this help
+#
+# Add --dry-run (-n) to a phase to print the commands it would run without
+# executing them (read-only lookups still run, so the preview is realistic).
+#
+# Config is auto-detected and overridable via environment variables:
+#   FULL_NAME    (default: git config user.name)
+#   EMAIL        (default: git config user.email)
+#   USERNAME     (default: $USER)
+#   SSH_KEY      (default: $HOME/.ssh/id_ed25519)
+#   SIGNING_KEY  (default: $HOME/.ssh/apt_signing_key)
+#   FILES_HOST   (default: files.radicle.dev)
+
+set -Eeuo pipefail
+
+DRY_RUN=false
+CURRENT_PHASE=""
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+TAURI_CONF="$PROJECT_DIR/crates/radicle-tauri/tauri.conf.json"
+CHANGELOG="$PROJECT_DIR/CHANGELOG.md"
+APT_REPO_DIR="$(cd "$PROJECT_DIR/../radicle-apt-repo" 2>/dev/null && pwd || true)"
+
+PHASES=(prep build apt publish tag)
+
+# ---- Output helpers ----
+
+bold() { printf '\033[1m%s\033[0m\n' "$*"; }
+step() { echo; bold "==> $*"; }
+info() { echo "    $*"; }
+warn() { echo "    WARNING: $*" >&2; }
+die()  { echo "Error: $*" >&2; trap - ERR; exit 1; }
+
+# Fires on any uncaught command failure inside a phase. Points at --dry-run,
+# which prints the phase's full command sequence (with real values) so the
+# remaining steps can be finished by hand.
+on_error() {
+  local code=$?
+  trap - ERR
+  echo >&2
+  echo "Error: phase '$CURRENT_PHASE' did not finish (exit $code)." >&2
+  echo "Fix the problem above, then review the phase's commands to continue" >&2
+  echo "manually from where it stopped:" >&2
+  echo >&2
+  echo "    scripts/release --phase $CURRENT_PHASE --dry-run" >&2
+}
+
+confirm() {
+  local prompt="$1" reply
+  if [[ "$DRY_RUN" == true ]]; then
+    info "$prompt [dry-run: assuming yes]"
+    return 0
+  fi
+  read -r -p "    $prompt [y/N] " reply
+  [[ "$reply" =~ ^[Yy]$ ]]
+}
+
+# Run a mutating command, or just print it under --dry-run.
+run() {
+  if [[ "$DRY_RUN" == true ]]; then
+    printf '    [dry-run] %s\n' "$*"
+  else
+    "$@"
+  fi
+}
+
+# Abort on a missing prerequisite — but only warn under --dry-run, so later
+# phases can still be previewed without their inputs present.
+fail() {
+  if [[ "$DRY_RUN" == true ]]; then warn "$*"; else die "$*"; fi
+}
+
+podman_available() { command -v podman >/dev/null 2>&1 && podman info >/dev/null 2>&1; }
+
+# build-artifacts enforces a running Podman itself on a real build. This mirror
+# only surfaces it under --dry-run (build-artifacts isn't executed then), so the
+# preview reports a down/absent Podman too.
+require_podman() {
+  [[ "$DRY_RUN" == true ]] || return 0
+  podman_available || warn "Podman is not available (a real build needs it for the Linux artifacts)"
+}
+
+# Every phase runs on the default branch (prep branches off it; later phases run
+# after the patch is merged back). Bail with a clear message if we're elsewhere,
+# so the user can switch and re-run. Only a warning under --dry-run.
+require_branch() {
+  local current
+  current="$(git -C "$PROJECT_DIR" rev-parse --abbrev-ref HEAD)"
+  [[ "$current" == "$EXPECTED_BRANCH" ]] && return 0
+  if [[ "$DRY_RUN" == true ]]; then
+    warn "on branch '$current', expected '$EXPECTED_BRANCH'"
+  else
+    die "on branch '$current', expected '$EXPECTED_BRANCH' — run 'git checkout $EXPECTED_BRANCH', then re-run"
+  fi
+}
+
+# Print the command(s) the user should run next to resume the flow.
+# Under --dry-run the hint carries the flag through, so previewing one phase
+# suggests previewing the next.
+next() {
+  echo
+  bold "Next:"
+  local cmd
+  for cmd in "$@"; do
+    [[ "$DRY_RUN" == true ]] && cmd+=" --dry-run"
+    printf '    %s\n' "$cmd"
+  done
+}
+
+# ---- Config (auto-detect, env-overridable) ----
+
+FULL_NAME="${FULL_NAME:-$(git -C "$PROJECT_DIR" config user.name)}"
+EMAIL="${EMAIL:-$(git -C "$PROJECT_DIR" config user.email)}"
+USERNAME="${USERNAME:-${USER:-}}"
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
+SIGNING_KEY="${SIGNING_KEY:-$HOME/.ssh/apt_signing_key}"
+FILES_HOST="${FILES_HOST:-files.radicle.dev}"
+EXPECTED_BRANCH="${EXPECTED_BRANCH:-main}"
+
+# ---- Version helpers ----
+
+# Reads the current version from tauri.conf.json.
+conf_version() {
+  jq -r '.version' "$TAURI_CONF"
+}
+
+# The SHA of the release commit for $1, looked up by its commit subject.
+release_commit_sha() {
+  git -C "$PROJECT_DIR" log --grep="^Release v$1\$" -1 --format=%H
+}
+
+# ---- Phases ----
+
+phase_prep() {
+  local version="$1"
+  [[ -n "$version" ]] || die "prep requires --version X.Y.Z"
+
+  step "Preparing release v$version"
+
+  info "Syncing and fetching"
+  run rad sync
+  run git -C "$PROJECT_DIR" fetch
+
+  info "Creating branch release/v$version"
+  run git -C "$PROJECT_DIR" checkout -b "release/v$version"
+
+  step "Changelog material (for the v$version entry)"
+  local prev
+  prev="$(git -C "$PROJECT_DIR" log --grep='^Release v' -1 --format=%H || true)"
+  if [[ -n "$prev" ]]; then
+    info "Commits since $(git -C "$PROJECT_DIR" log -1 --format='%s' "$prev"):"
+    echo
+    git -C "$PROJECT_DIR" log "$prev"..HEAD --format='- %s (%an <%ae>)'
+    echo
+    bold "    External contributors (map these to DID links for the shout-out):"
+    echo
+    git -C "$PROJECT_DIR" log "$prev"..HEAD --format='%an <%ae>' \
+      | sort -u | grep -v -F "$EMAIL" || true
+    echo
+    info "Format the list into the user-facing changes for the CHANGELOG entry."
+  else
+    warn "no previous 'Release v*' commit found; writing the entry from scratch"
+  fi
+
+  if ! confirm "Continue and open CHANGELOG.md in \$EDITOR?"; then
+    die "Aborted before editing CHANGELOG."
+  fi
+
+  step "Bumping version to $version"
+  run sed -i '' -E "s/^(  \"version\": \")[^\"]+(\",)$/\1$version\2/" "$TAURI_CONF"
+  [[ "$DRY_RUN" == true ]] || info "tauri.conf.json -> $(conf_version)"
+
+  step "Editing CHANGELOG.md"
+  info "Add the v$version entry (Features, Bug fixes, Shout-out block)."
+  run "${EDITOR:-vi}" "$CHANGELOG"
+
+  step "Creating Release Commit"
+  run git -C "$PROJECT_DIR" commit -a -m "Release v$version"
+  local sha
+  sha="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
+  info "Release commit: $sha"
+
+  step "Pushing Release Patch"
+  if confirm "Push the Release Patch now (git push rad HEAD:refs/patches)?"; then
+    run git -C "$PROJECT_DIR" push rad HEAD:refs/patches
+    info "Wait for CI to pass, get the patch approved, and merge it into main."
+  else
+    info "Skipped. Push it yourself when ready: git push rad HEAD:refs/patches"
+  fi
+  next "scripts/release --phase build"
+}
+
+phase_build() {
+  local version
+  version="$(conf_version)"
+  require_podman
+  step "Building release artifacts for v$version"
+  run "$SCRIPT_DIR/build-artifacts"
+
+  step "Build complete"
+  info "Install releases/v$version/radicle-desktop-aarch64.dmg and verify it runs."
+  next "scripts/release --phase apt"
+}
+
+phase_apt() {
+  local version
+  version="$(conf_version)"
+  local deb="radicle-desktop_${version}_amd64.deb"
+  local src="$PROJECT_DIR/releases/v$version/$deb"
+
+  step "Staging the Debian package for signing"
+  [[ -f "$src" ]] || fail "$src not found — run --phase build first"
+  [[ -n "$APT_REPO_DIR" ]] || fail "../radicle-apt-repo not found"
+  run cp "$src" "${APT_REPO_DIR:-../radicle-apt-repo}/"
+  info "Copied $deb -> ${APT_REPO_DIR:-../radicle-apt-repo}/"
+
+  step "Sign and publish the package from radicle-apt-repo"
+  info "Run these in $APT_REPO_DIR:"
+  echo
+  cat <<EOF
+    rad sync && git fetch
+
+    docker build -t radicle-apt scripts
+    docker run --rm -it \\
+      -v "\$(pwd):/src/apt" \\
+      -v "$SIGNING_KEY:/src/keys/signing-key" \\
+      -e SIGNING_KEY=/src/keys/signing-key \\
+      -e DEBEMAIL="$EMAIL" \\
+      -e DEBFULLNAME="$FULL_NAME" \\
+      -e SSH_USER="$USERNAME" \\
+      -v "$SSH_KEY:/root/.ssh/id_ed25519:ro" \\
+      radicle-apt
+
+    # Inside the container:
+    RADICLE_APT_SIGNING_KEY=/src/keys/signing-key ./import-deb $deb
+
+    # Back on the host:
+    git checkout -b release-v$version
+    git add db/ dists/ pool/
+    git commit -m "Update radicle-desktop to $version"
+    git push rad HEAD:refs/patches
+    # After peer approval:
+    git checkout main && git merge --ff-only release-v$version && git push
+    make publish
+EOF
+  next "scripts/release --phase publish"
+}
+
+phase_publish() {
+  local version
+  version="$(conf_version)"
+  local release_dir="$PROJECT_DIR/releases/v$version"
+  local remote="/var/www/$FILES_HOST/releases/radicle-desktop"
+  local key target
+  key="$(rad path)/keys/radicle"
+  target="$USERNAME@$FILES_HOST"
+
+  step "Publishing release files to $FILES_HOST"
+  [[ -d "$release_dir" ]] || fail "$release_dir not found — run --phase build first"
+
+  if [[ "$DRY_RUN" == true ]]; then
+    info "Would check whether $remote/$version exists and prompt before overwrite."
+  elif ssh -i "$key" "$target" "test -d '$remote/$version'"; then
+    warn "$remote/$version already exists on $FILES_HOST"
+    confirm "Overwrite it and re-point latest?" || die "Aborted."
+  fi
+
+  info "Uploading to $remote/$version/"
+  run ssh -i "$key" "$target" "mkdir -p '$remote/$version'"
+  run scp -i "$key" "$release_dir"/* "$target:$remote/$version/"
+
+  info "Pointing latest -> $version"
+  run ssh -i "$key" "$target" "ln -sfn '$version' '$remote/latest'"
+
+  step "Published"
+  info "https://$FILES_HOST/releases/radicle-desktop/$version/"
+  info "latest now resolves to $version (update checker reads latest/latest.json)."
+  next "scripts/release --phase tag"
+}
+
+phase_tag() {
+  local version
+  version="$(conf_version)"
+  step "Tagging canonical release v$version"
+
+  local sha
+  sha="$(release_commit_sha "$version")"
+  [[ -n "$sha" ]] || fail "could not find the 'Release v$version' commit (is the patch merged into main?)"
+  info "Tagging commit: ${sha:-<release-commit-sha>}"
+
+  run git -C "$PROJECT_DIR" tag "releases/$version" "${sha:-<release-commit-sha>}" -m "Release $version"
+  run git -C "$PROJECT_DIR" push rad --tags
+  run rad sync
+
+  step "Canonical tag pushed — needs delegate approval"
+  info "Ask another delegate to approve the tag by running:"
+  echo
+  printf '    %s\n' \
+    "git push -f self $USERNAME/tags/releases/$version:refs/tags/releases/$version" \
+    "rad sync -a"
+
+  step "Announce on Zulip (once the tag is approved)"
+  local entry
+  entry="$(awk -v v="### v$version" '
+    $0 == v {grab=1}
+    grab && NR>1 && /^### v/ && $0 != v {exit}
+    grab {print}
+  ' "$CHANGELOG")"
+  [[ -n "$entry" ]] || fail "no '### v$version' section found in CHANGELOG.md"
+
+  echo
+  bold "    Copy the message below into the announcements channel:"
+  echo "    --------------------------------------------------------------------"
+  echo "@**all** A new Radicle Desktop release is out :point_right: [give it a try](https://radicle.network/desktop)!"
+  echo
+  echo "$entry"
+  echo "    --------------------------------------------------------------------"
+  echo
+  info "Post it under a topic named: radicle-desktop v$version"
+  info "Then resolve the previous release topic."
+  echo
+  bold "Release v$version complete."
+}
+
+# ---- Dispatch ----
+
+usage() {
+  awk 'NR==1 {next} /^#/ {sub(/^# ?/, ""); print; next} {exit}' "$0"
+}
+
+list_phases() {
+  echo "Phases (run in order):"
+  printf '  %s\n' "${PHASES[@]}"
+}
+
+main() {
+  local phase="" version=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --phase)   [[ $# -ge 2 ]] || die "--phase needs a value (try --list)"
+                 phase="$2"; shift 2 ;;
+      --version) [[ $# -ge 2 ]] || die "--version needs a value, e.g. X.Y.Z"
+                 version="$2"; shift 2 ;;
+      --dry-run|-n) DRY_RUN=true; shift ;;
+      --list)    list_phases; exit 0 ;;
+      --help|-h) usage; exit 0 ;;
+      *) die "Unknown option: $1 (try --help)" ;;
+    esac
+  done
+
+  [[ -n "$phase" ]] || { usage; exit 1; }
+
+  [[ "$DRY_RUN" == true ]] && bold "DRY RUN — no commands will be executed"
+
+  require_branch
+
+  CURRENT_PHASE="$phase"
+  trap on_error ERR
+
+  case "$phase" in
+    prep)     phase_prep "$version" ;;
+    build)    phase_build ;;
+    apt)      phase_apt ;;
+    publish)  phase_publish ;;
+    tag)      phase_tag ;;
+    *) die "Unknown phase: $phase (try --list)" ;;
+  esac
+}
+
+main "$@"

@@ -1,0 +1,15 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[patch.crates-io.radicle-job]
+git = "https://seed.radicle.dev/z2UcCU1LgMshWvXj6hXSDDrwB8q8M/z6MkwPUeUS2fJMfc2HZN1RQTQcTTuhw4HhPySB8JeUg2mVvx"
+branch = "patches/da55667860741ee221483fc42fa7cbbb58e0cfc2"
+
+[workspace.package]
+edition = "2024"
+
+# Same as `dev` but with debug_assertions disabled.
+[profile.dev-without-assertions]
+inherits = "dev"
+debug-assertions = false

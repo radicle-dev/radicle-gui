@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+#
+# Build release artifacts for all platforms.
+#
+# Usage: scripts/build-artifacts [OPTIONS]
+#
+# Options:
+#   --only-dmg        Build macOS aarch64 DMG only
+#   --only-deb        Build Linux amd64 deb only
+#   --only-appimage   Build Linux amd64 AppImage only
+#   --rebuild-image   Force rebuild of podman container images
+#   --clean           Wipe target-release/, node_modules/ and Linux build volumes
+#   --help            Show this help
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# ---- Flags ----
+
+BUILD_DMG=true
+BUILD_DEB=true
+BUILD_APPIMAGE=true
+REBUILD_IMAGE=false
+CLEAN=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --only-dmg)      BUILD_DMG=true;  BUILD_DEB=false; BUILD_APPIMAGE=false ;;
+    --only-deb)      BUILD_DMG=false; BUILD_DEB=true;  BUILD_APPIMAGE=false ;;
+    --only-appimage) BUILD_DMG=false; BUILD_DEB=false; BUILD_APPIMAGE=true  ;;
+    --rebuild-image) REBUILD_IMAGE=true ;;
+    --clean)         CLEAN=true; BUILD_DMG=false; BUILD_DEB=false; BUILD_APPIMAGE=false ;;
+    --help|-h)
+      head -20 "$0" | grep '^#' | sed 's/^# \?//'
+      exit 0
+      ;;
+    *) echo "Unknown option: $arg" >&2; exit 1 ;;
+  esac
+done
+
+# ---- Helpers ----
+
+step() { echo; echo "==> $*"; }
+
+# Builds a container image if it does not already exist (or --rebuild-image).
+# $1: image name, $2: dockerfile path (relative to PROJECT_DIR), $3: platform
+ensure_image() {
+  local name="$1"
+  local dockerfile="$2"
+  local platform="$3"
+  if [[ "$REBUILD_IMAGE" == true ]] || ! podman image exists "$name" 2>/dev/null; then
+    echo "    Building container image: $name"
+    podman build \
+      --platform "$platform" \
+      -t "$name" \
+      -f "$PROJECT_DIR/$dockerfile" \
+      "$PROJECT_DIR"
+  fi
+}
+
+# ---- Version and output directory ----
+
+VERSION="$(jq -r '.version' "$PROJECT_DIR/crates/radicle-tauri/tauri.conf.json")"
+RELEASE_SHA="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
+SHORT_SHA="$(git -C "$PROJECT_DIR" rev-parse --short=8 HEAD)"
+RELEASE_DIR="$PROJECT_DIR/releases/v$VERSION"
+
+step "Building release v$VERSION (${SHORT_SHA})"
+echo "    Output: $RELEASE_DIR"
+mkdir -p "$RELEASE_DIR"
+
+# ---- Preflight ----
+#
+# The Linux deb/AppImage builds run in Podman; the macOS DMG does not. Fail
+# fast here (before the slow native DMG build) if a Linux build is requested
+# but Podman is unavailable.
+
+if [[ "$BUILD_DEB" == true || "$BUILD_APPIMAGE" == true ]]; then
+  command -v podman >/dev/null 2>&1 || { echo "Error: podman not found" >&2; exit 1; }
+  podman info >/dev/null 2>&1 || {
+    echo "Error: Podman is not running — start it (e.g. 'podman machine start')" >&2
+    exit 1
+  }
+fi
+
+# ---- Clean ----
+
+if [[ "$CLEAN" == true ]]; then
+  step "Cleaning build artifacts"
+  rm -rf "$PROJECT_DIR/target-release"
+  rm -rf "$PROJECT_DIR/node_modules"
+  podman volume rm radicle-desktop-linux-target radicle-desktop-linux-nm radicle-desktop-linux-cargo 2>/dev/null || true
+  podman image rm radicle-desktop-release-builder 2>/dev/null || true
+  echo "    Cleaned"
+fi
+
+# ---- macOS aarch64 DMG ----
+
+if [[ "$BUILD_DMG" == true ]]; then
+  step "Building macOS aarch64 DMG"
+  cd "$PROJECT_DIR"
+  npm install
+  CARGO_TARGET_DIR="$PROJECT_DIR/target-release" \
+    npm exec -- tauri build --bundles dmg
+  cp "target-release/release/bundle/dmg/Radicle_${VERSION}_aarch64.dmg" \
+    "$RELEASE_DIR/radicle-desktop-aarch64.dmg"
+  echo "    radicle-desktop-aarch64.dmg"
+fi
+
+# ---- Linux amd64 deb ----
+#
+# Runs in the native ARM64 Ubuntu container, which cross-compiles Rust to
+# x86_64. Build artifacts are cached in named podman volumes so subsequent
+# runs only recompile what changed.
+#
+# When to clear volumes:
+#   After a Rust toolchain bump or dependency change that confuses incremental
+#   compilation: podman volume rm radicle-desktop-linux-target radicle-desktop-linux-cargo
+#   After a major npm dependency change: podman volume rm radicle-desktop-linux-nm
+
+if [[ "$BUILD_DEB" == true ]]; then
+  step "Building Linux amd64 deb"
+  ensure_image "radicle-desktop-release-builder" "Dockerfile.release" "linux/arm64"
+
+  podman run --rm \
+    -v "$PROJECT_DIR:/workspace:z" \
+    -v radicle-desktop-linux-target:/workspace/target:z \
+    -v radicle-desktop-linux-nm:/workspace/node_modules:z \
+    -v radicle-desktop-linux-cargo:/root/.cargo/registry:z \
+    -v "$RELEASE_DIR:/output:z" \
+    -w /workspace \
+    -e CI=true \
+    radicle-desktop-release-builder \
+    bash -c "
+      set -euo pipefail
+      npm ci
+      npm exec -- tauri build --target x86_64-unknown-linux-gnu --bundles deb
+      cp \"target/x86_64-unknown-linux-gnu/release/bundle/deb/radicle-desktop_${VERSION}_amd64.deb\" /output/
+    "
+
+  echo "    radicle-desktop_${VERSION}_amd64.deb"
+fi
+
+# ---- Linux amd64 AppImage ----
+#
+# See scripts/appimage-build for the full setup. Key points:
+# - --privileged to mount binfmt_misc for x86_64 emulation via QEMU
+# - APPIMAGE_EXTRACT_AND_RUN=1 so linuxdeploy-x86_64.AppImage runs without FUSE
+# - PKG_CONFIG_PATH for the GTK plugin to find amd64 packages
+# - PATH includes libgtk-3-0t64 dir where gtk-query-immodules-3.0 lives
+# The script is mounted from the workspace (heredocs pipe to host, not container)
+
+if [[ "$BUILD_APPIMAGE" == true ]]; then
+  step "Building Linux amd64 AppImage"
+  ensure_image "radicle-desktop-release-builder" "Dockerfile.release" "linux/arm64"
+
+  podman run --rm \
+    --privileged \
+    -v "$PROJECT_DIR:/workspace:z" \
+    -v radicle-desktop-linux-target:/workspace/target:z \
+    -v radicle-desktop-linux-nm:/workspace/node_modules:z \
+    -v radicle-desktop-linux-cargo:/root/.cargo/registry:z \
+    -v "$RELEASE_DIR:/output:z" \
+    -w /workspace \
+    -e CI=true \
+    radicle-desktop-release-builder \
+    bash /workspace/scripts/appimage-build
+
+  # Strip the version so the filename matches what the website serves
+  # (the DMG above is renamed the same way).
+  mv "$RELEASE_DIR/radicle-desktop_${VERSION}_amd64.AppImage" \
+    "$RELEASE_DIR/radicle-desktop-amd64.AppImage"
+  echo "    radicle-desktop-amd64.AppImage"
+fi
+
+if [[ "$CLEAN" == false ]]; then
+  # ---- latest.json ----
+
+  step "Generating latest.json"
+  printf '{"sha": "%s", "version": "%s"}' "$RELEASE_SHA" "$VERSION" \
+    > "$RELEASE_DIR/latest.json"
+  echo "    latest.json"
+
+  # ---- Summary ----
+
+  echo
+  echo "Done. Artifacts in $RELEASE_DIR:"
+  ls -lh "$RELEASE_DIR"
+fi

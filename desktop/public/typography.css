@@ -1,0 +1,206 @@
+@font-face {
+  font-family: "Booton";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/Booton-Regular.woff2");
+}
+
+@font-face {
+  font-family: "Booton";
+  font-weight: 468;
+  font-display: swap;
+  src: url("fonts/Booton-Medium.woff2");
+}
+
+@font-face {
+  font-family: "Booton";
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/Booton-SemiBold.woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/JetBrainsMono-Regular.woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/JetBrainsMono-Medium.woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/JetBrainsMono-SemiBold.woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/JetBrainsMono-Bold.woff2");
+}
+
+:root {
+  --font-size: 16px;
+
+  --txt-heading-xxs: 600 0.75rem/1rem Booton, sans-serif;
+  --txt-heading-xs: 600 0.875rem/1.25rem Booton, sans-serif;
+  --txt-heading-s: 600 1rem/1.25rem Booton, sans-serif;
+  --txt-heading-m: 600 1.125rem/1.25rem Booton, sans-serif;
+  --txt-heading-l: 600 1.375rem/1.75rem Booton, sans-serif;
+  --txt-heading-xl: 600 1.75rem/2rem Booton, sans-serif;
+  --txt-heading-xxl: 600 2rem/2.25rem Booton, sans-serif;
+
+  --txt-body-s-regular: 400 0.75rem/1rem Booton, sans-serif;
+  --txt-body-s-medium: 468 0.75rem/1rem Booton, sans-serif;
+  --txt-body-s-semibold: 600 0.75rem/1rem Booton, sans-serif;
+
+  --txt-body-m-regular: 400 0.875rem/1.25rem Booton, sans-serif;
+  --txt-body-m-medium: 468 0.875rem/1.25rem Booton, sans-serif;
+  --txt-body-m-semibold: 600 0.875rem/1.25rem Booton, sans-serif;
+
+  --txt-body-l-regular: 400 1rem/1.5rem Booton, sans-serif;
+  --txt-body-l-medium: 468 1rem/1.5rem Booton, sans-serif;
+  --txt-body-l-semibold: 600 1rem/1.5rem Booton, sans-serif;
+}
+
+[data-codefont="system"] {
+  --font-family-code: monospace;
+  --txt-code-small: 400 0.75rem/1rem monospace;
+  --txt-code-regular: 400 0.875rem/1.25rem monospace;
+  --txt-code-semibold: 600 0.875rem/1.25rem monospace;
+}
+
+[data-codefont="jetbrains"] {
+  --font-family-code: "JetBrains Mono";
+  --txt-code-small: 400 0.75rem/1rem "JetBrains Mono";
+  --txt-code-regular: 400 0.875rem/1.25rem "JetBrains Mono";
+  --txt-code-semibold: 600 0.875rem/1.25rem "JetBrains Mono";
+}
+
+html {
+  -ms-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  --font-family-ui: Booton, sans-serif;
+  font-family: var(--font-family-ui);
+  /* The root element font size has to be set in px,
+   * otherwise Safari breaks. */
+  font-size: var(--font-size);
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+.txt-heading-xxs {
+  font: var(--txt-heading-xxs);
+}
+
+.txt-heading-xs {
+  font: var(--txt-heading-xs);
+}
+
+.txt-heading-s {
+  font: var(--txt-heading-s);
+}
+
+.txt-heading-m {
+  font: var(--txt-heading-m);
+}
+
+.txt-heading-l {
+  font: var(--txt-heading-l);
+}
+
+.txt-heading-xl {
+  font: var(--txt-heading-xl);
+}
+
+.txt-heading-xxl {
+  font: var(--txt-heading-xxl);
+}
+
+.txt-body-s-regular {
+  font: var(--txt-body-s-regular);
+}
+
+.txt-body-s-medium {
+  font: var(--txt-body-s-medium);
+}
+
+.txt-body-s-semibold {
+  font: var(--txt-body-s-semibold);
+}
+
+.txt-body-m-regular {
+  font: var(--txt-body-m-regular);
+}
+
+.txt-body-m-medium {
+  font: var(--txt-body-m-medium);
+}
+
+.txt-body-m-semibold {
+  font: var(--txt-body-m-semibold);
+}
+
+.txt-body-l-regular {
+  font: var(--txt-body-l-regular);
+}
+
+.txt-body-l-medium {
+  font: var(--txt-body-l-medium);
+}
+
+.txt-body-l-semibold {
+  font: var(--txt-body-l-semibold);
+}
+
+.txt-code-small {
+  font: var(--txt-code-small);
+}
+
+.txt-code-regular {
+  font: var(--txt-code-regular);
+}
+
+.txt-code-semibold {
+  font: var(--txt-code-semibold);
+}
+
+.txt-id {
+  color: var(--color-text-tertiary);
+  font: var(--txt-code-regular);
+}
+
+.txt-missing {
+  color: var(--color-text-secondary);
+}
+
+.txt-selectable {
+  -webkit-touch-callout: initial;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.txt-emoji {
+  height: 1em;
+  width: 1em;
+  margin: 0 0.05em 0 0.1em;
+  vertical-align: -0.1em;
+}
+
+.txt-overflow {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

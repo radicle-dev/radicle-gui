@@ -1,0 +1,10 @@
+{
+  "productName": "radicle-desktop",
+  "bundle": {
+    "linux": {
+      "deb": {
+        "desktopTemplate": "main.desktop"
+      }
+    }
+  }
+}

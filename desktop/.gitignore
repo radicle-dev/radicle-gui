@@ -1,0 +1,36 @@
+/build/
+/target/
+/target-release/
+/releases/
+node_modules/
+
+# Tauri
+crates/test-http-api/target
+crates/radicle-tauri/target
+crates/radicle-tauri/gen/schemas
+
+# KaTeX files
+public/*.min.css
+public/fonts/KaTeX_**.ttf
+public/fonts/KaTeX_**.woff
+public/fonts/KaTeX_**.woff2
+
+# Twemoji Assets
+public/twemoji/*.svg
+
+# Editor directories and files
+.vscode
+.idea
+
+# Mac OS
+.DS_Store
+
+# Integration Tests
+tests/tmp/**/*
+tests/artifacts/**/*
+
+# direnv cache
+/.direnv/
+
+.claude/settings.local.json
+.claude/worktrees/

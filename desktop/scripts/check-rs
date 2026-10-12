@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+
+mkdir -p "$(dirname "$0")/../build"
+
+cargo fmt --check
+cargo clippy --workspace --all-targets -- -Dwarnings
+cargo test --workspace

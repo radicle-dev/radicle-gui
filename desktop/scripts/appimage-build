@@ -1,0 +1,92 @@
+#!/bin/bash
+set -euo pipefail
+# The build container (Dockerfile.ubuntu) runs as native ARM64, but Tauri's
+# AppImage bundler downloads and runs linuxdeploy-x86_64.AppImage — an x86_64
+# binary that bundles the app's shared library dependencies (GTK, WebKit, …)
+# into the AppDir so the AppImage is self-contained on any x86_64 Linux system.
+# Without intervention the ARM64 kernel cannot execute it and returns "Exec
+# format error". binfmt_misc is a Linux kernel feature that maps file magic
+# bytes to an interpreter; by registering a handler here, the kernel
+# automatically prepends QEMU to any x86_64 ELF execution, making x86_64
+# binaries work transparently inside the ARM64 container without any changes to
+# the code that invokes them.
+#
+# Register an x86_64 binfmt_misc handler so the ARM64 kernel transparently
+# routes x86_64 ELF executables through QEMU. This is needed because Tauri's
+# AppImage bundler downloads and runs linuxdeploy-x86_64.AppImage.
+#
+# binfmt_misc registration format:
+#   :name:type:offset:magic:mask:interpreter:flags
+#
+# The magic matches an x86_64 ELF executable header:
+#   \x7fELF  — ELF magic
+#   \x02     — 64-bit (EI_CLASS)
+#   \x01     — little-endian (EI_DATA)
+#   \x01     — version
+#   \x00...  — OS/ABI + padding (bytes 7-15)
+#   \x02\x00 — ET_EXEC (executable)
+#   \x3e\x00 — x86-64 machine type
+#
+# The mask has \x00 for bytes 7-15 (the padding area). A zero mask bit means
+# "don't check this byte". This is necessary because AppImages embed the
+# two-byte marker 'AI' in bytes 8-9 of the ELF padding. The standard x86_64
+# mask checks those bytes exactly (\xff), so it rejects AppImages. With the
+# permissive mask both plain ELFs and AppImages are intercepted.
+#
+# echo (not printf): the \x.. sequences must reach the kernel binfmt_misc
+# parser as literal text (e.g. the four characters \, x, 7, f), which the
+# kernel then interprets as byte values. printf would expand them to raw bytes
+# first, the parser would misread the entry, and the broken handler would
+# intercept ARM64 binaries and route them through QEMU, breaking the container.
+mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null || true
+echo ':qemu-x86_64-appimage:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00:\xff\xff\xff\xff\xff\xfe\xfe\x00\x00\x00\x00\x00\x00\x00\x00\x00\xfe\xff\xff\xff:/usr/bin/qemu-x86_64-static:' \
+  > /proc/sys/fs/binfmt_misc/register 2>/dev/null || true
+export APPIMAGE_EXTRACT_AND_RUN=1
+# linuxdeploy-plugin-gtk.sh calls pkg-config to find GTK 3; on an ARM64 host
+# with amd64 multiarch the default search path misses the amd64 .pc files.
+export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+# Ubuntu 24.04 installs gtk-query-immodules-3.0 under the t64 directory.
+# The plugin needs it in PATH; binfmt-misc handles it as x86_64 via QEMU.
+export PATH=/usr/lib/x86_64-linux-gnu/libgtk-3-0t64:$PATH
+npm exec -- tauri build \
+  --config '{"build":{"beforeBuildCommand":""}}' \
+  --target x86_64-unknown-linux-gnu \
+  --bundles appimage
+
+appimage=(target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage)
+src="${appimage[0]}"
+
+# A type-2 AppImage is an ELF runtime followed by a squashfs image. Reuse the
+# runtime (bytes before --appimage-offset) and rebuild only the squashfs.
+offset=$("$src" --appimage-offset)
+head -c "$offset" "$src" > AppImage.runtime
+rm -rf squashfs-root
+# -no-xattrs: the build container's filesystem can't restore them.
+unsquashfs -no-xattrs -o "$offset" -d squashfs-root "$src" >/dev/null
+
+# linuxdeploy bundles libgobject/libgio but not libglib/libgmodule. On hosts
+# with a newer glib (e.g. Fedora) the mismatched bundled libs crash GTK at
+# startup. Drop them so the whole glib stack resolves from the host.
+rm -f squashfs-root/usr/lib/libgobject-2.0.so* \
+      squashfs-root/usr/lib/libgio-2.0.so*
+
+# Fail the build here, not at a user's launch, if the bundle is wrong.
+if [ ! -f squashfs-root/usr/lib/libjpeg.so.8 ]; then
+  echo "error: libjpeg.so.8 is not bundled in the AppImage" >&2
+  exit 1
+fi
+for lib in libgobject-2.0.so libgio-2.0.so; do
+  if compgen -G "squashfs-root/usr/lib/$lib*" >/dev/null; then
+    echo "error: $lib is still bundled; it must resolve from the host" >&2
+    exit 1
+  fi
+done
+
+# Reassemble: runtime + new squashfs, matching the runtime's zstd/128K.
+mksquashfs squashfs-root AppImage.squashfs \
+  -comp zstd -b 131072 -root-owned -noappend -no-progress -no-xattrs
+cat AppImage.runtime AppImage.squashfs > "$src"
+chmod +x "$src"
+rm -rf squashfs-root AppImage.runtime AppImage.squashfs
+
+cp "$src" /output/

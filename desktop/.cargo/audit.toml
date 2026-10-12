@@ -1,0 +1,4 @@
+[advisories]
+ignore = [
+  "RUSTSEC-2023-0071", # https://radicle.network/nodes/iris.radicle.network/rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5/issues/bd8af7a5e3fd02c0963d7550a5cc2cab00950775
+]

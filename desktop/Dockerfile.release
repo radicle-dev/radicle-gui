@@ -1,0 +1,109 @@
+FROM --platform=linux/arm64 ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Add amd64 multiarch so we can install x86_64 sysroot libraries alongside
+# the native ARM64 toolchain. This lets the Tauri CLI run natively (fast, no
+# QEMU) while cross-compiling the Rust binary to x86_64.
+# Configure apt: restrict existing ports.ubuntu.com sources to arm64, then add
+# archive.ubuntu.com as the amd64 source (ports.ubuntu.com has no amd64 packages).
+RUN dpkg --add-architecture amd64 && \
+    sed -i '/^Types: deb/a Architectures: arm64' /etc/apt/sources.list.d/ubuntu.sources && \
+    printf 'Types: deb\nURIs: http://archive.ubuntu.com/ubuntu\nSuites: noble noble-updates noble-backports noble-security\nComponents: main restricted universe multiverse\nArchitectures: amd64\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' \
+        > /etc/apt/sources.list.d/archive-amd64.sources && \
+    apt-get update
+
+# Native ARM64 build essentials + cross-compilation toolchain.
+# Each install runs apt-get update so a cache-invalidated layer can't resolve
+# against the stale index from the standalone update above (404s on packages
+# the mirror has since superseded).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    crossbuild-essential-amd64 \
+    curl \
+    git \
+    qemu-user-static \
+    rustup \
+    wget \
+    file \
+    jq \
+    zstd \
+    squashfs-tools
+
+# Tauri system library headers for the amd64 target.
+# The :amd64 suffix installs the x86_64 variant via multiarch.
+#
+# gobject-introspection-bin-linux:amd64 was split out as an arch-specific
+# package in Ubuntu 24.04 but is not available for amd64 in the multiarch
+# context on an ARM64 host. It is not needed for cross-compilation (it
+# contains g-ir-scanner which is a build tool, not a library). We create
+# empty dummy packages to satisfy apt's dependency resolver so the webkit
+# and related libraries can be installed normally.
+RUN for pkg in gobject-introspection-bin gobject-introspection-bin-linux; do \
+      mkdir -p /tmp/fake/DEBIAN && \
+      printf "Package: %s\nVersion: 1.80.1-1\nArchitecture: amd64\nMaintainer: fake\nDescription: fake\n" \
+        "$pkg" > /tmp/fake/DEBIAN/control && \
+      dpkg-deb --build /tmp/fake /tmp/${pkg}_1.80.1-1_amd64.deb && \
+      rm -rf /tmp/fake; \
+    done && \
+    dpkg -i /tmp/gobject-introspection-bin_1.80.1-1_amd64.deb \
+             /tmp/gobject-introspection-bin-linux_1.80.1-1_amd64.deb && \
+    rm -f /tmp/gobject-introspection-bin*.deb
+
+# Refreshes the index in-layer; see the note on the build-essentials install.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libxdo-dev:amd64 \
+    libssl-dev:amd64 \
+    libayatana-appindicator3-dev:amd64 \
+    librsvg2-dev:amd64 \
+    libwebkit2gtk-4.1-0:amd64 \
+    libjavascriptcoregtk-4.1-0:amd64 \
+    libwebkit2gtk-4.1-dev:amd64 \
+    libjavascriptcoregtk-4.1-dev:amd64 \
+    libjpeg-turbo8:amd64
+
+# Rust: native ARM64 toolchain so the Tauri CLI runs without emulation,
+# plus the x86_64 target for the actual compiled output.
+#
+# The channel is read from rust-toolchain.toml rather than pinned here. rustup
+# honours that file inside the mounted workspace, so a hardcoded version is
+# silently overridden: rustup auto-installs the workspace toolchain with only
+# the host target, and the build fails with "Target x86_64-unknown-linux-gnu is
+# not installed". Copying the file also makes the layer cache invalidate on a
+# toolchain bump.
+#
+# `rustup default` must be the command that installs the toolchain: the distro
+# rustup only creates its CARGO_HOME proxies along that path, and `rustup target
+# add` fails with "rustup is not installed at '/root/.cargo'" without them.
+# Installing the toolchain separately first makes `rustup default` a no-op and
+# breaks the target add.
+COPY rust-toolchain.toml /tmp/rust-toolchain.toml
+RUN RUST_VERSION="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' /tmp/rust-toolchain.toml)" \
+  && test -n "$RUST_VERSION" \
+  && rm -f /tmp/rust-toolchain.toml \
+  && rustup default "$RUST_VERSION" \
+  && rustup target add x86_64-unknown-linux-gnu
+
+# Node.js 24 (ARM64, runs natively); matches the engines requirement in package.json
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+    apt-get install -y nodejs
+
+# Cross-compilation environment for Cargo and cc-rs.
+# crossbuild-essential-amd64 provides x86_64-linux-gnu-{gcc,g++,pkg-config}.
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc
+ENV CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc
+ENV CXX_x86_64_unknown_linux_gnu=x86_64-linux-gnu-g++
+ENV AR_x86_64_unknown_linux_gnu=x86_64-linux-gnu-ar
+# pkg-config must resolve against the amd64 sysroot, not the ARM64 one.
+ENV PKG_CONFIG=x86_64-linux-gnu-pkg-config
+
+# Default pkg-config search paths for tools that call `pkg-config` directly
+# (e.g. linuxdeploy-plugin-gtk.sh). Already in x86_64-linux-gnu-pkg-config but
+# not in the plain `pkg-config` binary that runs on the ARM64 host.
+ENV PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+# Ubuntu 24.04 installs gtk-query-immodules-3.0 under libgtk-3-0t64.
+# binfmt_misc routes it through QEMU when invoked by the GTK linuxdeploy plugin.
+ENV PATH="/usr/lib/x86_64-linux-gnu/libgtk-3-0t64:${PATH}"
+
+SHELL ["/bin/bash", "-c"]
