@@ -310,6 +310,9 @@ test("an artifact by a non-delegate shows a warning", async ({
   });
   await reload(page);
 
+  // Releases always open on Delegates, see docs/adr/0004.
+  await expect(page.getByText("No artifacts by delegates")).toBeVisible();
+  await page.getByRole("button", { name: /Others/ }).click();
   await expect(
     page.getByRole("note").getByText("Not from delegates."),
   ).toBeVisible();

@@ -1,21 +1,8 @@
 import type { Author } from "@bindings/cob/Author";
 import type { Artifact } from "@bindings/cob/release/Artifact";
 import type { Location } from "@bindings/cob/release/Location";
-import type { ReleaseCounts } from "@bindings/cob/release/ReleaseCounts";
 import type { ReleaseScope } from "@bindings/cob/release/ReleaseScope";
 import type { Commit } from "@bindings/repo/Commit";
-
-// With no scope asked for and no delegate releases, open on the untrusted
-// scope rather than on an empty list.
-export function releaseListScope(
-  requested: ReleaseScope | undefined,
-  counts: ReleaseCounts,
-): ReleaseScope {
-  if (requested !== undefined) {
-    return requested;
-  }
-  return counts.delegate === 0 && counts.other > 0 ? "untrusted" : "trusted";
-}
 
 export interface ArtifactView {
   scope: ReleaseScope;
@@ -25,7 +12,7 @@ export interface ArtifactView {
   showFilters: boolean;
 }
 
-// Falls back to the other scope when the one asked for is empty.
+// Never falls back to the other scope; see docs/adr/0004.
 export function artifactView(
   artifacts: Artifact[],
   delegates: Set<string>,
@@ -38,8 +25,7 @@ export function artifactView(
   };
   const visible = (list: Artifact[]) =>
     showRedacted ? list : list.filter(a => !a.redacted);
-  const other = wanted === "trusted" ? "untrusted" : "trusted";
-  const scope = byScope[wanted].length > 0 ? wanted : other;
+  const scope = wanted;
 
   return {
     scope,
@@ -49,7 +35,7 @@ export function artifactView(
       trusted: visible(byScope.trusted).length,
       untrusted: visible(byScope.untrusted).length,
     },
-    showFilters: byScope.trusted.length > 0 && byScope.untrusted.length > 0,
+    showFilters: scope === "untrusted" || byScope.untrusted.length > 0,
   };
 }
 

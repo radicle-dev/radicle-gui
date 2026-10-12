@@ -36,17 +36,19 @@
     config: Config;
     release: Release;
     scope?: ReleaseScope;
-    artifactScope?: ReleaseScope;
   }
 
   /* eslint-disable prefer-const */
-  let { repo, config, release, scope, artifactScope }: Props = $props();
+  let { repo, config, release, scope }: Props = $props();
   /* eslint-enable prefer-const */
 
   const ownDid = $derived(didFromPublicKey(config.publicKey));
 
   const title = $derived(release.title || release.tagName || release.id);
   const delegateIds = $derived(new Set(repo.delegates.map(d => d.did)));
+  const listScope: ReleaseScope = $derived(
+    delegateIds.has(release.creator.did) ? "trusted" : "untrusted",
+  );
 
   let showRedacted = $state(false);
 
@@ -54,7 +56,7 @@
     artifactView(
       release.artifacts,
       delegateIds,
-      artifactScope ?? "trusted",
+      scope ?? "trusted",
       showRedacted,
     ),
   );
@@ -355,19 +357,17 @@
           Releases
         </button>
         <Icon name="chevron-right" />
-        {#if scope}
-          <button
-            class="breadcrumb-link"
-            onclick={() =>
-              router.push({
-                resource: "repo.releases",
-                rid: repo.rid,
-                scope,
-              })}>
-            {scope === "trusted" ? "Delegates" : "Others"}
-          </button>
-          <Icon name="chevron-right" />
-        {/if}
+        <button
+          class="breadcrumb-link"
+          onclick={() =>
+            router.push({
+              resource: "repo.releases",
+              rid: repo.rid,
+              scope: listScope,
+            })}>
+          {listScope === "trusted" ? "Delegates" : "Others"}
+        </button>
+        <Icon name="chevron-right" />
         <Id id={release.id} clipboard={release.id} label="release ID" />
       </div>
       <div style:margin-left="auto" style:display="flex" style:gap="0.5rem">
@@ -446,7 +446,6 @@
                     resource: "repo.release",
                     rid: repo.rid,
                     release: release.id,
-                    scope,
                   })}>
                 <Icon name="badge" />Delegates
                 <span class="global-counter-badge">{view.counts.trusted}</span>
@@ -462,8 +461,7 @@
                     resource: "repo.release",
                     rid: repo.rid,
                     release: release.id,
-                    scope,
-                    artifactScope: "untrusted",
+                    scope: "untrusted",
                   })}>
                 <Icon name="avatar-incognito" />Others
                 <span class="global-counter-badge">
@@ -498,7 +496,11 @@
         {#if view.shown.length === 0}
           <div class="empty-artifacts">
             <Icon name="attach" />
-            No artifacts
+            {!view.showFilters
+              ? "No artifacts"
+              : view.scope === "trusted"
+                ? "No artifacts by delegates"
+                : "No artifacts by others"}
           </div>
         {/if}
 
