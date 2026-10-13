@@ -409,6 +409,10 @@
 
 <style>
   .navigator {
+    position: fixed;
+    top: 20vh;
+    left: 50%;
+    transform: translateX(-50%);
     width: 36rem;
     max-width: calc(100vw - 2rem);
     display: flex;
@@ -417,7 +421,7 @@
     border-radius: var(--border-radius-lg);
     background-color: var(--color-surface-canvas);
     overflow: hidden;
-    margin-bottom: 30vh;
+    max-height: calc(80vh - 1rem);
   }
   .field {
     display: flex;
@@ -442,6 +446,7 @@
     display: flex;
     flex-direction: column;
     max-height: 24rem;
+    min-height: 0;
     overflow-y: auto;
     padding: 0.25rem 0;
     border-top: 1px solid var(--color-border-subtle);
