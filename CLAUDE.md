@@ -21,7 +21,7 @@ checks and conventions:
 | `workers/` | explorer | Cloudflare workers (open-graph images) |
 | `scripts/` | explorer | Check, CI and e2e helper scripts |
 | `desktop/` | desktop | Tauri app: Svelte frontend in `desktop/src/`, Rust in `desktop/crates/` |
-| `.github/workflows/` | both | GitHub CI: `check*.yml` for explorer, `desktop-*.yml` for desktop |
+| `.github/workflows/` | both | GitHub CI: `explorer-*.yml` for explorer, `desktop-*.yml` for desktop |
 | `.buildkite/` | explorer | Radicle CI pipelines |
 | `.ryph/` | both | Dev machine image and setup for agents, see `.ryph/environment.md` |
 

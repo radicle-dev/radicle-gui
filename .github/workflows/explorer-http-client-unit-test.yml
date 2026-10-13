@@ -1,4 +1,4 @@
-name: check-http-client-unit-test
+name: explorer-http-client-unit-test
 on:
   push:
   workflow_dispatch:
@@ -7,7 +7,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  check-http-client-unit-test:
+  http-client-unit-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

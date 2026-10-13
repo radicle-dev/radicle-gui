@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Runs the same checks as the explorer's GitHub workflows (.github/workflows/
-# check*.yml) and keeps the full output with per-step timings in
+# explorer-*.yml) and keeps the full output with per-step timings in
 # tests/tmp/check-ci.log. That log lives outside tests/artifacts, which
 # Playwright clears when the e2e run starts.
 #
-# Leaves out check-visual.yml: its baselines exist only as CI artifacts. The
+# Leaves out explorer-visual.yml: its baselines exist only as CI artifacts. The
 # desktop app in desktop/ has its own desktop/scripts/check-ci.
 set -uo pipefail
 

@@ -1,4 +1,4 @@
-name: check-unit-test
+name: explorer-check
 on:
   push:
   workflow_dispatch:
@@ -7,14 +7,13 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  check-unit-test:
+  check:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
       - run: npm ci
-      - run: npm run test:unit
+      - run: npm run check

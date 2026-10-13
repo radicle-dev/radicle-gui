@@ -4,14 +4,14 @@
 #
 # The broker creates exactly one Buildkite pipeline per Radicle repo, so every
 # suite lands in this single build. Cache volumes are scoped to the pipeline, so
-# the same name in two uploaded files is one volume: node-checks.yml, e2e.yml and
-# visual.yml all attach `deps` on purpose. Share a name only where that is safe,
-# because a step that commits a volume version discards what a concurrent step
-# wrote to the same volume.
+# the same name in two uploaded files is one volume: explorer-node-checks.yml,
+# explorer-e2e.yml and explorer-visual.yml all attach `deps` on purpose. Share a
+# name only where that is safe, because a step that commits a volume version
+# discards what a concurrent step wrote to the same volume.
 #
-# Upload node-checks.yml before e2e.yml: the e2e step depends on the `check` key
-# defined there, and Buildkite rejects a step whose dependency is not yet part of
-# the build.
+# Upload explorer-node-checks.yml before explorer-e2e.yml: the e2e step depends
+# on the `explorer-check` key defined there, and Buildkite rejects a step whose
+# dependency is not yet part of the build.
 #
 # Superseded builds are not cancelled. Buildkite has no YAML equivalent of the
 # GitHub Actions cancel-in-progress.
@@ -19,7 +19,7 @@
 steps:
   - label: ":pipeline: upload"
     commands:
-      - buildkite-agent pipeline upload .buildkite/node-checks.yml
-      - buildkite-agent pipeline upload .buildkite/e2e.yml
-      - buildkite-agent pipeline upload .buildkite/visual.yml
-      - buildkite-agent pipeline upload .buildkite/rust.yml
+      - buildkite-agent pipeline upload .buildkite/explorer-node-checks.yml
+      - buildkite-agent pipeline upload .buildkite/explorer-e2e.yml
+      - buildkite-agent pipeline upload .buildkite/explorer-visual.yml
+      - buildkite-agent pipeline upload .buildkite/explorer-rust.yml

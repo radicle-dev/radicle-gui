@@ -42,8 +42,8 @@ __defs:
 
 steps:
   # RUSTFLAGS is set on the build only, not on the test run.
-  - label: "🦀 test"
-    key: test
+  - label: "🦀 explorer test"
+    key: explorer-rust-test
     timeout_in_minutes: 30
     cache:
       name: rust-test
@@ -54,8 +54,8 @@ steps:
       - cargo test --workspace --all-features
       - cargo test -p radicle-httpd
 
-  - label: "🦀 lint"
-    key: lint
+  - label: "🦀 explorer lint"
+    key: explorer-rust-lint
     timeout_in_minutes: 30
     cache:
       name: rust-lint

@@ -2,19 +2,20 @@
 # parallel with fixture creation, and asserts the pinned rad and radicle-httpd
 # versions are on PATH.
 #
-# This step shares the `deps` volume with the steps in node-checks.yml. Keep the
-# cache paths the same as the ones there, and see that file for how the volume
-# works and why this step waits for check.
+# This step shares the `deps` volume with the steps in explorer-node-checks.yml.
+# Keep the cache paths the same as the ones there, and see that file for how the
+# volume works and why this step waits for explorer-check.
 
 env:
   CI: "true"
   NPM_CONFIG_CACHE: ".npm-cache"
 
 steps:
-  - label: "🎭 e2e"
-    key: e2e
-    # The check step in node-checks.yml seeds the shared volume.
-    depends_on: check
+  - label: "🎭 explorer e2e"
+    key: explorer-e2e
+    # The explorer-check step in explorer-node-checks.yml seeds the shared
+    # volume.
+    depends_on: explorer-check
     timeout_in_minutes: 30
     cache:
       name: deps

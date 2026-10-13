@@ -1,4 +1,4 @@
-name: check-rust
+name: explorer-rust
 on:
   push:
   workflow_dispatch:

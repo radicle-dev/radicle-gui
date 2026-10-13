@@ -1,4 +1,4 @@
-name: check-visual
+name: explorer-visual
 on:
   push:
   workflow_dispatch:

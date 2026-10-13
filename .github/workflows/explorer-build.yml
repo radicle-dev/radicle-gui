@@ -1,4 +1,4 @@
-name: check-e2e
+name: explorer-build
 on:
   push:
   workflow_dispatch:
@@ -7,7 +7,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  check-e2e:
+  build:
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
@@ -15,29 +15,14 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
-
       - name: Install dependencies
         run: npm ci
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v5
-        id: playwright-dep-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright browsers
-        if: steps.playwright-dep-cache.outputs.cache-hit != 'true'
+      - name: Install Playwright Browsers
         run: npx playwright install chromium
-
-      - name: Install Radicle binaries
-        run: |
-          mkdir -p tests/artifacts;
-          ./scripts/install-binaries;
-
-      - name: Run Playwright tests
-        run: npm run test:e2e -- --project chromium
-
+      - name: Build app
+        run: npm run build
+      - name: Run Playwright build smoke test
+        run: npm run test:e2e -- --project chromium --config playwright.buildSmoke.config.ts
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         if: always()

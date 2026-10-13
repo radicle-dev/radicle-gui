@@ -10,7 +10,7 @@
 # branch step had to fail on purpose to keep its copy out, and it left the volume
 # at its empty first version until a master job went green. Artifacts have
 # neither problem, and they free the one cache volume a step can attach for the
-# shared `deps` volume from node-checks.yml.
+# shared `deps` volume from explorer-node-checks.yml.
 #
 # A job knows its own build id and no other, so the branch step asks the REST API
 # for the newest passed master build. No credential a job already holds can do
@@ -28,13 +28,15 @@ env:
   NPM_CONFIG_CACHE: ".npm-cache"
 
 steps:
-  - label: "📸 visual update snapshots"
-    key: visual-update-snapshots
+  - label: "📸 explorer visual update snapshots"
+    key: explorer-visual-update-snapshots
     branches: "master"
-    # The check step in node-checks.yml seeds the shared volume.
-    depends_on: check
+    # The explorer-check step in explorer-node-checks.yml seeds the shared
+    # volume.
+    depends_on: explorer-check
     timeout_in_minutes: 30
-    # Keep these paths the same as the ones in node-checks.yml and e2e.yml.
+    # Keep these paths the same as the ones in explorer-node-checks.yml and
+    # explorer-e2e.yml.
     cache: &deps_cache
       name: deps
       paths:
@@ -81,10 +83,10 @@ steps:
       # cannot keep the build out of the passed state that publishes the set.
       - npm run test:e2e -- --project visual-desktop visual-mobile --update-snapshots --retries=2
 
-  - label: "📸 visual"
-    key: visual
+  - label: "📸 explorer visual"
+    key: explorer-visual
     branches: "!master"
-    depends_on: check
+    depends_on: explorer-check
     timeout_in_minutes: 30
     cache: *deps_cache
     artifact_paths:

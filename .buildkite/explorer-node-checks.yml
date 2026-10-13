@@ -1,7 +1,7 @@
-# One `deps` cache volume serves every step here and the e2e step in e2e.yml.
-# The volume is mounted at /cache/bkcache on the agent, and the configured paths
-# become links into it. A container step must therefore mount that directory, or
-# every link dangles and the job persists nothing.
+# One `deps` cache volume serves every step here and the e2e step in
+# explorer-e2e.yml. The volume is mounted at /cache/bkcache on the agent, and the
+# configured paths become links into it. A container step must therefore mount
+# that directory, or every link dangles and the job persists nothing.
 #
 # A job does not write the volume in place. It gets a private copy at start, and
 # that copy becomes the version the next job sees if the job exits 0. Concurrent
@@ -49,7 +49,7 @@ __defs:
         - NPM_CONFIG_CACHE
 
   # Keep this list the same in every step that attaches the volume, here and in
-  # e2e.yml.
+  # explorer-e2e.yml.
   deps_cache: &deps_cache
     name: deps
     paths:
@@ -61,8 +61,8 @@ __defs:
       - ".lintcache"
 
 steps:
-  - label: "🔎 check"
-    key: check
+  - label: "🔎 explorer check"
+    key: explorer-check
     timeout_in_minutes: 10
     cache: *deps_cache
     plugins:
@@ -75,9 +75,9 @@ steps:
       - ./scripts/install-binaries
       - npm run check
 
-  - label: "🧪 unit-tests"
-    key: unit-tests
-    depends_on: check
+  - label: "🧪 explorer unit-tests"
+    key: explorer-unit-tests
+    depends_on: explorer-check
     timeout_in_minutes: 10
     cache: *deps_cache
     plugins:
@@ -88,9 +88,9 @@ steps:
 
   # The http-client suite talks to a real radicle-httpd, so it needs the pinned
   # binaries on PATH even though it runs under vitest rather than Playwright.
-  - label: "🔌 http-client-tests"
-    key: http-client-tests
-    depends_on: check
+  - label: "🔌 explorer http-client-tests"
+    key: explorer-http-client-tests
+    depends_on: explorer-check
     timeout_in_minutes: 15
     cache: *deps_cache
     artifact_paths:
@@ -105,9 +105,9 @@ steps:
 
   # playwright.buildSmoke.config.ts sets globalSetup to undefined, so this step
   # needs a browser but no Radicle binaries or fixtures.
-  - label: "🏗 build-smoke"
-    key: build-smoke
-    depends_on: check
+  - label: "🏗 explorer build-smoke"
+    key: explorer-build-smoke
+    depends_on: explorer-check
     timeout_in_minutes: 30
     cache: *deps_cache
     artifact_paths:
