@@ -45,6 +45,9 @@ export APPIMAGE_EXTRACT_AND_RUN=1
 # linuxdeploy-plugin-gtk.sh calls pkg-config to find GTK 3; on an ARM64 host
 # with amd64 multiarch the default search path misses the amd64 .pc files.
 export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+# The GTK plugin derives its library dir from dpkg-architecture, which reports
+# the ARM64 host. Point it at the amd64 libraries instead.
+export LD_GTK_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu
 # Ubuntu 24.04 installs gtk-query-immodules-3.0 under the t64 directory.
 # The plugin needs it in PATH; binfmt-misc handles it as x86_64 via QEMU.
 export PATH=/usr/lib/x86_64-linux-gnu/libgtk-3-0t64:$PATH
