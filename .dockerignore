@@ -11,3 +11,5 @@ radicle-httpd/target
 radicle-search/target
 target
 .wrangler
+# The desktop app, with its own node_modules and target, isn't part of these images.
+desktop
