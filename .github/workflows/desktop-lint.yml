@@ -1,3 +1,4 @@
+name: desktop-lint
 on:
   pull_request:
   push:
@@ -5,6 +6,10 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+defaults:
+  run:
+    working-directory: desktop
 
 jobs:
   lint-typescript:
@@ -14,7 +19,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version-file: ".nvmrc"
+          node-version-file: "desktop/.nvmrc"
 
       - run: npm ci
       - run: npm run check-js
@@ -33,9 +38,12 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libjavascriptcoregtk-4.1-dev
 
-      - uses: dtolnay/rust-toolchain@stable
+      # The version in desktop/rust-toolchain.toml, which cargo uses here.
+      - uses: dtolnay/rust-toolchain@1.97.1
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
 
       - run: scripts/check-rs

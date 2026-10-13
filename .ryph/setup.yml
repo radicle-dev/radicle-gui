@@ -1,20 +1,32 @@
 steps:
-  # An image layer keeps whole-second mtimes, but cargo fingerprints the
-  # nanoseconds it saw at build time. Rounding tracked files down to the
-  # second before building keeps the warm target/ fresh at run time. Never
-  # set them to the commit time: on an incremental image build that can make
-  # a changed file older than its stale build output.
-  - name: round source mtimes down to whole seconds (image builds only)
-    run: '[ "$RYPH_SETUP_PHASE" != image ] || git ls-files -z | xargs -0 perl -e ''for (@ARGV) { next if -l; my $m = (lstat)[9]; utime $m, $m, $_ }'''
+  # Explorer and radicle-httpd, at the repository root.
   - name: install npm dependencies
     run: npm install --prefer-offline
+  - name: install Playwright Chromium (explorer e2e)
+    run: npx playwright install chromium
   - name: install the pinned Radicle binaries for http-client and e2e tests
     run: ./scripts/install-binaries
-  - name: warm clippy (check-rust lint)
-    run: RUSTFLAGS="-D warnings" cargo clippy --workspace --all-features --tests --locked
-  - name: warm the Rust test build (check-rust test)
-    run: cargo test --workspace --all-features --no-run --locked
+  # The cargo warm steps only fill the image's target/ directories. At run
+  # time cargo builds what a command needs when it runs, so a run that works
+  # on another workspace member doesn't wait for two Rust workspaces.
+  - name: warm clippy (check-rust lint, image builds only)
+    run: '[ "$RYPH_SETUP_PHASE" != image ] || RUSTFLAGS="-D warnings" cargo clippy --workspace --all-features --tests --locked'
+  - name: warm the Rust test build (check-rust test, image builds only)
+    run: '[ "$RYPH_SETUP_PHASE" != image ] || cargo test --workspace --all-features --no-run --locked'
+  # desktop/ is its own npm package and Cargo workspace.
+  - name: install desktop npm dependencies
+    run: cd desktop && npm install --prefer-offline
+  - name: install Playwright WebKit (desktop e2e)
+    run: cd desktop && npx playwright install webkit
+  - name: install the pinned Radicle binaries for desktop e2e tests
+    run: desktop/scripts/install-binaries
+  - name: warm desktop clippy (desktop/scripts/check-rs, image builds only)
+    run: 'cd desktop && mkdir -p build && { [ "$RYPH_SETUP_PHASE" != image ] || cargo clippy --workspace --all-targets --locked; }'
+  - name: warm desktop cargo test (desktop/scripts/check-rs, image builds only)
+    run: 'cd desktop && { [ "$RYPH_SETUP_PHASE" != image ] || cargo test --workspace --no-run --locked; }'
+  - name: warm the desktop e2e backend (desktop/tests/support/globalSetup.ts, image builds only)
+    run: 'cd desktop && { [ "$RYPH_SETUP_PHASE" != image ] || { cargo build --manifest-path ./crates/test-http-api/Cargo.toml --locked && cargo build -p radicle-job --bin rad-job --locked; }; }'
   # rustc's incremental cache only speeds up rebuilding this repo's own
   # crates after an edit, and it is gigabytes. Image builds only.
-  - name: drop the incremental cache (image builds only)
-    run: '[ "$RYPH_SETUP_PHASE" != image ] || rm -rf target/debug/incremental'
+  - name: drop the incremental caches (image builds only)
+    run: '[ "$RYPH_SETUP_PHASE" != image ] || rm -rf target/debug/incremental desktop/target/debug/incremental'
