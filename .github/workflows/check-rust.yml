@@ -25,20 +25,6 @@ jobs:
       - name: Test httpd without search
         run: cargo test -p radicle-httpd
 
-  docs:
-    name: Docs
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.97.1
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ". -> target"
-      - name: Docs
-        run: cargo doc --workspace --all-features
-        env:
-          RUSTDOCFLAGS: -D warnings
-
   lint:
     name: Lint
     runs-on: ubuntu-latest

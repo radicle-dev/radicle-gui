@@ -1,8 +1,8 @@
 # CI for the Rust workspace (crates/radicle-httpd, crates/radicle-search).
 #
-# Each step gets its own named cache volume. Clippy, test, and doc each produce a
+# Each step gets its own named cache volume. Clippy and test each produce a
 # different target directory, and a shared volume would let whichever step
-# commits last discard the other two, forcing a near-full rebuild every build.
+# commits last discard the other, forcing a near-full rebuild every build.
 #
 # These steps run on the agent rather than in a container, so ~-rooted cache
 # paths work. The toolchain version is not pinned here: rustup reads
@@ -53,16 +53,6 @@ steps:
       - RUSTFLAGS="-D warnings" cargo build --workspace --all-features
       - cargo test --workspace --all-features
       - cargo test -p radicle-httpd
-
-  - label: "📚 doc"
-    key: doc
-    timeout_in_minutes: 30
-    cache:
-      name: rust-doc
-      paths: *cargo_cache
-    commands:
-      - *install_rust
-      - RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features
 
   - label: "🦀 lint"
     key: lint

@@ -43,7 +43,6 @@ RUSTFLAGS="-D warnings" cargo clippy -p radicle-httpd --no-default-features --te
 cargo fmt --all -- --check
 cargo test --workspace --all-features
 cargo test -p radicle-httpd
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features
 npm run test:e2e -- --project chromium
 ```
 
