@@ -1,6 +1,14 @@
 name: explorer-rust
+# Only changes to the Rust workspace, or to this workflow, run it.
 on:
   push:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain"
+      - ".cargo/**"
+      - ".github/workflows/explorer-rust.yml"
   workflow_dispatch:
 
 env:

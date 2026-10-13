@@ -1,6 +1,17 @@
 name: explorer-build
+# Desktop and Rust-only changes don't affect the web app: its tests run
+# against a pinned, pre-built radicle-httpd.
 on:
   push:
+    paths-ignore:
+      - "desktop/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain"
+      - ".cargo/**"
+      - ".github/workflows/desktop-*.yml"
+      - ".github/workflows/explorer-rust.yml"
   workflow_dispatch:
 
 env:

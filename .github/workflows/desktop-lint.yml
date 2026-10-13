@@ -1,7 +1,14 @@
 name: desktop-lint
+# Only desktop changes, or changes to this workflow, run it.
 on:
   pull_request:
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop-lint.yml"
   push:
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop-lint.yml"
   workflow_dispatch:
 
 env:

@@ -1,7 +1,14 @@
 name: desktop-e2e
+# Only desktop changes, or changes to this workflow, run it.
 on:
   pull_request:
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop-e2e.yml"
   push:
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop-e2e.yml"
   workflow_dispatch:
 
 env:
