@@ -1,9 +1,9 @@
 #!/bin/sh
 
-if ! version="$(git describe --match='releases/*' --candidates=1 2>/dev/null)"; then
+if ! version="$(git describe --match='releases/httpd/*' --candidates=1 2>/dev/null)"; then
   echo "fatal: no version tag found by 'git describe'" >&2 ; exit 1
 fi
-# Remove `releases/` prefix from version.
-version=${version#releases/}
+# Remove `releases/httpd/` prefix from version.
+version=${version#releases/httpd/}
 
 echo $version

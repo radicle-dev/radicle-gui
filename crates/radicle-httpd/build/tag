@@ -7,7 +7,7 @@ if [ $# -ne 1 ]; then
 fi
 
 version="$1"
-tag="releases/$version"
+tag="releases/httpd/$version"
 commit="$(git rev-parse HEAD)"
 signing_key=$(git config user.signingKey)
 

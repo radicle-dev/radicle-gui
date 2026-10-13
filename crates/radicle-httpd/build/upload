@@ -18,7 +18,7 @@ main() {
   # Whether this is a tagged (non-development) build; controls the `latest`
   # symlink.
   tagged=false
-  if git describe --exact-match --match='releases/*' >/dev/null 2>&1; then
+  if git describe --exact-match --match='releases/httpd/*' >/dev/null 2>&1; then
     tagged=true
   fi
 
@@ -54,8 +54,10 @@ main() {
     fi
   done
 
-  echo "Pushing tags.."
-  git push rad --tags
+  if [ "$tagged" = true ]; then
+    echo "Pushing tag releases/httpd/$version.."
+    git push rad "refs/tags/releases/httpd/$version"
+  fi
 
   echo "Done."
 }

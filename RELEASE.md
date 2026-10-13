@@ -31,7 +31,7 @@ latest `radicle-httpd`/`radicle-search` release.
 
 1. Create release branch:
    ```sh
-   git checkout -b releases/<version>
+   git checkout -b release/httpd/<version>
    ```
 
 2. Bump the version in **both** crates to the same value, so the two binaries
@@ -75,15 +75,12 @@ Create and sign the release tag (one tag covers both binaries):
 crates/radicle-httpd/build/tag <version>
 ```
 
-Publish the tag to Radicle:
+Publish the tag to Radicle. Push only this tag: every tag under `releases/`
+that a delegate pushes becomes canonical, so `--tags` would also publish any
+stray local ones.
 ```sh
-git push rad --tags
-```
-
-Request delegate approval to make the tag canonical:
-```sh
+git push rad refs/tags/releases/httpd/<version>
 rad sync
-git push -f self <username>/tags/releases/<version>:refs/tags/releases/<version>
 ```
 
 ## Build Artifacts

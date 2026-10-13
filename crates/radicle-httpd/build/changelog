@@ -12,7 +12,7 @@ while [ $# -gt 0 ]; do
         exit 1
       fi
       shift
-      from=$(echo "$1" | sed 's/^releases\///')
+      from=$(echo "$1" | sed 's/^releases\/httpd\///')
       break
       ;;
     *)
@@ -31,7 +31,7 @@ if [ -z "$version" ]; then
 fi
 
 # Current/latest tag or HEAD
-current="releases/${version}"
+current="releases/httpd/${version}"
 
 # Check if the tag exists, otherwise use HEAD
 if git rev-parse --verify "$current^{tag}" >/dev/null 2>&1; then
@@ -44,7 +44,7 @@ fi
 
 if [ -z "$from" ]; then
   # Try to find the previous tag
-  if previous=$(git describe --tags --abbrev=0 --match='releases/*' "$current^" 2>/dev/null); then
+  if previous=$(git describe --tags --abbrev=0 --match='releases/httpd/*' "$current^" 2>/dev/null); then
     :  # previous tag found
   else
     # No previous tag found, use the first commit
@@ -52,7 +52,7 @@ if [ -z "$from" ]; then
     echo "warning: no previous release tag found, using first commit" >&2
   fi
 else
-  previous="releases/$from"
+  previous="releases/httpd/$from"
 fi
 
 if [ -n "$from" ] && ! git rev-parse --verify "$previous^{tag}" >/dev/null 2>&1; then
@@ -67,15 +67,18 @@ echo
 echo "## Changelog"
 
 range="${previous}..${current}"
-ncommits=$(git rev-list --count "$range")
-ncontribs=$(git log "$range" --format='%ae' | sort -u | wc -l)
+# The desktop app in desktop/ is released separately. Leaving it out also keeps
+# its whole history, merged in after the 0.29.0 release, out of the next log.
+exclude=":(top,exclude)desktop"
+ncommits=$(git rev-list --count "$range" -- "$exclude")
+ncontribs=$(git log "$range" --format='%ae' -- "$exclude" | sort -u | wc -l)
 
 echo
 echo "This release contains $ncommits commit(s) by $ncontribs contributor(s)."
 echo
 
 # shellcheck disable=SC2016
-git log --pretty=format:'* `%h` **%s** *<%ae>*' "$range"
+git log --pretty=format:'* `%h` **%s** *<%ae>*' "$range" -- "$exclude"
 
 echo
 echo "## Checksums"

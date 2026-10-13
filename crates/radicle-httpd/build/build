@@ -45,7 +45,8 @@ main() {
 
   echo "Building Radicle $version.."
   echo "Creating archive of repository at $rev in $gitarchive.."
-  git archive --format tar.gz -o "$gitarchive" HEAD
+  # desktop/ is a separate project and not part of the build.
+  git archive --format tar.gz -o "$gitarchive" HEAD -- ':(exclude)desktop'
 
   echo "Building image ($image).."
 
