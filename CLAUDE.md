@@ -59,6 +59,26 @@ checks and conventions:
 - Capitalize subject, no trailing period, max 50 chars
 - Prefix backend-only commits with `httpd:`
 
+### Patches
+
+Label every new patch with each component it touches, so reviewers and
+filters can tell the projects apart:
+
+| Label | Covers |
+|---|---|
+| `explorer` | the web app at the root: `src/`, `http-client/`, `workers/`, its tests and config |
+| `desktop` | anything under `desktop/` |
+| `httpd` | `crates/radicle-httpd/` and `crates/radicle-search/` |
+
+A patch that touches several components gets several labels. Changes to
+shared files (`.github/`, `.buildkite/`, `.ryph/`, root docs) get the labels
+of the components they affect. `git push` can't set labels, so add them
+once the patch is open:
+
+```sh
+rad patch label <patch-id> --add explorer --add httpd
+```
+
 ### Releases and tags
 
 Each project is released on its own. Release tags are
