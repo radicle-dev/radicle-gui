@@ -3,6 +3,7 @@ use radicle::cob::{self, ObjectId, Op};
 use radicle::git::Oid;
 use radicle::identity::{Did, RepoId};
 use radicle::issue::cache::Issues as _;
+use radicle::node::config::Network;
 use radicle::node::{Handle, Node};
 use radicle::patch::cache::Patches as _;
 use radicle::storage::{ReadRepository, ReadStorage};
@@ -42,6 +43,7 @@ pub trait Boards: Profile {
     ) -> Result<Board, Error> {
         let profile = self.profile();
         let repo = profile.storage.repository(rid)?;
+        off_main_network(&profile, &repo)?;
         let signer = profile.signer()?;
         let aliases = profile.aliases();
         let mut boards = BoardStore::open(&repo, WriteAs::new(&signer))?;
@@ -66,6 +68,7 @@ pub trait Boards: Profile {
     ) -> Result<Board, Error> {
         let profile = self.profile();
         let repo = profile.storage.repository(rid)?;
+        off_main_network(&profile, &repo)?;
         let signer = profile.signer()?;
         let aliases = profile.aliases();
         let position = position::between(before.as_deref(), after.as_deref())
@@ -138,6 +141,7 @@ pub trait Boards: Profile {
         }
         let profile = self.profile();
         let repo = profile.storage.repository(rid)?;
+        off_main_network(&profile, &repo)?;
         let signer = profile.signer()?;
         let aliases = profile.aliases();
         let mut boards = BoardStore::open(&repo, WriteAs::new(&signer))?;
@@ -159,6 +163,7 @@ pub trait Boards: Profile {
     ) -> Result<Board, Error> {
         let profile = self.profile();
         let repo = profile.storage.repository(rid)?;
+        off_main_network(&profile, &repo)?;
         let signer = profile.signer()?;
         let aliases = profile.aliases();
         let columns: Vec<radicle_board::Column> = columns.into_iter().map(Into::into).collect();
@@ -181,6 +186,7 @@ pub trait Boards: Profile {
     ) -> Result<Board, Error> {
         let profile = self.profile();
         let repo = profile.storage.repository(rid)?;
+        off_main_network(&profile, &repo)?;
         let signer = profile.signer()?;
         let aliases = profile.aliases();
         let mut boards = BoardStore::open(&repo, WriteAs::new(&signer))?;
@@ -226,6 +232,18 @@ fn assignment<R: ReadRepository + cob::Store>(
         })
         .map(|op| op.id)
         .last()
+}
+
+/// Boards are unstable, so they may only be written on the test network or
+/// in a private repository. See ADR 0005.
+fn off_main_network<R: ReadRepository>(profile: &radicle::Profile, repo: &R) -> Result<(), Error> {
+    if profile.config.node.network == Network::Test || repo.identity_doc()?.is_private() {
+        return Ok(());
+    }
+
+    Err(Error::Board(
+        "boards are unstable and can't be used in public repositories on the main network yet",
+    ))
 }
 
 fn announce(profile: &radicle::Profile, rid: RepoId, opts: &cobs::CobOptions) {

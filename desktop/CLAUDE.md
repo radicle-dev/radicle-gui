@@ -139,6 +139,13 @@ Ports have full default implementations, so a driver only implements
 a domain `Service` backed by the SQLite adapter instead of the ports; new
 lists over large data sets should do the same.
 
+## Boards
+
+Read `docs/adr/0005-boards.md` before working on boards. The board COB is
+unstable: never create or change a board in a public repository on the main
+network. Use the E2E and `test-http-api` fixtures, a separate `RAD_HOME` on
+the test network, or a private repository.
+
 ## Domain glossary
 
 - **NID** — Node ID, the public key in a DID (`did:key:z6Mk...`)
