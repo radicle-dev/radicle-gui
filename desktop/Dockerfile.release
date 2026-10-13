@@ -29,7 +29,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     file \
     jq \
     zstd \
-    squashfs-tools
+    squashfs-tools \
+    xdg-utils
 
 # Tauri system library headers for the amd64 target.
 # The :amd64 suffix installs the x86_64 variant via multiarch.
