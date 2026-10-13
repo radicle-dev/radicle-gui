@@ -4,6 +4,12 @@ Tauri desktop app for Radicle. Svelte 5 frontend communicates with a Rust
 backend via Tauri IPC commands. TypeScript types are generated from Rust
 structs using ts-rs (`crates/radicle-types/`).
 
+The app lives in `desktop/` of the radicle-gui monorepo. It is its own npm
+package and Cargo workspace: run every command here from `desktop/`, and all
+paths in this file are relative to it. The repository root holds the Radicle
+web explorer, which has its own `CLAUDE.md`. Release tags are
+`releases/desktop/<version>`.
+
 ## Tech stack
 
 - Svelte 5 with runes syntax (`$state`, `$derived`, `$props`, `$effect`)

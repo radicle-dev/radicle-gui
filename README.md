@@ -3,6 +3,9 @@
 This user interface lets you interact with [Radicle][rad], a peer-to-peer code
 collaboration and publishing stack, directly from your web browser.
 
+The [Radicle desktop app](desktop/README.md) lives in the `desktop/` folder of
+this repository.
+
 **Deployment Options:**
 
 * **Public Server:** The Radicle team maintains a public instance at [radicle.network][app]

@@ -1,6 +1,7 @@
 # radicle-httpd
 
-Rust backend for radicle-explorer.
+Rust backend for the Radicle web explorer, released together with
+`radicle-search` (see `RELEASE.md` at the repository root).
 
 ## Code conventions
 

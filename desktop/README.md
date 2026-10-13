@@ -2,6 +2,9 @@
 
 This desktop application lets you interact with [Radicle][rad], a peer-to-peer code collaboration and publishing stack.
 
+It lives in the `desktop/` folder of the radicle-gui repository, next to the
+Radicle web explorer. Run all commands below from `desktop/`.
+
 ## Installation
 
 See [radicle.dev/desktop#install](https://radicle.dev/desktop#install).
@@ -24,8 +27,8 @@ npm config set script-shell "C:\\Program Files\\git\\bin\\bash.exe"
 Run the following commands to build the desktop app locally:
 
 ```
-git clone https://seed.radicle.dev/z4D5UCArafTzTQpDZNQRuqswh3ury.git radicle-desktop
-cd radicle-desktop
+git clone https://seed.radicle.dev/z4V1sjrXqjvFdnCUbxPFqd5p4DtH5.git radicle-gui
+cd radicle-gui/desktop
 npm install
 npm run tauri build
 ```
@@ -54,7 +57,7 @@ Windows, open a link in it by starting the dev binary a second time with the
 link as its argument, while `npm run dev` is running:
 
 ```
-target/dev-without-assertions/radicle-desktop rad:z4D5UCArafTzTQpDZNQRuqswh3ury
+target/dev-without-assertions/radicle-desktop rad:z4V1sjrXqjvFdnCUbxPFqd5p4DtH5
 ```
 
 On macOS links only reach app bundles. Quit the installed app, then build and
@@ -74,7 +77,8 @@ scripts/release --phase prep --version X.Y.Z
 
 Each phase does its mechanical work, then prints the manual tasks for its gate
 and the exact flag to resume with. List the phases and see the configuration
-with `scripts/release --list` and `scripts/release --help`.
+with `scripts/release --list` and `scripts/release --help`. Releases are tagged
+`releases/desktop/<version>`.
 
 ## Getting in touch
 
