@@ -84,6 +84,14 @@ export default defineConfig({
       ],
     },
   },
+  environments: {
+    // Vitest bundles its dependencies with Rolldown, which looks up a
+    // tsconfig for them and can reach the repository root's. That one
+    // extends a package only the explorer installs, so the lookup fails
+    // when only desktop's dependencies are installed, as in CI.
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    __vitest__: { optimizeDeps: { rolldownOptions: { tsconfig: false } } },
+  },
   resolve: {
     // Svelte's server build never runs effects, which rune tests need.
     conditions: process.env.VITEST ? ["browser"] : undefined,
