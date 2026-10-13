@@ -47,6 +47,9 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features
 npm run test:e2e -- --project chromium
 ```
 
+`npm run check:ci` runs all of the explorer's checks in order, plus the build
+smoke test, and logs to `tests/tmp/check-ci.log`.
+
 Desktop, from `desktop/`:
 
 ```sh

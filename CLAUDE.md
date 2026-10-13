@@ -170,6 +170,11 @@ and fall back when they're absent.
 
 ### Pre-push checklist
 
+`npm run check:ci` runs everything below except the `:local` variants, plus
+the build smoke test, from the GitHub workflows, and stops at the first
+failure. It logs each step's output, duration and exit code to
+`tests/tmp/check-ci.log`.
+
 1. `npm run check`
 2. `npm run test:unit`
 3. `npm run test:http-client:unit`

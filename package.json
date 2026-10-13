@@ -8,6 +8,7 @@
     "serve": "vite preview",
     "build": "vite build",
     "check": "scripts/check",
+    "check:ci": "scripts/check-ci",
     "check:radicle-httpd": "cargo clippy --all --tests && cargo fmt --all --check",
     "format": "npx prettier '**/*.@(ts|js|svelte|json|css|html|yml)' --write",
     "test:unit": "TZ='UTC' vitest run",
