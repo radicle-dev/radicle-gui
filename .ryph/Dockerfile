@@ -1,4 +1,4 @@
-FROM ghcr.io/drips-network/ryph-universal:1
+FROM quay.io/ryph/ryph-universal:1
 
 USER root
 
