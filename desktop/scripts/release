@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Interactive, phased release orchestrator for radicle-desktop.
+# Interactive, phased release orchestrator for radicle-desktop, which lives in
+# the desktop/ folder of the radicle-gui monorepo.
 #
 # Automates the mechanical steps of the release process and pauses at the human
 # gates (CI/patch approval, DMG smoke-test, the cross-repo apt signing, delegate
@@ -36,10 +37,15 @@ CURRENT_PHASE=""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_DIR="$(cd "$PROJECT_DIR/.." && pwd)"
 
 TAURI_CONF="$PROJECT_DIR/crates/radicle-tauri/tauri.conf.json"
+# Every release commit bumps tauri.conf.json. Releases before desktop moved
+# into desktop/ have it at the repo root, where nothing else in the monorepo
+# lives, so these two paths find desktop's release commits and nothing else.
+RELEASE_PATHS=("$TAURI_CONF" ":(top)crates/radicle-tauri/tauri.conf.json")
 CHANGELOG="$PROJECT_DIR/CHANGELOG.md"
-APT_REPO_DIR="$(cd "$PROJECT_DIR/../radicle-apt-repo" 2>/dev/null && pwd || true)"
+APT_REPO_DIR="$(cd "$REPO_DIR/../radicle-apt-repo" 2>/dev/null && pwd || true)"
 
 PHASES=(prep build apt publish tag)
 
@@ -135,7 +141,7 @@ USERNAME="${USERNAME:-${USER:-}}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
 SIGNING_KEY="${SIGNING_KEY:-$HOME/.ssh/apt_signing_key}"
 FILES_HOST="${FILES_HOST:-files.radicle.dev}"
-EXPECTED_BRANCH="${EXPECTED_BRANCH:-main}"
+EXPECTED_BRANCH="${EXPECTED_BRANCH:-master}"
 
 # ---- Version helpers ----
 
@@ -146,7 +152,7 @@ conf_version() {
 
 # The SHA of the release commit for $1, looked up by its commit subject.
 release_commit_sha() {
-  git -C "$PROJECT_DIR" log --grep="^Release v$1\$" -1 --format=%H
+  git -C "$PROJECT_DIR" log --grep="^Release v$1\$" -1 --format=%H -- "${RELEASE_PATHS[@]}"
 }
 
 # ---- Phases ----
@@ -161,20 +167,20 @@ phase_prep() {
   run rad sync
   run git -C "$PROJECT_DIR" fetch
 
-  info "Creating branch release/v$version"
-  run git -C "$PROJECT_DIR" checkout -b "release/v$version"
+  info "Creating branch release/desktop/$version"
+  run git -C "$PROJECT_DIR" checkout -b "release/desktop/$version"
 
   step "Changelog material (for the v$version entry)"
   local prev
-  prev="$(git -C "$PROJECT_DIR" log --grep='^Release v' -1 --format=%H || true)"
+  prev="$(git -C "$PROJECT_DIR" log --grep='^Release v' -1 --format=%H -- "${RELEASE_PATHS[@]}" || true)"
   if [[ -n "$prev" ]]; then
     info "Commits since $(git -C "$PROJECT_DIR" log -1 --format='%s' "$prev"):"
     echo
-    git -C "$PROJECT_DIR" log "$prev"..HEAD --format='- %s (%an <%ae>)'
+    git -C "$PROJECT_DIR" log "$prev"..HEAD --format='- %s (%an <%ae>)' -- "$PROJECT_DIR"
     echo
     bold "    External contributors (map these to DID links for the shout-out):"
     echo
-    git -C "$PROJECT_DIR" log "$prev"..HEAD --format='%an <%ae>' \
+    git -C "$PROJECT_DIR" log "$prev"..HEAD --format='%an <%ae>' -- "$PROJECT_DIR" \
       | sort -u | grep -v -F "$EMAIL" || true
     echo
     info "Format the list into the user-facing changes for the CHANGELOG entry."
@@ -195,7 +201,7 @@ phase_prep() {
   run "${EDITOR:-vi}" "$CHANGELOG"
 
   step "Creating Release Commit"
-  run git -C "$PROJECT_DIR" commit -a -m "Release v$version"
+  run git -C "$PROJECT_DIR" commit -m "Release v$version" -- "$TAURI_CONF" "$CHANGELOG"
   local sha
   sha="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
   info "Release commit: $sha"
@@ -203,7 +209,7 @@ phase_prep() {
   step "Pushing Release Patch"
   if confirm "Push the Release Patch now (git push rad HEAD:refs/patches)?"; then
     run git -C "$PROJECT_DIR" push rad HEAD:refs/patches
-    info "Wait for CI to pass, get the patch approved, and merge it into main."
+    info "Wait for CI to pass, get the patch approved, and merge it into master."
   else
     info "Skipped. Push it yourself when ready: git push rad HEAD:refs/patches"
   fi
@@ -305,21 +311,18 @@ phase_tag() {
 
   local sha
   sha="$(release_commit_sha "$version")"
-  [[ -n "$sha" ]] || fail "could not find the 'Release v$version' commit (is the patch merged into main?)"
+  [[ -n "$sha" ]] || fail "could not find the 'Release v$version' commit (is the patch merged into master?)"
   info "Tagging commit: ${sha:-<release-commit-sha>}"
 
-  run git -C "$PROJECT_DIR" tag "releases/$version" "${sha:-<release-commit-sha>}" -m "Release $version"
-  run git -C "$PROJECT_DIR" push rad --tags
+  local tag="releases/desktop/$version"
+  run git -C "$PROJECT_DIR" tag "$tag" "${sha:-<release-commit-sha>}" -m "Release $version"
+  run git -C "$PROJECT_DIR" push rad "refs/tags/$tag"
   run rad sync
 
-  step "Canonical tag pushed — needs delegate approval"
-  info "Ask another delegate to approve the tag by running:"
-  echo
-  printf '    %s\n' \
-    "git push -f self $USERNAME/tags/releases/$version:refs/tags/releases/$version" \
-    "rad sync -a"
+  step "Canonical tag pushed"
+  info "Any delegate's push of a releases/ tag makes it canonical."
 
-  step "Announce on Zulip (once the tag is approved)"
+  step "Announce on Zulip"
   local entry
   entry="$(awk -v v="### v$version" '
     $0 == v {grab=1}

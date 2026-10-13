@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -e
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
-RELEASE=$(cat "$REPO_ROOT/tests/support/heartwood-release")
-BINARY_PATH=$REPO_ROOT/tests/tmp/bin
+# Resolve paths from this script, not the repo root: desktop/ is one project in
+# the radicle-gui monorepo, and the root has its own tests/ folder.
+PROJECT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+RELEASE=$(cat "$PROJECT_DIR/tests/support/heartwood-release")
+BINARY_PATH=$PROJECT_DIR/tests/tmp/bin
 OS=$(uname)
 
 install() {

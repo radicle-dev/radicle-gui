@@ -65,6 +65,9 @@ ensure_image() {
 VERSION="$(jq -r '.version' "$PROJECT_DIR/crates/radicle-tauri/tauri.conf.json")"
 RELEASE_SHA="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
 SHORT_SHA="$(git -C "$PROJECT_DIR" rev-parse --short=8 HEAD)"
+# The Linux containers only mount desktop/, which has no .git of its own, so
+# build.rs can't ask git for the commit. Pass it in the way build.rs would get it.
+GIT_HEAD="$(git -C "$PROJECT_DIR" rev-parse --short HEAD)"
 RELEASE_DIR="$PROJECT_DIR/releases/v$VERSION"
 
 step "Building release v$VERSION (${SHORT_SHA})"
@@ -132,6 +135,7 @@ if [[ "$BUILD_DEB" == true ]]; then
     -v "$RELEASE_DIR:/output:z" \
     -w /workspace \
     -e CI=true \
+    -e GIT_HEAD="$GIT_HEAD" \
     radicle-desktop-release-builder \
     bash -c "
       set -euo pipefail
@@ -165,6 +169,7 @@ if [[ "$BUILD_APPIMAGE" == true ]]; then
     -v "$RELEASE_DIR:/output:z" \
     -w /workspace \
     -e CI=true \
+    -e GIT_HEAD="$GIT_HEAD" \
     radicle-desktop-release-builder \
     bash /workspace/scripts/appimage-build
 
