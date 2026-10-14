@@ -6,7 +6,7 @@
 
   interface Props {
     /// Two or more mutually exclusive choices, in the order they are shown. An
-    /// option carries either a glyph or a word, not both.
+    /// option carries a glyph, a word, or both.
     options: {
       value: T;
       label?: string;
@@ -41,7 +41,8 @@
       styleJustifyContent="center">
       {#if option.icon}
         <Icon name={option.icon} />
-      {:else}
+      {/if}
+      {#if option.label}
         {option.label}
       {/if}
     </Button>

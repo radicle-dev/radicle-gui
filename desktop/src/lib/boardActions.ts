@@ -51,7 +51,6 @@ export async function promptNewBoard(rid: string) {
         await router.push({
           resource: "repo.board",
           rid,
-          view: "board",
           board: created.id,
         });
       },

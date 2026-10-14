@@ -99,13 +99,9 @@
     color: var(--color-text-tertiary);
     cursor: pointer;
   }
-  .direction:hover:not(:disabled) {
+  .direction:hover {
     background-color: var(--color-surface-subtle);
     color: var(--color-text-primary);
-  }
-  .direction:disabled {
-    opacity: 0.4;
-    cursor: default;
   }
   .heading {
     color: var(--color-text-primary);
@@ -118,7 +114,7 @@
   .chip {
     padding: 0.25rem 0.625rem;
     border: 1px solid var(--color-border-subtle);
-    border-radius: 999px;
+    border-radius: var(--border-radius-sm);
     background: none;
     color: var(--color-text-tertiary);
     font: var(--txt-body-m-regular);
@@ -150,8 +146,8 @@
   <div class="section">
     <SegmentedSwitch
       options={[
-        { value: "board", label: "Columns" },
-        { value: "list", label: "List" },
+        { value: "board", label: "Columns", icon: "dashboard" },
+        { value: "list", label: "List", icon: "menu" },
       ]}
       value={view}
       onchange={onView} />
@@ -170,14 +166,15 @@
     <div class="row">
       Ordering
       <div class="controls">
-        <button
-          class="direction"
-          title={settings.descending ? "Descending" : "Ascending"}
-          aria-label="Reverse the order"
-          disabled={settings.ordering === "manual"}
-          onclick={() => (settings.descending = !settings.descending)}>
-          <Icon name={settings.descending ? "arrow-down" : "arrow-up"} />
-        </button>
+        {#if settings.ordering !== "manual"}
+          <button
+            class="direction"
+            title={settings.descending ? "Descending" : "Ascending"}
+            aria-label="Reverse the order"
+            onclick={() => (settings.descending = !settings.descending)}>
+            <Icon name={settings.descending ? "arrow-down" : "arrow-up"} />
+          </button>
+        {/if}
         <select aria-label="Ordering" bind:value={settings.ordering}>
           {#each ORDERINGS as ordering (ordering.id)}
             <option value={ordering.id}>{ordering.label}</option>
@@ -194,7 +191,7 @@
   </div>
 
   <div class="section">
-    <span class="heading">Display properties</span>
+    <span class="heading">Display</span>
     <div class="chips">
       {#each PROPERTIES as property (property.id)}
         <button

@@ -22,6 +22,7 @@ import type { RepoInfo } from "@bindings/repo/RepoInfo";
 import type { Tree } from "@bindings/source/Tree";
 
 import type { BoardView } from "@app/lib/board";
+import { loadView } from "@app/lib/boardView";
 import {
   cachedGetCommitDiff,
   cachedGetDiffText,
@@ -138,7 +139,8 @@ export interface LoadedRepoIssueRoute {
 export interface RepoBoardRoute {
   resource: "repo.board";
   rid: string;
-  view: BoardView;
+  // Left out, the board opens in the view it was last left in.
+  view?: BoardView;
   board?: string;
 }
 
@@ -694,7 +696,8 @@ export async function loadBoard(
       issues: issues.content,
       patches: patches.content,
       links,
-      view: route.view,
+      view:
+        route.view ?? loadView(route.rid, route.board ?? boards[0]?.id).view,
       selected: route.board,
     },
   };
@@ -732,7 +735,7 @@ export function repoRouteToPath(route: RepoRoute): string {
     return [...pathSegments, "identity"].join("/");
   } else if (route.resource === "repo.board") {
     const url = [...pathSegments, "board"].join("/");
-    if (route.view === "list") searchParams.set("view", "list");
+    if (route.view) searchParams.set("view", route.view);
     if (route.board) searchParams.set("board", route.board);
     return searchParams.size > 0 ? `${url}?${searchParams}` : url;
   } else if (route.resource === "repo.issue") {
@@ -837,7 +840,8 @@ export function repoUrlToRoute(
     } else if (resource === "identity") {
       return { resource: "repo.identity", rid };
     } else if (resource === "board") {
-      const view = searchParams.get("view") === "list" ? "list" : "board";
+      const param = searchParams.get("view");
+      const view = param === "list" || param === "board" ? param : undefined;
       const board = searchParams.get("board") ?? undefined;
       return { resource: "repo.board", rid, view, board };
     } else if (resource === "issues") {

@@ -58,6 +58,10 @@
   import Button from "@app/components/Button.svelte";
   import ContextMenu from "@app/components/ContextMenu.svelte";
   import Icon from "@app/components/Icon.svelte";
+  import IssueSheet, {
+    type IssueSheetData,
+    loadIssueSheet,
+  } from "@app/components/IssueSheet.svelte";
   import NodeId from "@app/components/NodeId.svelte";
   import Popover from "@app/components/Popover.svelte";
   import PriorityIcon from "@app/components/PriorityIcon.svelte";
@@ -143,11 +147,11 @@
     );
   }
 
+  // Each board opens in the view it was last left in.
   function goToBoard(id: string | undefined) {
     void router.push({
       resource: "repo.board",
       rid: repo.rid,
-      view,
       board: id,
     });
   }
@@ -162,11 +166,50 @@
   let filter = $state("");
   const collapsed: Record<string, boolean> = $state({});
 
+  // Settings belong to the board on show, so switching boards loads that
+  // board's, and the view in the route is remembered with them.
   // svelte-ignore state_referenced_locally
-  let settings: BoardViewSettings = $state(loadView(repo.rid));
-  $effect(() => {
-    saveView(repo.rid, $state.snapshot(settings));
+  let settingsBoard = board?.id;
+  // svelte-ignore state_referenced_locally
+  let settings: BoardViewSettings = $state(loadView(repo.rid, board?.id));
+  $effect.pre(() => {
+    const id = board?.id;
+    if (id !== settingsBoard) {
+      settingsBoard = id;
+      settings = loadView(repo.rid, id);
+    }
   });
+  $effect(() => {
+    saveView(repo.rid, board?.id, { ...$state.snapshot(settings), view });
+  });
+
+  // Cards a filter or search hides fade out. Every other removal, such as a
+  // card leaving its column on a drop, is instant.
+  let filtering = false;
+  let filteringTimeout: ReturnType<typeof setTimeout> | undefined;
+  // Before the DOM updates, so the flag is up when the hidden cards leave.
+  $effect.pre(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    JSON.stringify(settings.filters) + filter;
+    filtering = true;
+    clearTimeout(filteringTimeout);
+    filteringTimeout = setTimeout(() => (filtering = false), 300);
+  });
+
+  // A drop target fades as it leaves a column. Svelte pins a leaving card
+  // where it stood, with a transform, so the shrink uses the separate scale
+  // property to leave that transform alone.
+  function filterOut(node: Element) {
+    if (node.classList.contains("placeholder")) {
+      return { duration: 150, css: (t: number) => `opacity: ${t};` };
+    }
+    if (!filtering) return { duration: 0 };
+    return {
+      duration: 180,
+      easing: cubicOut,
+      css: (t: number) => `opacity: ${t}; scale: ${0.96 + 0.04 * t};`,
+    };
+  }
 
   const me = $derived(`did:key:${config.publicKey}`);
   const manual = $derived(settings.ordering === "manual");
@@ -557,14 +600,77 @@
     });
   });
 
+  let sheet: { key: string; data: IssueSheetData } | undefined = $state();
+  let sheetRequest = 0;
+
+  async function openSheet(item: Extract<BoardItem, { kind: "issue" }>) {
+    const request = ++sheetRequest;
+    if (sheet?.key === item.key) {
+      sheet = undefined;
+      return;
+    }
+    try {
+      const data = await loadIssueSheet(repo, item.card.rid, item.issue.id);
+      if (request !== sheetRequest) return;
+      sheet = { key: item.key, data };
+      await tick();
+      revealBesideSheet(item.key);
+    } catch (error) {
+      console.error("Loading the issue failed", error);
+    }
+  }
+
+  // The sheet covers the right of the board, so the board gets room to
+  // scroll past its last column, and the open card is brought into the part
+  // the sheet leaves free.
+  let sheetSpacer: HTMLElement | undefined = $state();
+
+  function revealBesideSheet(key: string) {
+    if (view !== "board" || !boardEl || !sheetSpacer) return;
+    const card = boardEl.querySelector(`[data-key="${CSS.escape(key)}"]`);
+    if (!card) return;
+    const column = card.closest(".column") ?? card;
+    const { left, right } = column.getBoundingClientRect();
+    const board = boardEl.getBoundingClientRect();
+    const freeRight = window.innerWidth - sheetSpacer.offsetWidth;
+    const delta =
+      right > freeRight
+        ? right - freeRight
+        : left < board.left
+          ? left - board.left
+          : 0;
+    if (delta !== 0) boardEl.scrollBy({ left: delta, behavior: "smooth" });
+  }
+
+  // The card that opened the sheet keeps focus, and closing with Escape
+  // would otherwise show its focus ring.
+  function closeSheet() {
+    sheetRequest++;
+    sheet = undefined;
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && focused.closest("[data-key]")) {
+      focused.blur();
+    }
+  }
+
+  // Clicks on cards swap the sheet, and clicks in popovers, menus and modals
+  // belong to whatever the sheet opened, so neither closes it.
+  function onWindowPointerDown(event: PointerEvent) {
+    if (!sheet || !(event.target instanceof Element)) return;
+    if (document.querySelector("[data-modal-content]")) return;
+    if (
+      event.target.closest(
+        '.sheet, [data-key], [data-portal], .popover, [role="menu"], [data-modal-content]',
+      )
+    ) {
+      return;
+    }
+    closeSheet();
+  }
+
   function open(item: BoardItem) {
     if (item.kind === "issue") {
-      void router.push({
-        resource: "repo.issue",
-        rid: item.card.rid,
-        issue: item.issue.id,
-        status: "all",
-      });
+      void openSheet(item);
     } else if (item.kind === "patch") {
       openPatch(item.patch, item.card.rid);
     } else {
@@ -1161,6 +1267,14 @@
       event.stopPropagation();
       pending = undefined;
       void land(true);
+      return;
+    }
+    if (
+      event.key === "Escape" &&
+      sheet &&
+      !document.querySelector('.popover, [role="menu"], [data-modal-content]')
+    ) {
+      closeSheet();
     }
   }
 
@@ -1184,6 +1298,16 @@
 </script>
 
 <style>
+  /* Dark is the default theme. Black shadows barely show on its canvas, so
+     they are much stronger there than in light. */
+  :global(:root) {
+    --board-shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.6);
+    --board-shadow-lifted: 0 12px 32px rgba(0, 0, 0, 0.75);
+  }
+  :global([data-theme="light"]) {
+    --board-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.08);
+    --board-shadow-lifted: 0 12px 32px rgba(0, 0, 0, 0.18);
+  }
   .page {
     display: flex;
     flex-direction: column;
@@ -1202,34 +1326,28 @@
     display: flex;
     overflow-x: auto;
   }
+  /* As wide as the issue sheet. */
+  .sheet-spacer {
+    flex: 0 0 min(48rem, 60vw);
+  }
   .column {
-    --column-bg: var(--color-surface-canvas);
     display: flex;
     flex-direction: column;
     flex: 0 0 18rem;
     min-height: 0;
-    overflow-y: auto;
     border-right: 1px solid var(--color-border-subtle);
-    background-color: var(--column-bg);
-    transition: background-color 0.1s;
+    background-color: var(--color-surface-canvas);
   }
-  .column.over {
-    --column-bg: var(--color-surface-subtle);
-  }
-  /* Sticky, and fading out at the bottom, so cards scroll under the title
-     instead of being cut off at a hard edge. */
   .column-header {
-    position: sticky;
-    top: 0;
-    z-index: 1;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 1rem 1rem 1.5rem;
-    margin-bottom: -0.75rem;
+    padding: 1rem;
+    border-bottom: 1px solid var(--color-border-subtle);
     font: var(--txt-body-m-semibold);
     color: var(--color-text-primary);
-    background: linear-gradient(to bottom, var(--column-bg) 60%, transparent);
+    background-color: var(--color-surface-canvas);
     pointer-events: none;
   }
   .count {
@@ -1239,7 +1357,7 @@
   .column.lifted {
     position: relative;
     z-index: 2;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--board-shadow-lifted);
   }
   .column-title {
     pointer-events: auto;
@@ -1266,26 +1384,57 @@
     font: var(--txt-body-m-semibold);
     outline: none;
   }
+  /* The cards are see-through over this background, so a hovered card's
+     shadow falls across its neighbours without stacking above them. Neither
+     this nor the cards may be positioned: WebKit paints positioned content
+     over the column's overlay scrollbar. */
+  /* Only the cards scroll, so the scrollbar starts below the column title. */
+  .cards-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
   .cards {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    padding: 0 0.75rem 0.75rem;
+    background-color: var(--color-surface-canvas);
   }
   .card {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    padding: 0.75rem;
-    border-radius: var(--border-radius-sm);
-    border: 1px solid var(--color-border-subtle);
-    background-color: var(--color-surface-canvas);
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-border-subtle);
     cursor: pointer;
     user-select: none;
     -webkit-user-select: none;
   }
   .card:hover {
-    border-color: var(--color-border-mid);
+    box-shadow: var(--board-shadow-hover);
+  }
+  .card,
+  .row {
+    transition:
+      opacity 0.2s ease,
+      box-shadow 0.15s ease,
+      background-color 0.15s ease;
+  }
+  /* Dimming fades a card's contents, not the card, so the borders it shares
+     with the open card stay at full strength. WKWebView keeps a scrolled
+     column in tiles it only repaints on scroll, so the dimmed parts get their
+     own layers from the start or the change would show late. */
+  .card > :global(*),
+  .row > :global(*) {
+    transition: opacity 0.2s ease;
+    will-change: opacity;
+  }
+  .card.sheet-dim > :global(*),
+  .row.sheet-dim > :global(*) {
+    opacity: 0.4;
+  }
+  .card,
+  .row {
+    will-change: opacity;
   }
   .card.fixed .card-title,
   .card.fixed .card-top > span:not(.lock) {
@@ -1297,6 +1446,7 @@
   .nudge {
     position: fixed;
     z-index: 100;
+    background-color: var(--color-surface-canvas);
     box-sizing: border-box;
     pointer-events: none;
     cursor: not-allowed;
@@ -1379,9 +1529,16 @@
     font: var(--txt-body-m-regular);
     color: var(--color-text-secondary);
   }
-  .card.placeholder {
-    border: 1px dashed var(--color-border-brand);
-    background-color: transparent;
+  .card.placeholder,
+  .row.placeholder {
+    background-color: var(--color-surface-subtle);
+    box-shadow: none;
+    animation: placeholder-in 150ms ease-out;
+  }
+  @keyframes placeholder-in {
+    from {
+      background-color: transparent;
+    }
   }
   .card.placeholder > * {
     visibility: hidden;
@@ -1435,10 +1592,20 @@
     pointer-events: none;
     z-index: 100;
     box-sizing: border-box;
-    border-color: var(--color-border-mid);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+    border: 1px solid var(--color-border-mid);
+    border-radius: var(--border-radius-sm);
+    background-color: var(--color-surface-canvas);
+    box-shadow: var(--board-shadow-lifted);
     transform: rotate(2deg) scale(1.02);
     cursor: grabbing;
+    animation: lift 160ms ease-out;
+  }
+  /* Picking a card up grows its hover shadow into the drag shadow. */
+  @keyframes lift {
+    from {
+      box-shadow: var(--board-shadow-hover);
+      transform: none;
+    }
   }
   .ghost.landing {
     transition:
@@ -1448,9 +1615,11 @@
       box-shadow 160ms ease-out;
     transform: none;
     box-shadow: none;
+    animation: none;
   }
 
   .list {
+    position: relative;
     padding: 0.5rem 0 2rem;
   }
   .group-header {
@@ -1480,9 +1649,6 @@
     user-select: none;
     -webkit-user-select: none;
   }
-  .row.placeholder {
-    background-color: var(--color-surface-subtle);
-  }
   .row.placeholder > * {
     visibility: hidden;
   }
@@ -1491,9 +1657,6 @@
     border: 1px solid var(--color-border-mid);
     border-radius: var(--border-radius-sm);
     transform: scale(1.01);
-  }
-  .group.over .group-header {
-    background-color: var(--color-surface-subtle);
   }
   .row:hover {
     background-color: var(--color-surface-subtle);
@@ -1504,13 +1667,29 @@
     flex-shrink: 0;
     font-family: var(--font-family-monospace, monospace);
   }
-  .row-title {
+  .row-main {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     flex: 1;
+    min-width: 0;
+  }
+  .row-main > :global(*:not(.row-title)) {
+    flex-shrink: 0;
+  }
+  .row-title {
+    flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--color-text-primary);
+  }
+  .row-comments {
+    display: flex;
+    justify-content: flex-end;
+    flex-shrink: 0;
+    width: 3.5rem;
   }
   .row-date {
     color: var(--color-text-tertiary);
@@ -1557,6 +1736,7 @@
 
 <svelte:window
   onkeydowncapture={onWindowKeydown}
+  onpointerdowncapture={onWindowPointerDown}
   onpointermove={onWindowPointerMove}
   onpointerup={onWindowPointerUp}
   onpointercancel={() => {
@@ -1641,6 +1821,20 @@
   {/if}
 {/snippet}
 
+{#snippet commentCount(item: BoardItem)}
+  {@const comments =
+    item.kind === "issue"
+      ? item.issue.commentCount
+      : item.kind === "patch"
+        ? item.patch.commentCount
+        : 0}
+  {#if comments > 0 && shows("comments")}
+    <span class="chip" style:gap="0.25rem">
+      <Icon name="comment" />{comments}
+    </span>
+  {/if}
+{/snippet}
+
 {#snippet rowContent(item: BoardItem)}
   {#if item.kind !== "unresolved" && shows("priority")}
     <PriorityIcon priority={priorityOf(itemLabels(item))} />
@@ -1651,7 +1845,11 @@
   {#if item.kind === "patch"}
     <Icon name="patch" />
   {/if}
-  <span class="row-title">{itemTitle(item)}</span>
+  <div class="row-main">
+    <span class="row-title">{itemTitle(item)}</span>
+    {#if shows("patches")}{@render patchChips(item)}{/if}
+    {#if shows("repository")}{@render repoChip(item)}{/if}
+  </div>
   {#if !canMove(item)}
     <span class="lock"><Icon name="lock" /></span>
   {/if}
@@ -1662,10 +1860,11 @@
         {columns.find(c => c.id === item.column)?.name}
       </span>
     {/if}
-    {#if shows("repository")}{@render repoChip(item)}{/if}
-    {#if shows("patches")}{@render patchChips(item)}{/if}
     {#if shows("labels")}{@render labels(item)}{/if}
   </div>
+  {#if shows("comments")}
+    <div class="row-comments">{@render commentCount(item)}</div>
+  {/if}
   {#if shows("assignees")}
     <div style:width="4rem" style:display="flex">
       {@render assignees(item)}
@@ -1680,12 +1879,6 @@
 
 {#snippet cardContent(item: BoardItem)}
   {@const priority = priorityOf(itemLabels(item))}
-  {@const comments =
-    item.kind === "issue"
-      ? item.issue.commentCount
-      : item.kind === "patch"
-        ? item.patch.commentCount
-        : 0}
   <div class="card-top">
     {#if item.kind === "patch"}
       <Icon name="patch" />
@@ -1718,11 +1911,7 @@
     {#if shows("repository")}{@render repoChip(item)}{/if}
     {#if shows("patches")}{@render patchChips(item)}{/if}
     {#if shows("labels")}{@render labels(item)}{/if}
-    {#if comments > 0 && shows("comments")}
-      <span class="chip" style:gap="0.25rem">
-        <Icon name="comment" />{comments}
-      </span>
-    {/if}
+    {@render commentCount(item)}
     {@render pendingNote(item)}
   </div>
 {/snippet}
@@ -1752,7 +1941,7 @@
           {#snippet toggle(onclick)}
             <Button
               styleHeight="2rem"
-              variant="ghost"
+              variant="naked"
               active={activeFilterCount(settings.filters) > 0}
               {onclick}>
               <Icon name="filter" />Filter
@@ -1773,7 +1962,7 @@
         </Popover>
         <Popover placement="bottom-end" popoverPadding="0">
           {#snippet toggle(onclick)}
-            <Button styleHeight="2rem" variant="ghost" {onclick}>
+            <Button styleHeight="2rem" variant="naked" {onclick}>
               <Icon name="settings" />Display
             </Button>
           {/snippet}
@@ -1823,8 +2012,6 @@
         {#each visibleColumns as column (column.id)}
           <div
             class="column"
-            class:over={drag?.over === column.id &&
-              drag.item.column !== column.id}
             class:lifted={columnPreview !== undefined &&
               columnGrab?.id === column.id}
             data-column={column.id}
@@ -1861,33 +2048,41 @@
               {/if}
               <span class="count">{display[column.id]?.length ?? 0}</span>
             </div>
-            <div class="cards">
-              {#each display[column.id] ?? [] as item (item.key)}
-                <div
-                  class="card"
-                  class:placeholder={drag?.item.key === item.key}
-                  class:fixed={!canMove(item)}
-                  class:nudge-source={nudge?.item.key === item.key}
-                  title={canMove(item) ? undefined : lockedReason}
-                  style:height={drag?.item.key === item.key
-                    ? `${drag.height}px`
-                    : undefined}
-                  data-key={item.key}
-                  role="button"
-                  tabindex="0"
-                  animate:flip={{ duration: 200, easing: cubicOut }}
-                  onpointerdown={e => onPointerDown(e, item)}
-                  onclick={() => onCardClick(item)}
-                  oncontextmenu={e => openContextMenu(e, item)}
-                  onkeydown={e => {
-                    if (e.key === "Enter") open(item);
-                  }}>
-                  {@render cardContent(item)}
-                </div>
-              {/each}
+            <div class="cards-scroll">
+              <div class="cards">
+                {#each display[column.id] ?? [] as item (item.key)}
+                  <div
+                    class="card"
+                    class:placeholder={drag?.item.key === item.key}
+                    class:fixed={!canMove(item)}
+                    class:nudge-source={nudge?.item.key === item.key}
+                    class:sheet-dim={sheet !== undefined &&
+                      sheet.key !== item.key}
+                    title={canMove(item) ? undefined : lockedReason}
+                    style:height={drag?.item.key === item.key
+                      ? `${drag.height}px`
+                      : undefined}
+                    data-key={item.key}
+                    role="button"
+                    tabindex="0"
+                    animate:flip={{ duration: 200, easing: cubicOut }}
+                    out:filterOut
+                    onpointerdown={e => onPointerDown(e, item)}
+                    onclick={() => onCardClick(item)}
+                    oncontextmenu={e => openContextMenu(e, item)}
+                    onkeydown={e => {
+                      if (e.key === "Enter") open(item);
+                    }}>
+                    {@render cardContent(item)}
+                  </div>
+                {/each}
+              </div>
             </div>
           </div>
         {/each}
+        {#if sheet}
+          <div class="sheet-spacer" bind:this={sheetSpacer}></div>
+        {/if}
       </div>
     {:else}
       <ScrollArea style="height: 100%; min-width: 0;">
@@ -1895,9 +2090,6 @@
           {#each listGroups as group (group.id)}
             <section
               class="group"
-              class:over={settings.grouping === "status" &&
-                drag?.over === group.id &&
-                drag.item.column !== group.id}
               data-column={settings.grouping === "status"
                 ? group.id
                 : undefined}>
@@ -1920,11 +2112,14 @@
                     class:placeholder={drag?.item.key === item.key}
                     class:fixed={!canMove(item)}
                     class:nudge-source={nudge?.item.key === item.key}
+                    class:sheet-dim={sheet !== undefined &&
+                      sheet.key !== item.key}
                     title={canMove(item) ? undefined : lockedReason}
                     data-key={item.key}
                     role="button"
                     tabindex="0"
                     animate:flip={{ duration: 200, easing: cubicOut }}
+                    out:filterOut
                     onpointerdown={e => onPointerDown(e, item)}
                     onclick={() => onCardClick(item)}
                     oncontextmenu={e => openContextMenu(e, item)}
@@ -1944,6 +2139,13 @@
       </ScrollArea>
     {/if}
   </div>
+  {#if sheet}
+    <IssueSheet
+      data={sheet.data}
+      {config}
+      onClose={closeSheet}
+      onChange={() => void reload()} />
+  {/if}
 </Layout>
 
 {#if drag}

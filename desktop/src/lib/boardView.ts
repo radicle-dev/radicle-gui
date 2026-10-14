@@ -1,7 +1,8 @@
 import { z } from "zod";
 
-// How a viewer arranges and filters a board. Kept per repository in this
-// browser only; nobody else sees it.
+// How a viewer arranges and filters a board, including whether it shows as
+// columns or a list. Kept per board in this browser only; nobody else sees
+// it.
 
 export const PROPERTIES = [
   { id: "id", label: "ID" },
@@ -63,6 +64,7 @@ const schema = z.object({
   showEmpty: z.boolean(),
   properties: z.array(propertySchema),
   filters: filtersSchema,
+  view: z.enum(["board", "list"]),
 });
 
 export type BoardViewSettings = z.infer<typeof schema>;
@@ -86,6 +88,7 @@ export function defaultView(): BoardViewSettings {
       "repository",
     ],
     filters: { types: [], assignees: [], priorities: [], labels: [] },
+    view: "board",
   };
 }
 
@@ -103,16 +106,30 @@ function readAll(): Record<string, unknown> {
   }
 }
 
-export function loadView(rid: string): BoardViewSettings {
-  const parsed = schema.partial().safeParse(readAll()[rid]);
+function keyOf(rid: string, board: string | undefined): string {
+  return board ? `${rid}/${board}` : rid;
+}
+
+// A board with nothing saved yet starts from what was saved for its
+// repository, which is where settings lived before boards had their own.
+export function loadView(
+  rid: string,
+  board: string | undefined,
+): BoardViewSettings {
+  const all = readAll();
+  const parsed = schema.partial().safeParse(all[keyOf(rid, board)] ?? all[rid]);
   return parsed.success ? { ...defaultView(), ...parsed.data } : defaultView();
 }
 
-export function saveView(rid: string, settings: BoardViewSettings) {
+export function saveView(
+  rid: string,
+  board: string | undefined,
+  settings: BoardViewSettings,
+) {
   try {
     globalThis.localStorage?.setItem(
       KEY,
-      JSON.stringify({ ...readAll(), [rid]: settings }),
+      JSON.stringify({ ...readAll(), [keyOf(rid, board)]: settings }),
     );
   } catch {
     // Storage can be unavailable; the view still works for this session.

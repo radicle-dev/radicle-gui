@@ -2,6 +2,7 @@
   import type { GitInfo } from "@bindings/config/GitInfo";
   import type { ComponentProps } from "svelte";
 
+  import { boardsSetting } from "@app/lib/boardsSetting";
   import type { DiffOptions } from "@app/lib/diffOptions.svelte";
   import { diffOptions } from "@app/lib/diffOptions.svelte";
   import { hints } from "@app/lib/hints";
@@ -56,6 +57,10 @@
     },
     { value: "char", label: "Char", title: "Highlight character changes" },
     { value: "none", label: "None", title: "Show line-level changes only" },
+  ];
+  const boardsOptions: Option<"always" | "used">[] = [
+    { value: "always", label: "Always" },
+    { value: "used", label: "With a board" },
   ];
   const wordWrapOptions: Option<"on" | "off">[] = [
     { value: "on", label: "On" },
@@ -153,6 +158,19 @@
         </span>
       </div>
       <RepoListSwitch />
+    </div>
+    <div class="row">
+      <div class="row-label">
+        <span class="row-title">Board in sidebar</span>
+        <span class="row-description">
+          Show it for every repository, or only for those that already have a
+          board
+        </span>
+      </div>
+      <SegmentedSwitch
+        options={boardsOptions}
+        value={boardsSetting.visible ? "always" : "used"}
+        onchange={value => (boardsSetting.visible = value === "always")} />
     </div>
     <div class="row">
       <div class="row-label">

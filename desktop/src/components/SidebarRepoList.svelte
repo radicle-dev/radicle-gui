@@ -52,6 +52,7 @@
 </script>
 
 <script lang="ts">
+  import type { Board } from "@bindings/cob/board/Board";
   import type { ReleaseCounts } from "@bindings/cob/release/ReleaseCounts";
   import type { Config } from "@bindings/config/Config";
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
@@ -63,6 +64,7 @@
   import { get } from "svelte/store";
   import { crossfade, fade, scale, slide } from "svelte/transition";
 
+  import { boardsSetting } from "@app/lib/boardsSetting";
   import { nodeRunning } from "@app/lib/events";
   import type { FlipSnapshot } from "@app/lib/flip";
   import { captureFlip, playFlip } from "@app/lib/flip";
@@ -536,6 +538,27 @@
 
   function isBoard(rid: string): boolean {
     return $activeRoute.resource === "repo.board" && activeRid() === rid;
+  }
+
+  // Hiding boards only hides the entry for repositories without one, so the
+  // active repository's boards are looked up again on every navigation.
+  let reposWithBoard: Record<string, boolean> = $state({});
+  $effect(() => {
+    const rid = activeRid();
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    $activeRoute;
+    if (!rid || boardsSetting.visible) return;
+    void invoke<Board[]>("list_boards", { rid })
+      .then(boards => {
+        reposWithBoard = { ...reposWithBoard, [rid]: boards.length > 0 };
+      })
+      .catch(error => console.error("Listing boards failed", error));
+  });
+
+  function showBoard(rid: string): boolean {
+    return (
+      boardsSetting.visible || isBoard(rid) || reposWithBoard[rid] === true
+    );
   }
 
   function isIssues(rid: string): boolean {
@@ -1181,18 +1204,19 @@
     <div
       class="sub-items"
       transition:slide={{ duration: ANIMATION_DURATION_MS }}>
-      {@render subItem(
-        repo.name,
-        router.routeToPath({
-          resource: "repo.board",
-          rid: repo.rid,
-          view: "board",
-        }),
-        "dashboard",
-        "Board",
-        isBoard(repo.rid),
-        undefined,
-      )}
+      {#if showBoard(repo.rid)}
+        {@render subItem(
+          repo.name,
+          router.routeToPath({
+            resource: "repo.board",
+            rid: repo.rid,
+          }),
+          "dashboard",
+          "Board",
+          isBoard(repo.rid),
+          undefined,
+        )}
+      {/if}
       {@render subItem(
         repo.name,
         router.routeToPath({
