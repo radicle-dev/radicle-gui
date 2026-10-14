@@ -11,6 +11,7 @@
   import { searchCobs } from "@app/lib/cobSearch";
   import { debounced } from "@app/lib/debounced.svelte";
   import { channel, invoke } from "@app/lib/invoke";
+  import { createListContextMenu } from "@app/lib/listContextMenu.svelte";
   import { overflowFade } from "@app/lib/overflowFade";
   import { createPaginatedList } from "@app/lib/paginatedList.svelte";
   import {
@@ -19,12 +20,14 @@
     updatePatchCounts,
   } from "@app/lib/patchCounts.svelte";
   import * as router from "@app/lib/router";
+  import type { SidebarData } from "@app/lib/router/definitions";
   import { modifierKey } from "@app/lib/utils";
 
   import CobCacheWarning from "@app/components/CobCacheWarning.svelte";
   import FuzzySearch from "@app/components/FuzzySearch.svelte";
   import Icon from "@app/components/Icon.svelte";
   import NewPatchButton from "@app/components/NewPatchButton.svelte";
+  import PatchContextMenu from "@app/components/PatchContextMenu.svelte";
   import PatchTeaser from "@app/components/PatchTeaser.svelte";
   import ScrollArea from "@app/components/ScrollArea.svelte";
   import Topbar from "@app/components/Topbar.svelte";
@@ -36,9 +39,12 @@
     repo: RepoInfo;
     patches: PaginatedQuery<Patch[]>;
     status: PatchStatus | undefined;
+    sidebarData: SidebarData;
   }
 
-  const { repo, patches, status }: Props = $props();
+  /* eslint-disable prefer-const */
+  let { repo, patches, status, sidebarData }: Props = $props();
+  /* eslint-enable prefer-const */
 
   function listKey(filter: PatchStatus | undefined): string {
     return `repo.patches:${repo.rid}:${filter ?? "all"}`;
@@ -105,6 +111,17 @@
         cacheState = undefined;
       }, 1500);
     }
+  }
+
+  const contextMenu = createListContextMenu(() => list.items);
+
+  async function refresh() {
+    // Re-fetch the repo too: the tab counts come from its project payload.
+    const [repoInfo] = await Promise.all([
+      invoke<RepoInfo>("repo_by_id", { rid: repo.rid }),
+      list.revalidate(Math.max(list.items.length, DEFAULT_TAKE)),
+    ]);
+    repo = repoInfo;
   }
 
   const searchResults = $derived(
@@ -346,6 +363,8 @@
           {#snippet row(patch)}
             <div class="row">
               <PatchTeaser
+                contextActive={contextMenu.isActive(patch.id)}
+                oncontextmenu={event => contextMenu.open(event, patch.id)}
                 focussed={searchResults.length === 1 && searchInput !== ""}
                 {patch}
                 rid={repo.rid}
@@ -356,4 +375,18 @@
       </ScrollArea>
     {/if}
   </div>
+
+  {#if contextMenu.current}
+    {@const { x, y, target, item } = contextMenu.current}
+    <PatchContextMenu
+      {x}
+      {y}
+      {target}
+      patch={item}
+      {repo}
+      config={sidebarData.config}
+      labelSuggestions={contextMenu.labelSuggestions}
+      onchange={refresh}
+      onclose={contextMenu.close} />
+  {/if}
 </Layout>

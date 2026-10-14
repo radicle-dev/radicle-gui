@@ -1,10 +1,29 @@
+<script lang="ts" module>
+  import { getContext, setContext } from "svelte";
+
+  export interface ContextMenuState {
+    openSubmenu: symbol | undefined;
+  }
+
+  const contextKey = Symbol("contextMenu");
+
+  export function getContextMenu(): ContextMenuState {
+    return getContext<ContextMenuState>(contextKey);
+  }
+</script>
+
 <script lang="ts">
   import type { Snippet } from "svelte";
 
   import { autoUpdate, computePosition, flip, shift } from "@floating-ui/dom";
   import { onMount } from "svelte";
 
-  import { menuFocusIndex } from "@app/lib/menuNavigation";
+  import {
+    focusMenuItem,
+    isOwnMenuItem,
+    menuItemSelector,
+    ownMenuItems,
+  } from "@app/lib/menuNavigation";
   import { portal } from "@app/lib/portal";
 
   import { getScrollViewport } from "@app/components/ScrollArea.svelte";
@@ -40,26 +59,29 @@
     return document.scrollingElement as HTMLElement;
   }
 
-  function menuItems(): HTMLElement[] {
-    if (!menuEl) return [];
-    return Array.from(
-      menuEl.querySelectorAll<HTMLElement>('[role="menuitem"]'),
-    );
-  }
+  const menuState: ContextMenuState = $state({ openSubmenu: undefined });
+  setContext(contextKey, menuState);
 
   function onMenuKeydown(ev: KeyboardEvent) {
-    const items = menuItems();
-    if (items.length === 0) return;
-    const current = items.findIndex(el => el === document.activeElement);
-    const next = menuFocusIndex(ev.key, current, items.length);
-    if (next === undefined) return;
-    ev.preventDefault();
-    items[next].focus();
+    focusMenuItem(ev, ownMenuItems(menuEl));
   }
 
   function onMenuClick(ev: MouseEvent) {
     const el = ev.target as HTMLElement | null;
-    if (el?.closest('[role="menuitem"]')) onclose();
+    const item = el?.closest('[role="menuitem"]');
+    if (item && !item.hasAttribute("aria-haspopup")) onclose();
+  }
+
+  function onMenuPointerOver(ev: PointerEvent) {
+    const item = (ev.target as HTMLElement | null)?.closest(menuItemSelector);
+    if (
+      item &&
+      menuEl &&
+      !item.hasAttribute("aria-haspopup") &&
+      isOwnMenuItem(menuEl, item)
+    ) {
+      menuState.openSubmenu = undefined;
+    }
   }
 
   let menuEl: HTMLDivElement | undefined = $state();
@@ -169,10 +191,16 @@
     color: var(--color-text-tertiary);
     flex-shrink: 0;
   }
-  .menu :global(.menu-item:hover) {
+  .menu :global(.menu-item:hover),
+  .menu :global(.menu-item:focus-visible),
+  .menu :global(.menu-item[aria-expanded="true"]) {
     background-color: var(--color-surface-subtle);
   }
-  .menu :global(.menu-item:hover svg) {
+  .menu :global(.menu-item:focus-visible) {
+    outline: none;
+  }
+  .menu :global(.menu-item:hover svg),
+  .menu :global(.menu-item[aria-expanded="true"] svg) {
     color: var(--color-text-primary);
   }
   .menu :global(.menu-separator) {
@@ -190,6 +218,7 @@
   tabindex="-1"
   onclick={onMenuClick}
   onkeydown={onMenuKeydown}
+  onpointerover={onMenuPointerOver}
   oncontextmenu={e => e.preventDefault()}>
   {@render children()}
 </div>

@@ -16,16 +16,19 @@
     resetIssueCounts,
     updateIssueCounts,
   } from "@app/lib/issueCounts.svelte";
+  import { createListContextMenu } from "@app/lib/listContextMenu.svelte";
   import { show } from "@app/lib/modal";
   import { overflowFade } from "@app/lib/overflowFade";
   import { createPaginatedList } from "@app/lib/paginatedList.svelte";
   import * as router from "@app/lib/router";
+  import type { SidebarData } from "@app/lib/router/definitions";
   import { modifierKey } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
   import CobCacheWarning from "@app/components/CobCacheWarning.svelte";
   import FuzzySearch from "@app/components/FuzzySearch.svelte";
   import Icon from "@app/components/Icon.svelte";
+  import IssueContextMenu from "@app/components/IssueContextMenu.svelte";
   import IssueTeaser from "@app/components/IssueTeaser.svelte";
   import ScrollArea from "@app/components/ScrollArea.svelte";
   import Topbar from "@app/components/Topbar.svelte";
@@ -38,9 +41,12 @@
     repo: RepoInfo;
     issues: PaginatedQuery<Issue[]>;
     status: IssueStatus;
+    sidebarData: SidebarData;
   }
 
-  const { repo, issues, status }: Props = $props();
+  /* eslint-disable prefer-const */
+  let { repo, issues, status, sidebarData }: Props = $props();
+  /* eslint-enable prefer-const */
 
   function listKey(filter: IssueStatus): string {
     return `repo.issues:${repo.rid}:${filter}`;
@@ -114,6 +120,17 @@
         cacheState = undefined;
       }, 1500);
     }
+  }
+
+  const contextMenu = createListContextMenu(() => list.items);
+
+  async function refresh() {
+    // Re-fetch the repo too: the tab counts come from its project payload.
+    const [repoInfo] = await Promise.all([
+      invoke<RepoInfo>("repo_by_id", { rid: repo.rid }),
+      list.revalidate(Math.max(list.items.length, DEFAULT_TAKE)),
+    ]);
+    repo = repoInfo;
   }
 
   const searchResults = $derived(
@@ -322,6 +339,8 @@
           {#snippet row(issue)}
             <div class="row">
               <IssueTeaser
+                contextActive={contextMenu.isActive(issue.id)}
+                oncontextmenu={event => contextMenu.open(event, issue.id)}
                 focussed={searchResults.length === 1 && searchInput !== ""}
                 {issue}
                 rid={repo.rid}
@@ -332,4 +351,18 @@
       </ScrollArea>
     {/if}
   </div>
+
+  {#if contextMenu.current}
+    {@const { x, y, target, item } = contextMenu.current}
+    <IssueContextMenu
+      {x}
+      {y}
+      {target}
+      issue={item}
+      {repo}
+      config={sidebarData.config}
+      labelSuggestions={contextMenu.labelSuggestions}
+      onchange={refresh}
+      onclose={contextMenu.close} />
+  {/if}
 </Layout>
