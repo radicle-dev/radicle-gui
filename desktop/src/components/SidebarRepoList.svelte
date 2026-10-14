@@ -1284,11 +1284,20 @@
 {#if contextMenu}
   {@const repo = contextMenu.repo}
   {@const url = entityUrl({ type: "repo", rid: repo.rid }, config) ?? ""}
+  {@const pinState = pinnedRepoIds.value.includes(repo.rid)}
   <ContextMenu
     x={contextMenu.x}
     y={contextMenu.y}
     target={contextMenu.target}
     onclose={closeContextMenu}>
+    <button
+      class="menu-item"
+      role="menuitem"
+      onclick={() => togglePin(repo.rid)}>
+      <Icon name={pinState ? "pin-filled" : "pin-hollow"} />
+      {pinState ? "Unpin" : "Pin"}
+    </button>
+    <div class="menu-separator"></div>
     <button
       class="menu-item"
       role="menuitem"
