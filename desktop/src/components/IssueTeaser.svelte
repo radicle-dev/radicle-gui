@@ -18,13 +18,16 @@
   import NodeId from "@app/components/NodeId.svelte";
 
   interface Props {
+    contextActive?: boolean;
     focussed?: boolean;
+    oncontextmenu?: (event: MouseEvent) => void;
     issue: Issue;
     rid: string;
     status: IssueStatus;
   }
 
-  const { focussed, issue, rid, status }: Props = $props();
+  const { contextActive, focussed, oncontextmenu, issue, rid, status }: Props =
+    $props();
 </script>
 
 <style>
@@ -40,7 +43,8 @@
     word-break: break-word;
     width: 100%;
   }
-  .issue-teaser:hover {
+  .issue-teaser:hover,
+  .issue-teaser.context-active {
     background-color: var(--color-surface-subtle);
   }
   .status {
@@ -64,6 +68,8 @@
     tabindex="0"
     role="button"
     class="issue-teaser"
+    class:context-active={contextActive}
+    {oncontextmenu}
     style:align-items="flex-start"
     style:clip-path={focussed ? "none" : undefined}
     style:padding={focussed ? "1rem" : "20px"}

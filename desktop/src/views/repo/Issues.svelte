@@ -3,6 +3,7 @@
   import type { CacheEvent } from "@bindings/cob/CacheEvent";
   import type { Issue } from "@bindings/cob/issue/Issue";
   import type { PaginatedQuery } from "@bindings/cob/PaginatedQuery";
+  import type { Config } from "@bindings/config/Config";
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
   import { DEFAULT_TAKE } from "@app/views/repo/router";
@@ -10,7 +11,7 @@
 
   import { searchCobs } from "@app/lib/cobSearch";
   import { debounced } from "@app/lib/debounced.svelte";
-  import { channel, invoke } from "@app/lib/invoke";
+  import { cachedConfig, channel, invoke } from "@app/lib/invoke";
   import {
     issueCountMismatch,
     resetIssueCounts,
@@ -25,6 +26,7 @@
   import CobCacheWarning from "@app/components/CobCacheWarning.svelte";
   import FuzzySearch from "@app/components/FuzzySearch.svelte";
   import Icon from "@app/components/Icon.svelte";
+  import IssueContextMenu from "@app/components/IssueContextMenu.svelte";
   import IssueTeaser from "@app/components/IssueTeaser.svelte";
   import ScrollArea from "@app/components/ScrollArea.svelte";
   import Topbar from "@app/components/Topbar.svelte";
@@ -39,7 +41,9 @@
     status: IssueStatus;
   }
 
-  const { repo, issues, status }: Props = $props();
+  /* eslint-disable prefer-const */
+  let { repo, issues, status }: Props = $props();
+  /* eslint-enable prefer-const */
 
   function listKey(filter: IssueStatus): string {
     return `repo.issues:${repo.rid}:${filter}`;
@@ -113,6 +117,46 @@
         cacheState = undefined;
       }, 1500);
     }
+  }
+
+  let config: Config | undefined = $state();
+  $effect(() => {
+    void cachedConfig()
+      .then(result => {
+        config = result;
+      })
+      .catch(() => undefined);
+  });
+
+  let contextMenu = $state<
+    { x: number; y: number; id: string; target: HTMLElement } | undefined
+  >(undefined);
+
+  const contextItem = $derived(
+    contextMenu && list.items.find(item => item.id === contextMenu?.id),
+  );
+
+  const labelSuggestions = $derived([
+    ...new Set(list.items.flatMap(item => item.labels)),
+  ]);
+
+  function openContextMenu(event: MouseEvent, id: string) {
+    if (config === undefined) return;
+    event.preventDefault();
+    contextMenu = {
+      x: event.clientX,
+      y: event.clientY,
+      id,
+      target: event.currentTarget as HTMLElement,
+    };
+  }
+
+  async function refresh() {
+    const [repoInfo] = await Promise.all([
+      invoke<RepoInfo>("repo_by_id", { rid: repo.rid }),
+      list.revalidate(Math.max(list.items.length, DEFAULT_TAKE)),
+    ]);
+    repo = repoInfo;
   }
 
   const searchResults = $derived(
@@ -291,6 +335,8 @@
           {#snippet row(issue)}
             <div class="row">
               <IssueTeaser
+                contextActive={contextMenu?.id === issue.id}
+                oncontextmenu={event => openContextMenu(event, issue.id)}
                 focussed={searchResults.length === 1 && searchInput !== ""}
                 {issue}
                 rid={repo.rid}
@@ -301,4 +347,17 @@
       </ScrollArea>
     {/if}
   </div>
+
+  {#if contextMenu && contextItem && config}
+    <IssueContextMenu
+      x={contextMenu.x}
+      y={contextMenu.y}
+      target={contextMenu.target}
+      issue={contextItem}
+      {repo}
+      {config}
+      {labelSuggestions}
+      onchange={refresh}
+      onclose={() => (contextMenu = undefined)} />
+  {/if}
 </Layout>

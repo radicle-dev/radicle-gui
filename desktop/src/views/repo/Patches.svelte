@@ -3,6 +3,7 @@
   import type { CacheEvent } from "@bindings/cob/CacheEvent";
   import type { PaginatedQuery } from "@bindings/cob/PaginatedQuery";
   import type { Patch } from "@bindings/cob/patch/Patch";
+  import type { Config } from "@bindings/config/Config";
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
   import { DEFAULT_TAKE } from "@app/views/repo/router";
@@ -10,7 +11,7 @@
 
   import { searchCobs } from "@app/lib/cobSearch";
   import { debounced } from "@app/lib/debounced.svelte";
-  import { channel, invoke } from "@app/lib/invoke";
+  import { cachedConfig, channel, invoke } from "@app/lib/invoke";
   import { createPaginatedList } from "@app/lib/paginatedList.svelte";
   import {
     patchCountMismatch,
@@ -24,6 +25,7 @@
   import FuzzySearch from "@app/components/FuzzySearch.svelte";
   import Icon from "@app/components/Icon.svelte";
   import NewPatchButton from "@app/components/NewPatchButton.svelte";
+  import PatchContextMenu from "@app/components/PatchContextMenu.svelte";
   import PatchTeaser from "@app/components/PatchTeaser.svelte";
   import ScrollArea from "@app/components/ScrollArea.svelte";
   import Topbar from "@app/components/Topbar.svelte";
@@ -37,7 +39,9 @@
     status: PatchStatus | undefined;
   }
 
-  const { repo, patches, status }: Props = $props();
+  /* eslint-disable prefer-const */
+  let { repo, patches, status }: Props = $props();
+  /* eslint-enable prefer-const */
 
   function listKey(filter: PatchStatus | undefined): string {
     return `repo.patches:${repo.rid}:${filter ?? "all"}`;
@@ -104,6 +108,46 @@
         cacheState = undefined;
       }, 1500);
     }
+  }
+
+  let config: Config | undefined = $state();
+  $effect(() => {
+    void cachedConfig()
+      .then(result => {
+        config = result;
+      })
+      .catch(() => undefined);
+  });
+
+  let contextMenu = $state<
+    { x: number; y: number; id: string; target: HTMLElement } | undefined
+  >(undefined);
+
+  const contextItem = $derived(
+    contextMenu && list.items.find(item => item.id === contextMenu?.id),
+  );
+
+  const labelSuggestions = $derived([
+    ...new Set(list.items.flatMap(item => item.labels)),
+  ]);
+
+  function openContextMenu(event: MouseEvent, id: string) {
+    if (config === undefined) return;
+    event.preventDefault();
+    contextMenu = {
+      x: event.clientX,
+      y: event.clientY,
+      id,
+      target: event.currentTarget as HTMLElement,
+    };
+  }
+
+  async function refresh() {
+    const [repoInfo] = await Promise.all([
+      invoke<RepoInfo>("repo_by_id", { rid: repo.rid }),
+      list.revalidate(Math.max(list.items.length, DEFAULT_TAKE)),
+    ]);
+    repo = repoInfo;
   }
 
   const searchResults = $derived(
@@ -319,6 +363,8 @@
           {#snippet row(patch)}
             <div class="row">
               <PatchTeaser
+                contextActive={contextMenu?.id === patch.id}
+                oncontextmenu={event => openContextMenu(event, patch.id)}
                 focussed={searchResults.length === 1 && searchInput !== ""}
                 {patch}
                 rid={repo.rid}
@@ -329,4 +375,17 @@
       </ScrollArea>
     {/if}
   </div>
+
+  {#if contextMenu && contextItem && config}
+    <PatchContextMenu
+      x={contextMenu.x}
+      y={contextMenu.y}
+      target={contextMenu.target}
+      patch={contextItem}
+      {repo}
+      {config}
+      {labelSuggestions}
+      onchange={refresh}
+      onclose={() => (contextMenu = undefined)} />
+  {/if}
 </Layout>

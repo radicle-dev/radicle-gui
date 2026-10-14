@@ -1,3 +1,19 @@
+<script lang="ts" module>
+  import { getContext, setContext } from "svelte";
+
+  export interface ContextMenuState {
+    openSubmenu: symbol | undefined;
+  }
+
+  const contextKey = Symbol("contextMenu");
+
+  export function getContextMenu(): ContextMenuState {
+    return getContext<ContextMenuState>(contextKey);
+  }
+
+  export const itemSelector = '[role="menuitem"], [role="menuitemcheckbox"]';
+</script>
+
 <script lang="ts">
   import type { Snippet } from "svelte";
 
@@ -40,11 +56,14 @@
     return document.scrollingElement as HTMLElement;
   }
 
+  const menuState: ContextMenuState = $state({ openSubmenu: undefined });
+  setContext(contextKey, menuState);
+
   function menuItems(): HTMLElement[] {
     if (!menuEl) return [];
     return Array.from(
-      menuEl.querySelectorAll<HTMLElement>('[role="menuitem"]'),
-    );
+      menuEl.querySelectorAll<HTMLElement>(itemSelector),
+    ).filter(el => el.parentElement?.closest('[role="menu"]') === menuEl);
   }
 
   function onMenuKeydown(ev: KeyboardEvent) {
@@ -59,7 +78,19 @@
 
   function onMenuClick(ev: MouseEvent) {
     const el = ev.target as HTMLElement | null;
-    if (el?.closest('[role="menuitem"]')) onclose();
+    const item = el?.closest('[role="menuitem"]');
+    if (item && !item.hasAttribute("aria-haspopup")) onclose();
+  }
+
+  function onMenuPointerOver(ev: PointerEvent) {
+    const item = (ev.target as HTMLElement | null)?.closest(itemSelector);
+    if (
+      item &&
+      !item.hasAttribute("aria-haspopup") &&
+      item.parentElement?.closest('[role="menu"]') === menuEl
+    ) {
+      menuState.openSubmenu = undefined;
+    }
   }
 
   let menuEl: HTMLDivElement | undefined = $state();
@@ -169,10 +200,16 @@
     color: var(--color-text-tertiary);
     flex-shrink: 0;
   }
-  .menu :global(.menu-item:hover) {
+  .menu :global(.menu-item:hover),
+  .menu :global(.menu-item:focus-visible),
+  .menu :global(.menu-item[aria-expanded="true"]) {
     background-color: var(--color-surface-subtle);
   }
-  .menu :global(.menu-item:hover svg) {
+  .menu :global(.menu-item:focus-visible) {
+    outline: none;
+  }
+  .menu :global(.menu-item:hover svg),
+  .menu :global(.menu-item[aria-expanded="true"] svg) {
     color: var(--color-text-primary);
   }
   .menu :global(.menu-separator) {
@@ -190,6 +227,7 @@
   tabindex="-1"
   onclick={onMenuClick}
   onkeydown={onMenuKeydown}
+  onpointerover={onMenuPointerOver}
   oncontextmenu={e => e.preventDefault()}>
   {@render children()}
 </div>

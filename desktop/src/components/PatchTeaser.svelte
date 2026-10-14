@@ -23,13 +23,16 @@
   import ReviewSummary from "@app/components/ReviewSummary.svelte";
 
   interface Props {
+    contextActive?: boolean;
     focussed?: boolean;
+    oncontextmenu?: (event: MouseEvent) => void;
     patch: Patch;
     rid: string;
     status: PatchStatus | undefined;
   }
 
-  const { focussed, patch, rid, status }: Props = $props();
+  const { contextActive, focussed, oncontextmenu, patch, rid, status }: Props =
+    $props();
 
   // Drafts belong to an identity, so the marker has to know who is signed in.
   // Until the config arrives the marker stays off rather than showing someone
@@ -70,7 +73,8 @@
     word-break: break-word;
     width: 100%;
   }
-  .patch-teaser:hover {
+  .patch-teaser:hover,
+  .patch-teaser.context-active {
     background-color: var(--color-surface-subtle);
   }
   .status {
@@ -94,6 +98,8 @@
     tabindex="0"
     role="button"
     class="patch-teaser"
+    class:context-active={contextActive}
+    {oncontextmenu}
     style:align-items="flex-start"
     style:clip-path={focussed ? "none" : undefined}
     style:padding={focussed ? "1rem" : "1.25rem"}
