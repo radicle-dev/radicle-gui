@@ -35,6 +35,7 @@ test("a dismissed hint stays dismissed", async ({ page }) => {
   await page.getByTitle("Don't show again").click();
   await expect(hint).toBeHidden();
   await reload(page);
+  await page.getByText("This title has **markdown**").click();
   await expect(page.getByPlaceholder("Leave a comment")).toBeVisible();
   await expect(hint).toBeHidden();
 });
@@ -67,6 +68,8 @@ test("the revision sort order is remembered", async ({ page }) => {
   await expect(page.getByTitle(after, { exact: true })).toBeVisible();
 
   await reload(page);
+  await page.getByText("Taking another stab at the README").click();
+  await page.getByRole("button", { name: "icon-diff Changes" }).click();
   await picker.click();
   await expect(page.getByTitle(after, { exact: true })).toBeVisible();
 });

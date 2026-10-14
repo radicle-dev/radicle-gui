@@ -82,6 +82,8 @@
     status: PatchStatus | undefined;
     view?: PatchView;
     review?: Review;
+    inSheet?: boolean;
+    onChange?: () => void;
   }
 
   /* eslint-disable prefer-const */
@@ -94,6 +96,8 @@
     status,
     view,
     review,
+    inSheet = false,
+    onChange = undefined,
   }: Props = $props();
   /* eslint-enable prefer-const */
 
@@ -144,13 +148,22 @@
   let tab: "patch" | "revisions" | "timeline" = $state(
     revisions.length > 1 ? "revisions" : "patch",
   );
-  const patchView: PatchView = $derived(view ?? "activity");
+  // In the sheet the tabs switch in place, since the route belongs to the page
+  // underneath.
+  let sheetView: PatchView = $state("activity");
+  const patchView: PatchView = $derived(
+    inSheet ? sheetView : (view ?? "activity"),
+  );
   // On the Changes view the diff owns the scroll — the page around it does not
   // scroll at all, and the patch chrome is rendered inside the diff's scroll
   // content instead (see `patchHeader`). A review page does the same with its
   // own chrome, so both bypass `.main` for a full-height pane.
   const changesPane = $derived(patchView === "changes" && !currentReview);
   function setView(next: PatchView) {
+    if (inSheet) {
+      sheetView = next;
+      return;
+    }
     void router.push({
       resource: "repo.patch",
       rid: repo.rid,
@@ -501,6 +514,7 @@
         id: patchId,
       }),
     ]);
+    onChange?.();
   }
 
   // A draft review belongs to a single revision, mirroring the protocol's
@@ -578,6 +592,9 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+  }
+  .page.in-sheet .main {
+    padding: 1.5rem 2rem;
   }
   .breadcrumb {
     display: flex;
@@ -874,111 +891,118 @@
   }
 </style>
 
-<Layout>
-  <div class="page">
-    <Topbar>
-      <div class="breadcrumb">
-        <Icon
-          name={patch.state.status === "open"
-            ? "patch"
-            : `patch-${patch.state.status}`} />
-        <button
-          class="breadcrumb-link"
-          onclick={() =>
-            router.push({
-              resource: "repo.patches",
-              rid: repo.rid,
-              status: patch.state.status,
-            })}>
-          {patchStatusLabel[patch.state.status]}
-        </button>
-        <Icon name="chevron-right" />
-        {#if currentReview}
+{#snippet page()}
+  <div class="page" class:in-sheet={inSheet}>
+    {#if !inSheet}
+      <Topbar>
+        <div class="breadcrumb">
+          <Icon
+            name={patch.state.status === "open"
+              ? "patch"
+              : `patch-${patch.state.status}`} />
           <button
-            class="breadcrumb-link breadcrumb-title"
+            class="breadcrumb-link"
             onclick={() =>
               router.push({
-                resource: "repo.patch",
+                resource: "repo.patches",
                 rid: repo.rid,
-                patch: patch.id,
-                status,
-                reviewId: undefined,
-                view: patchView === "changes" ? "changes" : undefined,
+                status: patch.state.status,
               })}>
-            {patch.title}
+            {patchStatusLabel[patch.state.status]}
           </button>
           <Icon name="chevron-right" />
-          <span style:color="var(--color-text-secondary)">
-            Review by {currentReview.author.alias ??
-              currentReview.author.did.slice(0, 16)}
-          </span>
-        {:else}
-          <span class="breadcrumb-title">{patch.title}</span>
-        {/if}
-      </div>
-      <div
-        class="global-flex"
-        style:margin-left="auto"
-        style:gap="0.5rem"
-        style:z-index="40">
-        <!-- Not on the review view: the page's own Delete is for the review, and
+          {#if currentReview}
+            <button
+              class="breadcrumb-link breadcrumb-title"
+              onclick={() =>
+                router.push({
+                  resource: "repo.patch",
+                  rid: repo.rid,
+                  patch: patch.id,
+                  status,
+                  reviewId: undefined,
+                  view: patchView === "changes" ? "changes" : undefined,
+                })}>
+              {patch.title}
+            </button>
+            <Icon name="chevron-right" />
+            <span style:color="var(--color-text-secondary)">
+              Review by {currentReview.author.alias ??
+                currentReview.author.did.slice(0, 16)}
+            </span>
+          {:else}
+            <span class="breadcrumb-title">{patch.title}</span>
+          {/if}
+        </div>
+        <div
+          class="global-flex"
+          style:margin-left="auto"
+          style:gap="0.5rem"
+          style:z-index="40">
+          <!-- Not on the review view: the page's own Delete is for the review, and
              a second Delete up here would be one word for two different
              targets. -->
-        {#if isOwnPatch && !currentReview}
-          <ConfirmDeleteButton noun="patch" onDelete={deletePatch} />
-        {/if}
-        <ShareButton
-          target={{ type: "cob", kind: "patch", rid: repo.rid, oid: patch.id }}
-          id={patch.id}
-          idLabel="patch"
-          variant="naked"
-          {config} />
-        <CheckoutPatchButton
-          patchId={patch.id}
-          selectedRevisionId={selectedRevision.id}
-          {tab} />
-        <!-- Not on the review view: reviewing is what that view already is, and
+          {#if isOwnPatch && !currentReview}
+            <ConfirmDeleteButton noun="patch" onDelete={deletePatch} />
+          {/if}
+          <ShareButton
+            target={{
+              type: "cob",
+              kind: "patch",
+              rid: repo.rid,
+              oid: patch.id,
+            }}
+            id={patch.id}
+            idLabel="patch"
+            variant="naked"
+            {config} />
+          <CheckoutPatchButton
+            patchId={patch.id}
+            selectedRevisionId={selectedRevision.id}
+            {tab} />
+          <!-- Not on the review view: reviewing is what that view already is, and
              it carries its own actions on the page. -->
-        {#if !currentReview}
-          {#if ownDraftReview}
-            {#if patchView !== "changes"}
+          {#if !currentReview}
+            {#if ownDraftReview}
+              {#if patchView !== "changes"}
+                <Button
+                  variant="secondary"
+                  onclick={() => setView("changes")}
+                  title="Continue your review of this revision">
+                  <Icon name="comment" />
+                  <span
+                    class="txt-body-m-regular global-hide-on-medium-desktop-down">
+                    Continue review
+                  </span>
+                </Button>
+              {/if}
+            {:else}
               <Button
                 variant="secondary"
-                onclick={() => setView("changes")}
-                title="Continue your review of this revision">
+                disabled={hasOwnPublishedReviewOnSelected}
+                onclick={() => {
+                  draftReviewStorage.create(
+                    repo.rid,
+                    patch.id,
+                    selectedRevision.id,
+                    config.publicKey,
+                  );
+                  setView("changes");
+                }}
+                title={hasOwnPublishedReviewOnSelected
+                  ? "You already reviewed this revision. You can still add comments on the changes."
+                  : "Start a review of this revision"}>
                 <Icon name="comment" />
                 <span
                   class="txt-body-m-regular global-hide-on-medium-desktop-down">
-                  Continue review
+                  Review
                 </span>
               </Button>
             {/if}
-          {:else}
-            <Button
-              variant="secondary"
-              disabled={hasOwnPublishedReviewOnSelected}
-              onclick={() => {
-                draftReviewStorage.create(
-                  repo.rid,
-                  patch.id,
-                  selectedRevision.id,
-                  config.publicKey,
-                );
-                setView("changes");
-              }}
-              title={hasOwnPublishedReviewOnSelected
-                ? "You already reviewed this revision. You can still add comments on the changes."
-                : "Start a review of this revision"}>
-              <Icon name="comment" />
-              <span
-                class="txt-body-m-regular global-hide-on-medium-desktop-down">
-                Review
-              </span>
-            </Button>
           {/if}
-        {/if}
-      </div>
-    </Topbar>
+        </div>
+      </Topbar>
+    {/if}
 
     <!-- Grid children of `.main`, which places them by area — so they cannot be
          bundled with the tab bar, which belongs inside `.content`. -->
@@ -1527,4 +1551,12 @@
             }} />
     {/if}
   </div>
-</Layout>
+{/snippet}
+
+{#if inSheet}
+  {@render page()}
+{:else}
+  <Layout>
+    {@render page()}
+  </Layout>
+{/if}

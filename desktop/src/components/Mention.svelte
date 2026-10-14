@@ -13,7 +13,6 @@
     cachedRepoById,
     cachedRepoCommit,
   } from "@app/lib/invoke";
-  import { followIssueLink } from "@app/lib/issueSheet";
   import type { Entity } from "@app/lib/mentions";
   import {
     entityUri,
@@ -24,6 +23,7 @@
   import type { Route } from "@app/lib/router";
   import { routeToPath } from "@app/lib/router";
   import { fetchingRepos } from "@app/lib/seedRepo";
+  import { followIssueLink } from "@app/lib/sheet";
   import {
     formatOid,
     issueStatusColor,
@@ -325,7 +325,7 @@
     {href}
     target={missing ? "_blank" : undefined}
     rel={missing ? "noopener noreferrer" : undefined}
-    data-issue-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
+    data-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
     onclick={handleClick}
     onmousedown={keepSelection}
     oncontextmenu={openMenu}
@@ -354,7 +354,7 @@
     {href}
     target={missing ? "_blank" : undefined}
     rel={missing ? "noopener noreferrer" : undefined}
-    data-issue-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
+    data-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
     onclick={handleClick}
     onmousedown={keepSelection}
     oncontextmenu={openMenu}
@@ -376,7 +376,7 @@
     {href}
     target={missing ? "_blank" : undefined}
     rel={missing ? "noopener noreferrer" : undefined}
-    data-issue-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
+    data-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
     onclick={handleClick}
     onmousedown={keepSelection}
     oncontextmenu={openMenu}
@@ -400,7 +400,7 @@
     {href}
     target={missing ? "_blank" : undefined}
     rel={missing ? "noopener noreferrer" : undefined}
-    data-issue-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
+    data-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
     onclick={handleClick}
     onmousedown={keepSelection}
     oncontextmenu={openMenu}
@@ -422,7 +422,7 @@
     {href}
     target={missing ? "_blank" : undefined}
     rel={missing ? "noopener noreferrer" : undefined}
-    data-issue-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
+    data-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
     onclick={handleClick}
     onmousedown={keepSelection}
     oncontextmenu={openMenu}

@@ -4,18 +4,15 @@
   import { cubicIn, cubicOut } from "svelte/easing";
   import { fly } from "svelte/transition";
 
-  import {
-    closeIssueSheet,
-    issueSheet,
-    issueSheetChanges,
-  } from "@app/lib/issueSheet";
   import * as router from "@app/lib/router";
+  import { closeSheet, sheet, sheetChanges, sheetId } from "@app/lib/sheet";
 
   import Button from "@app/components/Button.svelte";
   import Icon from "@app/components/Icon.svelte";
   import IssueDetail from "@app/components/IssueDetail.svelte";
   import ScrollArea from "@app/components/ScrollArea.svelte";
   import ShareButton from "@app/components/ShareButton.svelte";
+  import PatchView from "@app/views/repo/Patch.svelte";
 
   interface Props {
     config: Config;
@@ -28,43 +25,49 @@
   const OVERLAYS = '.popover, [role="menu"], [data-modal-content]';
 
   function openPage() {
-    if (!$issueSheet) return;
-    void router.push({
-      resource: "repo.issue",
-      rid: $issueSheet.repo.rid,
-      issue: $issueSheet.issue.id,
-      status: "all",
-    });
+    if (!$sheet) return;
+    if ($sheet.kind === "issue") {
+      void router.push({
+        resource: "repo.issue",
+        rid: $sheet.repo.rid,
+        issue: $sheet.issue.id,
+        status: "all",
+      });
+    } else {
+      void router.push({
+        resource: "repo.patch",
+        rid: $sheet.repo.rid,
+        patch: $sheet.patch.id,
+        status: undefined,
+        reviewId: undefined,
+      });
+    }
   }
 
-  // A click on something that opens an issue swaps the sheet instead of
-  // closing it first.
+  function changed() {
+    sheetChanges.update(n => n + 1);
+  }
+
+  // A click on something that opens a sheet swaps it instead of closing it
+  // first.
   function onPointerDown(event: PointerEvent) {
-    if (!$issueSheet || !(event.target instanceof Element)) return;
+    if (!$sheet || !(event.target instanceof Element)) return;
     if (document.querySelector("[data-modal-content]")) return;
-    if (
-      event.target.closest(
-        `.issue-sheet, [data-issue-sheet-trigger], ${OVERLAYS}`,
-      )
-    ) {
+    if (event.target.closest(`.sheet, [data-sheet-trigger], ${OVERLAYS}`)) {
       return;
     }
-    closeIssueSheet();
+    closeSheet();
   }
 
   function onKeydown(event: KeyboardEvent) {
-    if (
-      event.key === "Escape" &&
-      $issueSheet &&
-      !document.querySelector(OVERLAYS)
-    ) {
-      closeIssueSheet();
+    if (event.key === "Escape" && $sheet && !document.querySelector(OVERLAYS)) {
+      closeSheet();
     }
   }
 </script>
 
 <style>
-  .issue-sheet {
+  .sheet {
     position: fixed;
     top: 0;
     right: 0;
@@ -76,6 +79,9 @@
     background-color: var(--color-surface-canvas);
     border-left: 1px solid var(--color-border-subtle);
     box-shadow: var(--elevation-low);
+  }
+  .sheet.patch {
+    width: min(56rem, 64vw);
   }
   .header {
     display: flex;
@@ -96,24 +102,37 @@
     padding: 0 2rem 2rem;
     min-width: 0;
   }
+  .patch-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
 </style>
 
 <svelte:window onpointerdowncapture={onPointerDown} onkeydown={onKeydown} />
 
-{#if $issueSheet}
-  {@const { repo, issue, activity, threads } = $issueSheet}
+{#if $sheet}
+  {@const data = $sheet}
+  {@const id = sheetId(data)}
   <div
-    class="issue-sheet"
+    class="sheet"
+    class:patch={data.kind === "patch"}
     role="dialog"
-    aria-label="Issue"
+    aria-label={data.kind === "issue" ? "Issue" : "Patch"}
     in:fly={{ x: "100%", opacity: 1, duration: 260, easing: cubicOut }}
     out:fly={{ x: "100%", opacity: 1, duration: 200, easing: cubicIn }}>
     <div class="header">
-      <span class="id">{issue.id.slice(0, 7)}</span>
+      <span class="id">{id.slice(0, 7)}</span>
       <ShareButton
-        target={{ type: "cob", kind: "issue", rid: repo.rid, oid: issue.id }}
-        id={issue.id}
-        idLabel="issue"
+        target={{
+          type: "cob",
+          kind: data.kind,
+          rid: data.repo.rid,
+          oid: id,
+        }}
+        {id}
+        idLabel={data.kind}
         variant="naked"
         {config} />
       <Button
@@ -127,22 +146,36 @@
         styleHeight="2rem"
         variant="naked"
         title="Close"
-        onclick={closeIssueSheet}>
+        onclick={closeSheet}>
         <Icon name="close" />
       </Button>
     </div>
-    <ScrollArea style="flex: 1; min-height: 0;">
-      {#key `${repo.rid}/${issue.id}`}
-        <div class="body">
-          <IssueDetail
-            {repo}
-            {issue}
-            {activity}
-            {threads}
+    {#key `${data.kind}/${data.repo.rid}/${id}`}
+      {#if data.kind === "issue"}
+        <ScrollArea style="flex: 1; min-height: 0;">
+          <div class="body">
+            <IssueDetail
+              repo={data.repo}
+              issue={data.issue}
+              activity={data.activity}
+              threads={data.threads}
+              {config}
+              onChange={changed} />
+          </div>
+        </ScrollArea>
+      {:else}
+        <div class="patch-body">
+          <PatchView
+            repo={data.repo}
+            patch={data.patch}
+            revisions={data.revisions}
+            activity={data.activity}
             {config}
-            onChange={() => issueSheetChanges.update(n => n + 1)} />
+            status={undefined}
+            inSheet
+            onChange={changed} />
         </div>
-      {/key}
-    </ScrollArea>
+      {/if}
+    {/key}
   </div>
 {/if}

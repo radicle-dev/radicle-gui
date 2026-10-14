@@ -17,10 +17,10 @@
     resetIssueCounts,
     updateIssueCounts,
   } from "@app/lib/issueCounts.svelte";
-  import { issueSheetChanges, openIssueSheet } from "@app/lib/issueSheet";
   import { show } from "@app/lib/modal";
   import { createPaginatedList } from "@app/lib/paginatedList.svelte";
   import * as router from "@app/lib/router";
+  import { openIssueSheet, sheetChanges } from "@app/lib/sheet";
   import { modifierKey } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
@@ -97,10 +97,10 @@
     showSearch = false;
   });
 
-  let seenSheetChanges = $issueSheetChanges;
+  let seenSheetChanges = $sheetChanges;
   $effect(() => {
-    if ($issueSheetChanges === seenSheetChanges) return;
-    seenSheetChanges = $issueSheetChanges;
+    if ($sheetChanges === seenSheetChanges) return;
+    seenSheetChanges = $sheetChanges;
     void untrack(() =>
       list.revalidate(Math.max(list.items.length, DEFAULT_TAKE)),
     );

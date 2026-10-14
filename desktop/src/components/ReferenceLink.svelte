@@ -2,11 +2,11 @@
   import type { Config } from "@bindings/config/Config";
 
   import { cachedConfig, cachedRepoById } from "@app/lib/invoke";
-  import { followIssueLink } from "@app/lib/issueSheet";
   import { describeLink, referenceRoute } from "@app/lib/mentions";
   import { formatReference, parseReference } from "@app/lib/radUri";
   import { routeToPath } from "@app/lib/router";
   import { fetchingRepos } from "@app/lib/seedRepo";
+  import { followIssueLink } from "@app/lib/sheet";
   import { explorerLink } from "@app/lib/utils";
 
   import ExplorerMenu, {
@@ -94,7 +94,7 @@
   target={!inApp && url ? "_blank" : undefined}
   rel={!inApp && url ? "noopener noreferrer" : undefined}
   title={href}
-  data-issue-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
+  data-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
   onclick={handleClick}
   onmousedown={keepSelection}
   oncontextmenu={openMenu}>

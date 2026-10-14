@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Issue } from "@bindings/cob/issue/Issue";
 
-  import { issueSheet, openIssueSheet } from "@app/lib/issueSheet";
+  import { openIssueSheet, sheet } from "@app/lib/sheet";
   import {
     absoluteTimestamp,
     authorForNodeId,
@@ -63,9 +63,10 @@
     tabindex="0"
     role="button"
     class="issue-teaser"
-    class:selected={$issueSheet?.repo.rid === rid &&
-      $issueSheet.issue.id === issue.id}
-    data-issue-sheet-trigger
+    class:selected={$sheet?.kind === "issue" &&
+      $sheet.repo.rid === rid &&
+      $sheet.issue.id === issue.id}
+    data-sheet-trigger
     style:align-items="flex-start"
     style:clip-path={focussed ? "none" : undefined}
     style:padding={focussed ? "1rem" : "20px"}

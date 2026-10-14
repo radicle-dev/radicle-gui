@@ -7,6 +7,7 @@
 
   import { DEFAULT_TAKE } from "@app/views/repo/router";
   import delay from "lodash/delay";
+  import { untrack } from "svelte";
 
   import { searchCobs } from "@app/lib/cobSearch";
   import { debounced } from "@app/lib/debounced.svelte";
@@ -18,6 +19,7 @@
     updatePatchCounts,
   } from "@app/lib/patchCounts.svelte";
   import * as router from "@app/lib/router";
+  import { openPatchSheet, sheetChanges } from "@app/lib/sheet";
   import { modifierKey } from "@app/lib/utils";
 
   import CobCacheWarning from "@app/components/CobCacheWarning.svelte";
@@ -84,6 +86,15 @@
 
     searchInput = "";
     showSearch = false;
+  });
+
+  let seenSheetChanges = $sheetChanges;
+  $effect(() => {
+    if ($sheetChanges === seenSheetChanges) return;
+    seenSheetChanges = $sheetChanges;
+    void untrack(() =>
+      list.revalidate(Math.max(list.items.length, DEFAULT_TAKE)),
+    );
   });
 
   async function rebuildPatchCache() {
@@ -257,13 +268,7 @@
           }}
           onSubmit={async () => {
             if (searchResults.length === 1) {
-              await router.push({
-                patch: searchResults[0].id,
-                resource: "repo.patch",
-                reviewId: undefined,
-                rid: repo.rid,
-                status,
-              });
+              await openPatchSheet(repo.rid, searchResults[0].id);
             }
           }}
           bind:show={showSearch}
@@ -321,8 +326,7 @@
               <PatchTeaser
                 focussed={searchResults.length === 1 && searchInput !== ""}
                 {patch}
-                rid={repo.rid}
-                {status} />
+                rid={repo.rid} />
             </div>
           {/snippet}
         </VirtualList>

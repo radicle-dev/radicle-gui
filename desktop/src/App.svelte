@@ -16,10 +16,10 @@
   import { deepLinksReady, listenForDeepLinks } from "@app/lib/deepLink";
   import { dynamicInterval } from "@app/lib/interval";
   import { invoke } from "@app/lib/invoke";
-  import { closeIssueSheet } from "@app/lib/issueSheet";
   import { hide, modalStore, show, toggle } from "@app/lib/modal";
   import * as router from "@app/lib/router";
   import { isLoadedRepoRoute } from "@app/lib/router/definitions";
+  import { closeSheet } from "@app/lib/sheet";
   import { listenForShortcuts, useShortcuts } from "@app/lib/shortcuts.svelte";
   import {
     createEventEmittersOnce,
@@ -58,14 +58,14 @@
   import ExternalLink from "./components/ExternalLink.svelte";
   import FullscreenModalPortal from "./components/FullscreenModalPortal.svelte";
   import FullWindowError from "./components/FullWindowError.svelte";
-  import IssueSheet from "./components/IssueSheet.svelte";
+  import Sheet from "./components/Sheet.svelte";
 
   const activeRouteStore = router.activeRouteStore;
 
   $effect(() => {
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     $activeRouteStore;
-    closeIssueSheet();
+    closeSheet();
   });
 
   const activeRepo = $derived.by((): RepoInfo | undefined => {
@@ -305,6 +305,6 @@
     </div>
   </div>
   {#if profile}
-    <IssueSheet config={profile} />
+    <Sheet config={profile} />
   {/if}
 {/if}
