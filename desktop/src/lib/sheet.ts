@@ -113,9 +113,18 @@ export async function refreshSheet() {
   }
 }
 
+// The row that opened the sheet keeps focus, and closing with Escape would
+// otherwise show its focus ring.
 export function closeSheet() {
   request++;
   sheet.set(undefined);
+  const focused = document.activeElement;
+  if (
+    focused instanceof HTMLElement &&
+    focused.closest("[data-sheet-trigger]")
+  ) {
+    focused.blur();
+  }
 }
 
 const SHEET_PAGES = ["repo.patch", "repo.issues"];
