@@ -5,7 +5,18 @@
   import { fly } from "svelte/transition";
 
   import * as router from "@app/lib/router";
-  import { closeSheet, sheet, sheetChanges, sheetId } from "@app/lib/sheet";
+  import {
+    closeSheet,
+    refreshSheet,
+    sheet,
+    sheetChanges,
+    sheetId,
+  } from "@app/lib/sheet";
+  import {
+    issueStatusIcon,
+    issueStatusLabel,
+    patchStatusLabel,
+  } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
   import Icon from "@app/components/Icon.svelte";
@@ -46,6 +57,24 @@
 
   function changed() {
     sheetChanges.update(n => n + 1);
+    void refreshSheet();
+  }
+
+  function openList() {
+    if (!$sheet) return;
+    if ($sheet.kind === "issue") {
+      void router.push({
+        resource: "repo.issues",
+        rid: $sheet.repo.rid,
+        status: $sheet.issue.state.status,
+      });
+    } else {
+      void router.push({
+        resource: "repo.patches",
+        rid: $sheet.repo.rid,
+        status: $sheet.patch.state.status,
+      });
+    }
   }
 
   // A click on something that opens a sheet swaps it instead of closing it
@@ -86,17 +115,40 @@
   .header {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 0.75rem;
     height: 2.75rem;
-    padding: 0 0.75rem;
+    padding: 0 1rem;
     border-bottom: 1px solid var(--color-border-subtle);
     flex-shrink: 0;
-  }
-  .id {
-    font: var(--txt-code-regular);
+    font: var(--txt-body-m-regular);
     color: var(--color-text-secondary);
+  }
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-width: 0;
     margin-right: auto;
-    padding-left: 0.25rem;
+  }
+  .breadcrumb-link {
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+    font: var(--txt-body-m-regular);
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+  }
+  .breadcrumb-link:hover {
+    color: var(--color-text-primary);
+  }
+  .breadcrumb-title {
+    color: var(--color-text-primary);
+    font: var(--txt-body-m-medium);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .body {
     padding: 0 2rem 2rem;
@@ -123,7 +175,26 @@
     in:fly={{ x: "100%", opacity: 1, duration: 260, easing: cubicOut }}
     out:fly={{ x: "100%", opacity: 1, duration: 200, easing: cubicIn }}>
     <div class="header">
-      <span class="id">{id.slice(0, 7)}</span>
+      <div class="breadcrumb">
+        {#if data.kind === "issue"}
+          <Icon name={issueStatusIcon[data.issue.state.status]} />
+          <button class="breadcrumb-link" onclick={openList}>
+            {issueStatusLabel[data.issue.state.status]}
+          </button>
+          <Icon name="chevron-right" />
+          <span class="breadcrumb-title">{data.issue.title}</span>
+        {:else}
+          <Icon
+            name={data.patch.state.status === "open"
+              ? "patch"
+              : `patch-${data.patch.state.status}`} />
+          <button class="breadcrumb-link" onclick={openList}>
+            {patchStatusLabel[data.patch.state.status]}
+          </button>
+          <Icon name="chevron-right" />
+          <span class="breadcrumb-title">{data.patch.title}</span>
+        {/if}
+      </div>
       <ShareButton
         target={{
           type: "cob",

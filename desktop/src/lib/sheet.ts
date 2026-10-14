@@ -93,6 +93,26 @@ export function openPatchSheet(rid: string, id: string) {
   });
 }
 
+// Re-reads the item on show after an edit in the sheet, so the sheet's own
+// chrome follows changes such as a new state.
+export async function refreshSheet() {
+  const current = get(sheet);
+  if (!current) return;
+  const rid = current.repo.rid;
+  const id = sheetId(current);
+  try {
+    if (current.kind === "issue") {
+      const issue = await invoke<Issue>("issue_by_id", { rid, id });
+      if (get(sheet) === current) sheet.set({ ...current, issue });
+    } else {
+      const patch = await invoke<Patch>("patch_by_id", { rid, id });
+      if (get(sheet) === current) sheet.set({ ...current, patch });
+    }
+  } catch (error) {
+    console.error(`Refreshing the ${current.kind} failed`, error);
+  }
+}
+
 export function closeSheet() {
   request++;
   sheet.set(undefined);
