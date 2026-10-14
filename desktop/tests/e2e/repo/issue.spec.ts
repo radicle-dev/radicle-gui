@@ -3,7 +3,9 @@ import { cobRid, expect, test } from "@tests/support/fixtures.js";
 test("navigate single issue", async ({ page }) => {
   await page.goto(`/repos/${cobRid}/issues?status=all`);
   await page.getByText("This title has **markdown**").click();
+  await expect(page.getByRole("dialog", { name: "Issue" })).toBeVisible();
 
+  await page.getByTitle("Open full page").click();
   await expect(page).toHaveURL(/\/issues\/[0-9a-f]{40}/);
 });
 

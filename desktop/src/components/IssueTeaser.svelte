@@ -1,8 +1,7 @@
 <script lang="ts">
-  import type { IssueStatus } from "@app/views/repo/router";
   import type { Issue } from "@bindings/cob/issue/Issue";
 
-  import { push } from "@app/lib/router";
+  import { issueSheet, openIssueSheet } from "@app/lib/issueSheet";
   import {
     absoluteTimestamp,
     authorForNodeId,
@@ -21,10 +20,9 @@
     focussed?: boolean;
     issue: Issue;
     rid: string;
-    status: IssueStatus;
   }
 
-  const { focussed, issue, rid, status }: Props = $props();
+  const { focussed, issue, rid }: Props = $props();
 </script>
 
 <style>
@@ -40,7 +38,8 @@
     word-break: break-word;
     width: 100%;
   }
-  .issue-teaser:hover {
+  .issue-teaser:hover,
+  .issue-teaser.selected {
     background-color: var(--color-surface-subtle);
   }
   .status {
@@ -64,11 +63,14 @@
     tabindex="0"
     role="button"
     class="issue-teaser"
+    class:selected={$issueSheet?.repo.rid === rid &&
+      $issueSheet.issue.id === issue.id}
+    data-issue-sheet-trigger
     style:align-items="flex-start"
     style:clip-path={focussed ? "none" : undefined}
     style:padding={focussed ? "1rem" : "20px"}
     onclick={() => {
-      void push({ resource: "repo.issue", rid, issue: issue.id, status });
+      void openIssueSheet(rid, issue.id);
     }}>
     <div class="global-flex" style:align-items="flex-start">
       <div

@@ -7,6 +7,7 @@
 
   import { DEFAULT_TAKE } from "@app/views/repo/router";
   import delay from "lodash/delay";
+  import { untrack } from "svelte";
 
   import { searchCobs } from "@app/lib/cobSearch";
   import { debounced } from "@app/lib/debounced.svelte";
@@ -16,6 +17,7 @@
     resetIssueCounts,
     updateIssueCounts,
   } from "@app/lib/issueCounts.svelte";
+  import { issueSheetChanges, openIssueSheet } from "@app/lib/issueSheet";
   import { show } from "@app/lib/modal";
   import { createPaginatedList } from "@app/lib/paginatedList.svelte";
   import * as router from "@app/lib/router";
@@ -93,6 +95,15 @@
 
     searchInput = "";
     showSearch = false;
+  });
+
+  let seenSheetChanges = $issueSheetChanges;
+  $effect(() => {
+    if ($issueSheetChanges === seenSheetChanges) return;
+    seenSheetChanges = $issueSheetChanges;
+    void untrack(() =>
+      list.revalidate(Math.max(list.items.length, DEFAULT_TAKE)),
+    );
   });
 
   async function rebuildIssueCache() {
@@ -221,12 +232,7 @@
           }}
           onSubmit={async () => {
             if (searchResults.length === 1) {
-              await router.push({
-                resource: "repo.issue",
-                rid: repo.rid,
-                issue: searchResults[0].id,
-                status,
-              });
+              await openIssueSheet(repo.rid, searchResults[0].id);
             }
           }}
           bind:show={showSearch}
@@ -293,8 +299,7 @@
               <IssueTeaser
                 focussed={searchResults.length === 1 && searchInput !== ""}
                 {issue}
-                rid={repo.rid}
-                {status} />
+                rid={repo.rid} />
             </div>
           {/snippet}
         </VirtualList>

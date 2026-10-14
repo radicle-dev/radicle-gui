@@ -13,6 +13,7 @@
     cachedRepoById,
     cachedRepoCommit,
   } from "@app/lib/invoke";
+  import { followIssueLink } from "@app/lib/issueSheet";
   import type { Entity } from "@app/lib/mentions";
   import {
     entityUri,
@@ -21,7 +22,7 @@
     toRadReference,
   } from "@app/lib/mentions";
   import type { Route } from "@app/lib/router";
-  import { push, routeToPath } from "@app/lib/router";
+  import { routeToPath } from "@app/lib/router";
   import { fetchingRepos } from "@app/lib/seedRepo";
   import {
     formatOid,
@@ -214,7 +215,7 @@
       return;
     }
 
-    void push(route);
+    followIssueLink(route);
   }
 
   function scrollToTop(from: HTMLElement) {
@@ -324,6 +325,7 @@
     {href}
     target={missing ? "_blank" : undefined}
     rel={missing ? "noopener noreferrer" : undefined}
+    data-issue-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
     onclick={handleClick}
     onmousedown={keepSelection}
     oncontextmenu={openMenu}
@@ -352,6 +354,7 @@
     {href}
     target={missing ? "_blank" : undefined}
     rel={missing ? "noopener noreferrer" : undefined}
+    data-issue-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
     onclick={handleClick}
     onmousedown={keepSelection}
     oncontextmenu={openMenu}
@@ -373,6 +376,7 @@
     {href}
     target={missing ? "_blank" : undefined}
     rel={missing ? "noopener noreferrer" : undefined}
+    data-issue-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
     onclick={handleClick}
     onmousedown={keepSelection}
     oncontextmenu={openMenu}
@@ -396,6 +400,7 @@
     {href}
     target={missing ? "_blank" : undefined}
     rel={missing ? "noopener noreferrer" : undefined}
+    data-issue-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
     onclick={handleClick}
     onmousedown={keepSelection}
     oncontextmenu={openMenu}
@@ -417,6 +422,7 @@
     {href}
     target={missing ? "_blank" : undefined}
     rel={missing ? "noopener noreferrer" : undefined}
+    data-issue-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
     onclick={handleClick}
     onmousedown={keepSelection}
     oncontextmenu={openMenu}

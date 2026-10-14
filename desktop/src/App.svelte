@@ -16,6 +16,7 @@
   import { deepLinksReady, listenForDeepLinks } from "@app/lib/deepLink";
   import { dynamicInterval } from "@app/lib/interval";
   import { invoke } from "@app/lib/invoke";
+  import { closeIssueSheet } from "@app/lib/issueSheet";
   import { hide, modalStore, show, toggle } from "@app/lib/modal";
   import * as router from "@app/lib/router";
   import { isLoadedRepoRoute } from "@app/lib/router/definitions";
@@ -57,8 +58,15 @@
   import ExternalLink from "./components/ExternalLink.svelte";
   import FullscreenModalPortal from "./components/FullscreenModalPortal.svelte";
   import FullWindowError from "./components/FullWindowError.svelte";
+  import IssueSheet from "./components/IssueSheet.svelte";
 
   const activeRouteStore = router.activeRouteStore;
+
+  $effect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    $activeRouteStore;
+    closeIssueSheet();
+  });
 
   const activeRepo = $derived.by((): RepoInfo | undefined => {
     const route = $activeRouteStore;
@@ -296,4 +304,7 @@
       {/if}
     </div>
   </div>
+  {#if profile}
+    <IssueSheet config={profile} />
+  {/if}
 {/if}

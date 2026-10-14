@@ -2,9 +2,10 @@
   import type { Config } from "@bindings/config/Config";
 
   import { cachedConfig, cachedRepoById } from "@app/lib/invoke";
+  import { followIssueLink } from "@app/lib/issueSheet";
   import { describeLink, referenceRoute } from "@app/lib/mentions";
   import { formatReference, parseReference } from "@app/lib/radUri";
-  import { push, routeToPath } from "@app/lib/router";
+  import { routeToPath } from "@app/lib/router";
   import { fetchingRepos } from "@app/lib/seedRepo";
   import { explorerLink } from "@app/lib/utils";
 
@@ -69,7 +70,7 @@
   function handleClick(event: MouseEvent) {
     if (!inApp || !route) return;
     event.preventDefault();
-    void push(route);
+    followIssueLink(route);
   }
 
   let menu: MenuPosition | undefined = $state(undefined);
@@ -93,6 +94,7 @@
   target={!inApp && url ? "_blank" : undefined}
   rel={!inApp && url ? "noopener noreferrer" : undefined}
   title={href}
+  data-issue-sheet-trigger={route?.resource === "repo.issue" ? "" : undefined}
   onclick={handleClick}
   onmousedown={keepSelection}
   oncontextmenu={openMenu}>
