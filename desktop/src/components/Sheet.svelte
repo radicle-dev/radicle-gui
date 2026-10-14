@@ -82,7 +82,11 @@
   function onPointerDown(event: PointerEvent) {
     if (!$sheet || !(event.target instanceof Element)) return;
     if (document.querySelector("[data-modal-content]")) return;
-    if (event.target.closest(`.sheet, [data-sheet-trigger], ${OVERLAYS}`)) {
+    if (
+      event.target.closest(
+        `.sheet, [data-sheet-trigger], [data-portal], ${OVERLAYS}`,
+      )
+    ) {
       return;
     }
     closeSheet();
