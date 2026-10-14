@@ -31,6 +31,7 @@
 
 <div class="container">
   <Button
+    stylePadding="0 0.75rem"
     variant="ghost"
     flatRight
     active={$codeFont === "jetbrains"}
@@ -39,6 +40,7 @@
   </Button>
 
   <Button
+    stylePadding="0 0.75rem"
     variant="ghost"
     flatLeft
     active={$codeFont === "system"}

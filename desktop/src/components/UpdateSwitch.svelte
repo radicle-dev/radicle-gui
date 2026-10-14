@@ -18,11 +18,21 @@
 </style>
 
 <div class="container">
-  <Button variant="ghost" flatRight active={!active} onclick={disable}>
+  <Button
+    stylePadding="0 0.75rem"
+    variant="ghost"
+    flatRight
+    active={!active}
+    onclick={disable}>
     Disable
   </Button>
 
-  <Button variant="ghost" flatLeft active={Boolean(active)} onclick={enable}>
+  <Button
+    stylePadding="0 0.75rem"
+    variant="ghost"
+    flatLeft
+    active={Boolean(active)}
+    onclick={enable}>
     Enable
   </Button>
 </div>

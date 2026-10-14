@@ -40,6 +40,7 @@
 
 <div class="container">
   <Button
+    stylePadding="0 0.75rem"
     variant="ghost"
     flatRight
     active={$announce}
@@ -50,6 +51,7 @@
   </Button>
 
   <Button
+    stylePadding="0 0.75rem"
     variant="ghost"
     flatLeft
     active={!$announce}

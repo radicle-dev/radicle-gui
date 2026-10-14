@@ -38,6 +38,7 @@
       active={value === option.value}
       title={option.title}
       onclick={() => onchange(option.value)}
+      stylePadding={option.label ? "0 0.75rem" : undefined}
       styleJustifyContent="center">
       {#if option.icon}
         <Icon name={option.icon} />
