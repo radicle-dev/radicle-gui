@@ -13,6 +13,7 @@
 
 <div class="container">
   <Button
+    stylePadding="0 0.75rem"
     variant="ghost"
     flatRight
     active={repoListScope.value === "seeded"}
@@ -21,6 +22,7 @@
   </Button>
 
   <Button
+    stylePadding="0 0.75rem"
     variant="ghost"
     flatLeft
     active={repoListScope.value === "all"}
