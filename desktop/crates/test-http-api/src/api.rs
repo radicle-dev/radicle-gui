@@ -127,6 +127,8 @@ const ALLOWED_ORIGINS: [&str; 4] = [
 
 pub fn router(shared: Shared) -> Router {
     let writes = Router::new()
+        .route("/follow", post(follow_handler))
+        .route("/unfollow", post(unfollow_handler))
         .route("/seed", post(seed_handler))
         .route("/unseed", post(unseed_handler))
         .route("/clean", post(clean_handler))
@@ -180,6 +182,7 @@ pub fn router(shared: Shared) -> Router {
         .route("/startup", post(startup_handler))
         .route("/config", post(config_handler))
         .route("/alias", post(alias_handler))
+        .route("/following", post(following_handler))
         .route("/search_aliases", post(search_aliases_handler))
         .route("/authenticate", post(auth_handler))
         .route("/check_radicle_cli", post(check_radicle_cli_handler))
@@ -302,6 +305,28 @@ async fn alias_handler(
     Json(AliasBody { nid }): Json<AliasBody>,
 ) -> impl IntoResponse {
     Ok::<_, Error>(Json(ctx.alias(nid)))
+}
+
+async fn following_handler(Ctx(ctx): Ctx) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.following()?))
+}
+
+async fn follow_handler(
+    Ctx(ctx): Ctx,
+    Json(AliasBody { nid }): Json<AliasBody>,
+) -> impl IntoResponse {
+    ctx.follow(nid)?;
+
+    Ok::<_, Error>(Json(()))
+}
+
+async fn unfollow_handler(
+    Ctx(ctx): Ctx,
+    Json(AliasBody { nid }): Json<AliasBody>,
+) -> impl IntoResponse {
+    ctx.unfollow(nid)?;
+
+    Ok::<_, Error>(Json(()))
 }
 
 #[derive(Deserialize)]

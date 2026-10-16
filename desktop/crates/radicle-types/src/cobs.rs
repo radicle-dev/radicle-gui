@@ -54,6 +54,18 @@ pub struct AliasSuggestion {
     pub is_self: bool,
 }
 
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+#[ts(export_to = "cob/")]
+pub struct FollowedNode {
+    #[ts(as = "String")]
+    pub did: identity::Did,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(as = "Option<String>", optional)]
+    pub alias: Option<Alias>,
+}
+
 #[derive(Debug, Clone, Serialize, TS, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]

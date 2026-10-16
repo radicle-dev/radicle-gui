@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
 use radicle::node;
-use radicle::node::{Alias, AliasStore, NodeId};
+use radicle::node::{Alias, AliasStore, Handle, NodeId};
 
-use crate::cobs::AliasSuggestion;
+use crate::cobs::{AliasSuggestion, FollowedNode};
 use crate::config::Config;
 use crate::error::Error;
 
@@ -58,6 +58,63 @@ pub trait Profile {
         let aliases = p.aliases();
 
         aliases.alias(&nid)
+    }
+
+    fn following(&self) -> Result<Vec<FollowedNode>, Error> {
+        let p = self.profile();
+        let aliases = p.aliases();
+        let mut followed = Vec::new();
+
+        for policy in p.policies()?.follow_policies()? {
+            let policy = policy?;
+            if policy.policy != node::policy::Policy::Allow {
+                continue;
+            }
+            followed.push(FollowedNode {
+                did: policy.nid.into(),
+                alias: policy.alias.or_else(|| aliases.alias(&policy.nid)),
+            });
+        }
+
+        Ok(followed)
+    }
+
+    fn follow(&self, nid: NodeId) -> Result<(), Error> {
+        let p = self.profile();
+        let mut node = radicle::Node::new(p.home().socket_from_env());
+
+        match node.follow(nid, None) {
+            Ok(_) => Ok(()),
+            Err(e) if e.is_connection_err() => {
+                p.policies_mut()?.follow(&nid, None)?;
+                Ok(())
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Stop following a node. The `following` table also holds blocks, and
+    /// removing a node's row lifts its block, so only a followed node is
+    /// touched.
+    fn unfollow(&self, nid: NodeId) -> Result<(), Error> {
+        let p = self.profile();
+        let followed = p
+            .policies()?
+            .follow_policy(&nid)?
+            .is_some_and(|policy| policy.policy == node::policy::Policy::Allow);
+        if !followed {
+            return Ok(());
+        }
+
+        let mut node = radicle::Node::new(p.home().socket_from_env());
+        match node.unfollow(nid) {
+            Ok(_) => Ok(()),
+            Err(e) if e.is_connection_err() => {
+                p.policies_mut()?.unfollow(&nid)?;
+                Ok(())
+            }
+            Err(e) => Err(e.into()),
+        }
     }
 
     fn search_aliases(&self, query: Option<String>) -> Vec<AliasSuggestion> {

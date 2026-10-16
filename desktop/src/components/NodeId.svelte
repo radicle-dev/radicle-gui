@@ -3,6 +3,7 @@
   import type { Placement } from "@floating-ui/dom";
   import type { ComponentProps } from "svelte";
 
+  import { following } from "@app/lib/following.svelte";
   import { cachedAlias, cachedConfig, writeToClipboard } from "@app/lib/invoke";
   import { entityUrl } from "@app/lib/mentions";
   import { getPatchActivitySource } from "@app/lib/patchActivityContext";
@@ -94,6 +95,32 @@
       cancelled = true;
     };
   });
+
+  const isSelf = $derived.by(() => fetchedConfig?.publicKey === publicKey);
+  const isFollowed = $derived(following.isFollowed(publicKey));
+  let followPending = $state(false);
+
+  $effect(() => {
+    if (cardExpanded) {
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      following.load().catch(() => {});
+    }
+  });
+
+  async function toggleFollow() {
+    followPending = true;
+    try {
+      if (isFollowed) {
+        await following.unfollow(publicKey);
+      } else {
+        await following.follow(publicKey);
+      }
+    } catch (error) {
+      console.error("Changing the follow policy failed", error);
+    } finally {
+      followPending = false;
+    }
+  }
 
   function openCard() {
     if (closeTimer) clearTimeout(closeTimer);
@@ -288,6 +315,10 @@
     background-color: var(--color-surface-subtle);
     color: var(--color-text-primary);
   }
+  .node-id-card-action:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
 </style>
 
 <Popover
@@ -456,6 +487,22 @@
         {/if}
       {/if}
       <div class="node-id-card-actions">
+        {#if fetchedConfig && !isSelf}
+          <button
+            type="button"
+            class="node-id-card-action txt-body-s-medium"
+            disabled={followPending}
+            title={isFollowed
+              ? "Stop following this user"
+              : "Fetch this user's contributions onto your device"}
+            onclick={event => {
+              event.stopPropagation();
+              void toggleFollow();
+            }}>
+            <Icon name={isFollowed ? "minus" : "plus"} />
+            {isFollowed ? "Unfollow" : "Follow"}
+          </button>
+        {/if}
         <a
           class="node-id-card-action txt-body-s-medium"
           href={fetchedConfig

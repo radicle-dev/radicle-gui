@@ -1,5 +1,5 @@
 use radicle::node::NodeId;
-use radicle_types::cobs::AliasSuggestion;
+use radicle_types::cobs::{AliasSuggestion, FollowedNode};
 use radicle_types::config::Config;
 use radicle_types::error::Error;
 use radicle_types::traits::Profile;
@@ -23,4 +23,19 @@ pub async fn search_aliases(
     query: Option<String>,
 ) -> Result<Vec<AliasSuggestion>, Error> {
     blocking(ctx, move |ctx| Ok(ctx.search_aliases(query))).await
+}
+
+#[tauri::command]
+pub async fn following(ctx: tauri::State<'_, AppState>) -> Result<Vec<FollowedNode>, Error> {
+    blocking(ctx, move |ctx| ctx.following()).await
+}
+
+#[tauri::command]
+pub async fn follow(ctx: tauri::State<'_, AppState>, nid: NodeId) -> Result<(), Error> {
+    blocking(ctx, move |ctx| ctx.follow(nid)).await
+}
+
+#[tauri::command]
+pub async fn unfollow(ctx: tauri::State<'_, AppState>, nid: NodeId) -> Result<(), Error> {
+    blocking(ctx, move |ctx| ctx.unfollow(nid)).await
 }

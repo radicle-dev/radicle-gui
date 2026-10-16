@@ -14,6 +14,7 @@
   import Button from "@app/components/Button.svelte";
   import CodeFontSwitch from "@app/components/CodeFontSwitch.svelte";
   import ExternalLink from "@app/components/ExternalLink.svelte";
+  import FollowingSettings from "@app/components/FollowingSettings.svelte";
   import FontSizeSwitch from "@app/components/FontSizeSwitch.svelte";
   import Icon from "@app/components/Icon.svelte";
   import RepoListSwitch from "@app/components/RepoListSwitch.svelte";
@@ -276,6 +277,15 @@
         value={diffOptions.lineDiffType}
         onchange={value => (diffOptions.lineDiffType = value)} />
     </div>
+  </div>
+  <div class="rows section">
+    <div class="row-label">
+      <span class="row-title">Following</span>
+      <span class="row-description">
+        Your node fetches contributions from the users you follow
+      </span>
+    </div>
+    <FollowingSettings />
   </div>
   <div class="footer">
     {#if updateChecker.currentVersion}
