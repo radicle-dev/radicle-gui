@@ -1,8 +1,10 @@
-use radicle::cob::identity;
-use radicle::identity::DocAt;
-use radicle::storage::{ReadRepository, ReadStorage};
+use radicle::Node;
+use radicle::cob::{Title, identity};
+use radicle::identity::{DocAt, Visibility};
+use radicle::node::Handle;
+use radicle::storage::{ReadRepository, ReadStorage, WriteRepository};
 
-use crate::cobs::Author;
+use crate::cobs::{Author, CobOptions};
 use crate::error::Error;
 use crate::identity as types;
 use crate::traits::Profile;
@@ -102,5 +104,43 @@ pub trait Identity: Profile {
             doc: types::Doc::new(&current_doc, &aliases),
             revisions,
         })
+    }
+}
+
+pub trait IdentityMut: Profile {
+    fn update_visibility(
+        &self,
+        rid: radicle::identity::RepoId,
+        private: bool,
+        opts: CobOptions,
+    ) -> Result<(), Error> {
+        let profile = self.profile();
+        let mut node = Node::new(profile.home().socket_from_env());
+        let repo = profile.storage.repository(rid)?;
+        let signer = profile.signer()?;
+        let doc = repo.identity_doc()?.doc;
+
+        if doc.visibility().is_public() != private {
+            return Ok(());
+        }
+
+        let (visibility, title) = if private {
+            (Visibility::private([]), "Make repository private")
+        } else {
+            (Visibility::Public, "Make repository public")
+        };
+        let doc = doc.with_edits(|raw| raw.visibility = visibility)?;
+
+        let mut identity = identity::Identity::load_mut(&repo, &signer)?;
+        identity.update(Title::new(title)?, "", &doc)?;
+        repo.set_identity_head()?;
+
+        if opts.announce()
+            && let Err(e) = node.announce_refs_for(rid, [profile.public_key])
+        {
+            log::error!("Not able to announce changes: {}", e)
+        }
+
+        Ok(())
     }
 }

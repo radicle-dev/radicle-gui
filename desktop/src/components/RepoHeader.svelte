@@ -2,8 +2,10 @@
   import type { Config } from "@bindings/config/Config";
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
+  import { isDelegate } from "@app/lib/roles";
   import * as router from "@app/lib/router";
   import { authorForNodeId } from "@app/lib/utils";
+  import { changeVisibility } from "@app/lib/visibility";
 
   import CheckoutRepoButton from "@app/components/CheckoutRepoButton.svelte";
   import NodeId from "@app/components/NodeId.svelte";
@@ -18,6 +20,12 @@
   const { repo, config }: Props = $props();
 
   const project = $derived(repo.payloads["xyz.radicle.project"]!);
+  const canChangeVisibility = $derived(
+    isDelegate(
+      config.publicKey,
+      repo.delegates.map(d => d.did),
+    ),
+  );
 
   // The cards are portaled out of the stack, so moving onto one ends the
   // stack's hover. Keep it fanned out while any card is still open.
@@ -121,7 +129,10 @@
     <VisibilityBadge
       type={repo.visibility.type}
       seeded={repo.seeded}
-      seeds={repo.seeding} />
+      seeds={repo.seeding}
+      onclick={canChangeVisibility
+        ? () => changeVisibility(repo)
+        : undefined} />
 
     <div class="meta-item">
       <button

@@ -113,6 +113,7 @@ pub fn run() {
             diff::save_diff_to_disk,
             repo::get_commit_diff,
             identity::identity_by_repo,
+            identity::update_visibility,
             inbox::clear_notifications,
             inbox::notification_count,
             inbox::list_notifications,

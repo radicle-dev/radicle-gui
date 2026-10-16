@@ -1,7 +1,7 @@
 use traits::Profile;
 use traits::artifact_node::ArtifactNode;
 use traits::cobs::Cobs;
-use traits::identity::Identity;
+use traits::identity::{Identity, IdentityMut};
 use traits::inbox::Inbox;
 use traits::issue::{Issues, IssuesMut};
 use traits::job::Jobs;
@@ -35,6 +35,7 @@ impl Repo for AppState {}
 impl Thread for AppState {}
 impl Cobs for AppState {}
 impl Identity for AppState {}
+impl IdentityMut for AppState {}
 impl Inbox for AppState {}
 impl Issues for AppState {}
 impl IssuesMut for AppState {}

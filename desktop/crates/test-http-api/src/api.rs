@@ -39,7 +39,7 @@ use radicle_types::outbound::sqlite::Sqlite;
 use radicle_types::traits::Profile;
 use radicle_types::traits::artifact_node::ArtifactNode;
 use radicle_types::traits::cobs::Cobs;
-use radicle_types::traits::identity::Identity;
+use radicle_types::traits::identity::{Identity, IdentityMut};
 use radicle_types::traits::inbox::Inbox;
 use radicle_types::traits::issue::{Issues, IssuesMut};
 use radicle_types::traits::job::Jobs;
@@ -60,6 +60,7 @@ pub struct Context {
 impl Repo for Context {}
 impl Cobs for Context {}
 impl Identity for Context {}
+impl IdentityMut for Context {}
 impl Inbox for Context {}
 impl Thread for Context {}
 impl Issues for Context {}
@@ -195,6 +196,7 @@ pub fn router(shared: Shared) -> Router {
         .route("/list_repo_refs", post(list_repo_refs_handler))
         .route("/list_canonical_tags", post(list_canonical_tags_handler))
         .route("/identity_by_repo", post(identity_handler))
+        .route("/update_visibility", post(update_visibility_handler))
         .route("/version", post(version_handler))
         .route("/git_info", post(git_info_handler))
         .route("/diff_stats", post(diff_stats_handler))
@@ -458,6 +460,22 @@ async fn identity_handler(
     let identity = ctx.identity_by_repo(rid)?;
 
     Ok::<_, Error>(Json(identity))
+}
+
+#[derive(Serialize, Deserialize)]
+struct UpdateVisibilityBody {
+    pub rid: identity::RepoId,
+    pub private: bool,
+    pub opts: CobOptions,
+}
+
+async fn update_visibility_handler(
+    Ctx(ctx): Ctx,
+    Json(UpdateVisibilityBody { rid, private, opts }): Json<UpdateVisibilityBody>,
+) -> impl IntoResponse {
+    ctx.update_visibility(rid, private, opts)?;
+
+    Ok::<_, Error>(Json(()))
 }
 
 async fn list_repo_refs_handler(

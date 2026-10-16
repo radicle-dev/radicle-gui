@@ -15,9 +15,15 @@
     seeded?: boolean;
     /// How many nodes on the network are known to seed the repository.
     seeds?: number;
+    onclick?: () => void;
   }
 
-  const { type, seeded = true, seeds = undefined }: Props = $props();
+  const {
+    type,
+    seeded = true,
+    seeds = undefined,
+    onclick = undefined,
+  }: Props = $props();
 
   const tooltips: Record<Visibility["type"], string> = {
     public:
@@ -35,6 +41,15 @@
     }
     return tooltips[type];
   });
+
+  const target = $derived(type === "public" ? "private" : "public");
+  let previewing = $state(false);
+
+  const title = $derived(
+    onclick
+      ? `${tooltip} Click to make it ${type === "public" ? "private" : "public"}.`
+      : tooltip,
+  );
 </script>
 
 <style>
@@ -58,6 +73,25 @@
     background-color: var(--color-surface-subtle);
     color: var(--color-text-secondary);
   }
+  button.badge {
+    border: 0;
+    cursor: pointer;
+  }
+  .layers {
+    display: grid;
+  }
+  /* Both labels share one cell, so the chip keeps the width of the wider one
+     and does not resize on hover. */
+  .layer {
+    grid-area: 1 / 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+  }
+  .layer.hidden {
+    visibility: hidden;
+  }
   /* The shared counter chip is grey and full height, which reads as a separate
      element bolted on. Inheriting the badge's colour and dropping the vertical
      padding keeps it part of the badge. */
@@ -68,12 +102,7 @@
   }
 </style>
 
-<span
-  class="global-chip badge"
-  class:public={seeded && type === "public"}
-  class:private={seeded && type === "private"}
-  class:local={!seeded}
-  title={tooltip}>
+{#snippet content()}
   {#if !seeded}
     <Icon name="device" />
     Local
@@ -84,4 +113,43 @@
       <span class="global-counter-badge count">{seeds}</span>
     {/if}
   {/if}
-</span>
+{/snippet}
+
+{#if onclick}
+  <button
+    type="button"
+    class="global-chip badge"
+    class:public={previewing
+      ? target === "public"
+      : seeded && type === "public"}
+    class:private={previewing
+      ? target === "private"
+      : seeded && type === "private"}
+    class:local={!previewing && !seeded}
+    {title}
+    onclick={() => {
+      previewing = false;
+      onclick();
+    }}
+    onmouseenter={() => (previewing = true)}
+    onmouseleave={() => (previewing = false)}>
+    <span class="layers">
+      <span class="layer" class:hidden={previewing}>
+        {@render content()}
+      </span>
+      <span class="layer" class:hidden={!previewing}>
+        <Icon name={target === "public" ? "globe" : "lock"} />
+        {capitalize(target)}
+      </span>
+    </span>
+  </button>
+{:else}
+  <span
+    class="global-chip badge"
+    class:public={seeded && type === "public"}
+    class:private={seeded && type === "private"}
+    class:local={!seeded}
+    {title}>
+    {@render content()}
+  </span>
+{/if}

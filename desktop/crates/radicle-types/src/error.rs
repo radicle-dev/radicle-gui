@@ -222,6 +222,14 @@ pub enum Error {
     #[error(transparent)]
     UrlParse(#[from] url::ParseError),
 
+    /// Identity document error.
+    #[error(transparent)]
+    IdentityDoc(#[from] radicle::identity::DocError),
+
+    /// Identity COB error.
+    #[error(transparent)]
+    IdentityCob(#[from] radicle::identity::Error),
+
     /// Artifact node client error.
     #[error(transparent)]
     ArtifactClient(#[from] radicle_artifact_client::ClientError),
