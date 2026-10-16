@@ -583,6 +583,7 @@
     display: flex;
     align-items: center;
     gap: 0.375rem;
+    min-width: 0;
   }
   .breadcrumb-link {
     cursor: pointer;
@@ -591,6 +592,7 @@
     padding: 0;
     font: var(--txt-body-m-regular);
     color: var(--color-text-secondary);
+    white-space: nowrap;
   }
   .breadcrumb-title {
     color: var(--color-text-primary);

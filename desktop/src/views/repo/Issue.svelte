@@ -241,6 +241,7 @@
     padding: 0;
     font: var(--txt-body-m-regular);
     color: var(--color-text-secondary);
+    white-space: nowrap;
   }
   .breadcrumb-link:hover {
     color: var(--color-text-primary);
