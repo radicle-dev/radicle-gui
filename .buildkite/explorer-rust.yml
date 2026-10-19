@@ -24,6 +24,10 @@ __defs:
     fi
     rustc --version
 
+  # The tar.zst archive test needs the zstd binary, which git shells out to.
+  install_zstd: &install_zstd |
+    command -v zstd >/dev/null 2>&1 || sudo apt-get install -y -qq zstd
+
   # Only the parts of ~/.cargo that are expensive to fetch again. registry/src
   # and git/checkouts are left out on purpose: cargo re-creates both from the
   # cache and the git db, so caching them would double the size of the volume
@@ -50,6 +54,7 @@ steps:
       paths: *cargo_cache
     commands:
       - *install_rust
+      - *install_zstd
       - RUSTFLAGS="-D warnings" cargo build --workspace --all-features
       - cargo test --workspace --all-features
       - cargo test -p radicle-httpd
