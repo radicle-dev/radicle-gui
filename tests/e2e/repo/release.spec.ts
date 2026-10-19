@@ -158,6 +158,8 @@ test.describe(() => {
 
     await page.getByRole("button", { name: "Show redacted 1" }).click();
     await expect(page.getByText("flagged-artifact")).toBeVisible();
+
+    await page.getByText("1 redaction").click();
     await expect(
       page.getByText("Built from the wrong toolchain"),
     ).toBeVisible();
