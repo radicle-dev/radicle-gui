@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      // Avoid flickering on app start.
+      const storedTheme = localStorage.getItem("theme");
+      if (storedTheme === "dark" || storedTheme === "light") {
+        document.documentElement.setAttribute("data-theme", storedTheme);
+      } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+      const codefont = localStorage.getItem("codefont");
+      document.documentElement.setAttribute(
+        "data-codefont",
+        codefont === "system" ? "system" : "jetbrains",
+      );
+    </script>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/radicle.svg" type="image/svg+xml" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Radicle</title>
+    <meta name="description" content="Radicle in your browser" />
+    <link
+      rel="preload"
+      href="/fonts/Booton-Regular.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin="anonymous" />
+    <link
+      rel="preload"
+      href="/fonts/Booton-Medium.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin="anonymous" />
+    <link
+      rel="preload"
+      href="/fonts/Booton-SemiBold.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin="anonymous" />
+    <link
+      rel="preload"
+      href="/fonts/JetBrainsMono-Regular.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin="anonymous" />
+    <link
+      rel="preload"
+      href="/fonts/JetBrainsMono-Medium.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin="anonymous" />
+    <link
+      rel="preload"
+      href="/fonts/JetBrainsMono-SemiBold.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin="anonymous" />
+    <link
+      rel="preload"
+      href="/fonts/JetBrainsMono-Bold.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin="anonymous" />
+
+    <link rel="stylesheet" type="text/css" href="/index.css" />
+    <link rel="stylesheet" type="text/css" href="/typography.css" />
+    <link rel="stylesheet" type="text/css" href="/prettylights.css" />
+    <link rel="stylesheet" type="text/css" href="/colors.css" />
+    <link rel="stylesheet" type="text/css" href="/app.css" />
+    <script type="module">
+      // Make global 'Buffer' available to legacy modules.
+      import { Buffer } from "buffer";
+      window.Buffer = Buffer;
+    </script>
+  </head>
+
+  <body>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

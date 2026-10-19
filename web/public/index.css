@@ -1,0 +1,235 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --border-radius-xs: 0.0625rem;
+  --border-radius-sm: 0.125rem;
+  --border-radius-md: 0.25rem;
+  --border-radius-lg: 0.5rem;
+  --border-radius-full: 99rem;
+}
+
+html {
+  height: 100%;
+  width: 100%;
+  /* Prevent rubber-band effect when scrolling via touchpad on macOS. */
+  overscroll-behavior: none;
+  cursor: default;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-base);
+}
+
+a,
+a:link,
+a:visited,
+a:hover,
+a:active,
+a:focus {
+  color: inherit;
+  text-decoration: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+a {
+  display: inline;
+  font-weight: inherit;
+  font-style: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-family: inherit;
+}
+
+::selection {
+  background: var(--color-feedback-warning-border);
+  color: var(--color-text-primary);
+}
+
+.global-flex {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.global-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border-radius: var(--border-radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.global-icon-button:hover,
+.global-icon-button:focus-visible {
+  background-color: var(--color-surface-subtle);
+  color: var(--color-text-primary);
+}
+
+.global-tab {
+  padding-left: 0.5rem;
+  border-left: 1px solid var(--color-border-mid);
+  margin-left: 1rem;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  column-gap: 0.5rem;
+}
+
+.global-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-surface-strong);
+  border-radius: var(--border-radius-sm);
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  min-width: 1.5rem;
+  font: var(--txt-body-s-regular);
+  flex-shrink: 0;
+}
+
+.global-counter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  min-width: 1.25rem;
+  padding: 0.125rem 0.25rem;
+  border-radius: 1px;
+  background-color: var(--color-surface-alpha-subtle);
+  color: var(--color-text-secondary);
+  font: var(--txt-body-s-regular);
+  flex-shrink: 0;
+}
+
+.global-link {
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+.global-link:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+:root {
+  .global-os-theme-radicle {
+    --os-size: 16px;
+    --os-handle-border-radius: 4px;
+    --os-padding-perpendicular: 4px;
+    --os-padding-axis: 2px;
+    --os-handle-bg: var(--color-border-mid);
+    --os-handle-bg-hover: var(--color-border-mid);
+    --os-handle-bg-active: var(--color-border-mid);
+    --os-track-bg: transparent;
+  }
+}
+
+:root {
+  --elevation-low: 0 0 48px 0 #000000ee;
+}
+
+[data-theme="light"] {
+  --elevation-low: 0 0 16px 0 #00000022;
+}
+
+/*
+  Breakpoints
+  ===========
+    mobile             0px -  719.98px
+    small desktop    720px - 1010.98px
+    medium desktop  1011px - 1349.98px
+    desktop         1350px -      ∞ px
+*/
+
+@media (max-width: 719.98px) {
+  body {
+    min-width: 0;
+  }
+  .global-hide-on-mobile-down {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1010.98px) {
+  .global-hide-on-small-desktop-down {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1349.98px) {
+  .global-hide-on-medium-desktop-down {
+    display: none !important;
+  }
+}
+
+@media (min-width: 720px) {
+  .global-hide-on-small-desktop-up {
+    display: none !important;
+  }
+}
+
+@media (min-width: 1011px) {
+  .global-hide-on-medium-desktop-up {
+    display: none !important;
+  }
+}
+
+@media (min-width: 1350px) {
+  .global-hide-on-desktop-up {
+    display: none !important;
+  }
+}
+
+/* Feeds the app's tokens into `@pierre/diffs`. Its shadow roots read these
+   custom properties, which inherit across the boundary, so anything hosting a
+   Pierre diff — `PierreDiff` for a whole revision, `PierreSnippet` for the few
+   lines a comment is about — carries this class. Instance-specific values
+   (`--diffs-line-height`, the sticky offsets) stay inline on the element. */
+.global-pierre-surface {
+  /* Code font and sizing, matching `--txt-code-regular`. The line height is set
+     on the element itself as a whole-pixel value that mirrors Pierre's
+     `itemMetrics.lineHeight`, so rendered rows and its model agree. */
+  --diffs-font-family: var(--font-family-code);
+  --diffs-font-size: 0.875rem;
+
+  /* Chrome colours from our design tokens. Syntax token colours still come from
+     the Shiki theme (github light/dark); these only retint the diff surfaces,
+     line numbers, and add/delete/modify accents so the frame matches the app
+     without changing the highlighting look and feel.
+
+     The base *surface* cannot be set here: the Shiki theme writes
+     `--diffs-light-bg`/`--diffs-dark-bg` directly onto the shadow `:host`, which
+     beats any value inherited from a light-DOM ancestor. So `--diffs-bg` is
+     forced to the app's view background in `cardUnsafeCSS` (a higher `@layer`)
+     instead — every neutral surface and the change-tint mixes derive from it. */
+  --diffs-light: var(--color-text-primary);
+  --diffs-dark: var(--color-text-primary);
+  /* Line numbers. */
+  --diffs-fg-number-override: var(--color-text-tertiary);
+  --diffs-addition-color-override: var(--color-diff-addition);
+  --diffs-deletion-color-override: var(--color-diff-deletion);
+  --diffs-modified-color-override: var(--color-text-brand);
+  --diffs-fg-number-addition-override: var(--color-feedback-success-text);
+  --diffs-fg-number-deletion-override: var(--color-feedback-error-text);
+  /* Mixed into the background of every line a comment refers to. */
+  --app-diff-comment-tint: var(--color-surface-brand-secondary);
+
+  /* The app disables selection globally on `html` and opts in per element.
+     `user-select` inherits across the shadow boundary, so opt the whole Pierre
+     subtree back in; its own CSS keeps gutters and line numbers unselectable. */
+  -webkit-user-select: text;
+  user-select: text;
+}

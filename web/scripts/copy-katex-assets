@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+echo "Copying katex assets into bundle directory"
+
+cp -r node_modules/katex/dist/katex.min.css public/katex.min.css
+cp -r node_modules/katex/dist/fonts/* public/fonts/
