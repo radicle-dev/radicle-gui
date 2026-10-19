@@ -113,7 +113,7 @@ test("footnotes", async ({ page }) => {
   });
   await expect(page).toHaveScreenshot({ fullPage: true });
 
-  await page.getByText("Code").click();
+  await page.getByRole("button", { name: "Code", exact: true }).click();
   await expect(page).toHaveScreenshot({ fullPage: true });
 });
 
