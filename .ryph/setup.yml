@@ -6,6 +6,10 @@ steps:
     run: npx playwright install chromium
   - name: install the pinned Radicle binaries for http-client and e2e tests
     run: ./scripts/install-binaries
+  # The root's plain rust-toolchain pin installs with rustup's minimal
+  # profile, which has no clippy or rustfmt.
+  - name: add clippy and rustfmt to the pinned toolchain
+    run: rustup component add clippy rustfmt
   # The cargo warm steps only fill the image's target/ directories. At run
   # time cargo builds what a command needs when it runs, so a run that works
   # on another workspace member doesn't wait for two Rust workspaces.
