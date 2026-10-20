@@ -94,7 +94,9 @@ export async function createContributor(
   await contributor.startNode({
     node: { ...defaultConfig.node, connect: [delegate.address], alias: "eve" },
   });
-  await contributor.rad(["clone", rid], { cwd: contributor.checkoutPath });
+  await contributor.rad(["clone", rid, "--seed", delegate.nodeId], {
+    cwd: contributor.checkoutPath,
+  });
 
   return {
     contributor,

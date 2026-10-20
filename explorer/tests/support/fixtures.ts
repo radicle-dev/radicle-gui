@@ -274,7 +274,9 @@ export async function createCobsFixture(
   await eve.startNode({
     node: { ...defaultConfig.node, connect: [peer.address], alias: "eve" },
   });
-  await eve.rad(["clone", rid], { cwd: eve.checkoutPath });
+  await eve.rad(["clone", rid, "--seed", peer.nodeId], {
+    cwd: eve.checkoutPath,
+  });
 
   const issueOne = await issue.create(
     peer,
