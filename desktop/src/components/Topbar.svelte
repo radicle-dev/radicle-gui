@@ -19,6 +19,7 @@
     border-bottom: 1px solid var(--color-border-subtle);
     font: var(--txt-body-m-regular);
     color: var(--color-text-secondary);
+    container-type: inline-size;
   }
 </style>
 

@@ -11,6 +11,7 @@
   import { searchCobs } from "@app/lib/cobSearch";
   import { debounced } from "@app/lib/debounced.svelte";
   import { channel, invoke } from "@app/lib/invoke";
+  import { overflowFade } from "@app/lib/overflowFade";
   import { createPaginatedList } from "@app/lib/paginatedList.svelte";
   import {
     patchCountMismatch,
@@ -126,6 +127,9 @@
     display: flex;
     align-items: center;
     gap: 0.25rem;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
   .filter {
     display: flex;
@@ -155,9 +159,30 @@
   .filter.active .filter-label {
     display: inline;
   }
-  @media (min-width: 1011px) {
+  @container (min-width: 54rem) {
     .filter-label {
       display: inline;
+    }
+  }
+  .filters.compact .filter:not(.active) .filter-label {
+    display: none;
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .search {
+    display: flex;
+  }
+  .search.expanded {
+    width: 16rem;
+  }
+  @container (max-width: 54rem) {
+    .search.expanded {
+      width: 10rem;
     }
   }
   .row {
@@ -169,7 +194,7 @@
   <div class="page">
     <Topbar>
       <span class="topbar-title">Patches</span>
-      <div class="filters">
+      <div class="filters" class:compact={showSearch} use:overflowFade>
         <a
           class="filter"
           class:active={status === undefined}
@@ -240,34 +265,36 @@
           <span class="global-counter-badge">{project.meta.patches.draft}</span>
         </a>
       </div>
-      <div class="global-flex" style:margin-left="auto" style:gap="0.5rem">
-        <FuzzySearch
-          hasItems={list.items.length > 0}
-          placeholder={`Search patches ${modifierKey()} + f`}
-          icon={loading ? "clock" : "search"}
-          onFocus={async () => {
-            try {
-              loading = true;
-              await list.loadMore(true);
-            } catch (e) {
-              console.error("Loading all patches failed: ", e);
-            } finally {
-              loading = false;
-            }
-          }}
-          onSubmit={async () => {
-            if (searchResults.length === 1) {
-              await router.push({
-                patch: searchResults[0].id,
-                resource: "repo.patch",
-                reviewId: undefined,
-                rid: repo.rid,
-                status,
-              });
-            }
-          }}
-          bind:show={showSearch}
-          bind:value={searchInput} />
+      <div class="actions">
+        <div class="search" class:expanded={showSearch}>
+          <FuzzySearch
+            hasItems={list.items.length > 0}
+            placeholder={`Search patches ${modifierKey()} + f`}
+            icon={loading ? "clock" : "search"}
+            onFocus={async () => {
+              try {
+                loading = true;
+                await list.loadMore(true);
+              } catch (e) {
+                console.error("Loading all patches failed: ", e);
+              } finally {
+                loading = false;
+              }
+            }}
+            onSubmit={async () => {
+              if (searchResults.length === 1) {
+                await router.push({
+                  patch: searchResults[0].id,
+                  resource: "repo.patch",
+                  reviewId: undefined,
+                  rid: repo.rid,
+                  status,
+                });
+              }
+            }}
+            bind:show={showSearch}
+            bind:value={searchInput} />
+        </div>
         <NewPatchButton rid={repo.rid} />
       </div>
     </Topbar>

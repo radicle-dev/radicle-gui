@@ -17,6 +17,7 @@
     updateIssueCounts,
   } from "@app/lib/issueCounts.svelte";
   import { show } from "@app/lib/modal";
+  import { overflowFade } from "@app/lib/overflowFade";
   import { createPaginatedList } from "@app/lib/paginatedList.svelte";
   import * as router from "@app/lib/router";
   import { modifierKey } from "@app/lib/utils";
@@ -135,6 +136,9 @@
     display: flex;
     align-items: center;
     gap: 0.25rem;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
   .filter {
     display: flex;
@@ -158,6 +162,27 @@
   .filter .global-counter-badge {
     margin-left: 0.25rem;
   }
+  .filters.compact .filter:not(.active) .filter-label {
+    display: none;
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .search {
+    display: flex;
+  }
+  .search.expanded {
+    width: 16rem;
+  }
+  @container (max-width: 40rem) {
+    .search.expanded {
+      width: 10rem;
+    }
+  }
   .row {
     border-bottom: 1px solid var(--color-border-subtle);
   }
@@ -167,7 +192,7 @@
   <div class="page">
     <Topbar>
       <span class="topbar-title">Issues</span>
-      <div class="filters">
+      <div class="filters" class:compact={showSearch} use:overflowFade>
         <a
           class="filter"
           class:active={status === "all"}
@@ -176,7 +201,8 @@
             rid: repo.rid,
             status: "all",
           })}>
-          <Icon name="issue" />All
+          <Icon name="issue" />
+          <span class="filter-label">All</span>
           <span class="global-counter-badge">
             {project.meta.issues.open + project.meta.issues.closed}
           </span>
@@ -189,7 +215,8 @@
             rid: repo.rid,
             status: "open",
           })}>
-          <Icon name="issue" />Open
+          <Icon name="issue" />
+          <span class="filter-label">Open</span>
           <span class="global-counter-badge">{project.meta.issues.open}</span>
         </a>
         <a
@@ -200,37 +227,40 @@
             rid: repo.rid,
             status: "closed",
           })}>
-          <Icon name="issue-closed" />Closed
+          <Icon name="issue-closed" />
+          <span class="filter-label">Closed</span>
           <span class="global-counter-badge">{project.meta.issues.closed}</span>
         </a>
       </div>
-      <div class="global-flex" style:margin-left="auto" style:gap="0.5rem">
-        <FuzzySearch
-          hasItems={list.items.length > 0}
-          placeholder={`Search issues ${modifierKey()} + f`}
-          icon={loading ? "clock" : "search"}
-          onFocus={async () => {
-            try {
-              loading = true;
-              await list.loadMore(true);
-            } catch (e) {
-              console.error("Loading all issues failed: ", e);
-            } finally {
-              loading = false;
-            }
-          }}
-          onSubmit={async () => {
-            if (searchResults.length === 1) {
-              await router.push({
-                resource: "repo.issue",
-                rid: repo.rid,
-                issue: searchResults[0].id,
-                status,
-              });
-            }
-          }}
-          bind:show={showSearch}
-          bind:value={searchInput} />
+      <div class="actions">
+        <div class="search" class:expanded={showSearch}>
+          <FuzzySearch
+            hasItems={list.items.length > 0}
+            placeholder={`Search issues ${modifierKey()} + f`}
+            icon={loading ? "clock" : "search"}
+            onFocus={async () => {
+              try {
+                loading = true;
+                await list.loadMore(true);
+              } catch (e) {
+                console.error("Loading all issues failed: ", e);
+              } finally {
+                loading = false;
+              }
+            }}
+            onSubmit={async () => {
+              if (searchResults.length === 1) {
+                await router.push({
+                  resource: "repo.issue",
+                  rid: repo.rid,
+                  issue: searchResults[0].id,
+                  status,
+                });
+              }
+            }}
+            bind:show={showSearch}
+            bind:value={searchInput} />
+        </div>
         <Button
           styleHeight="2rem"
           variant="secondary"
@@ -239,7 +269,8 @@
               component: CreateIssueModal,
               props: { repo },
             })}>
-          <Icon name="plus" />New issue
+          <Icon name="plus" />
+          <span class="global-hide-on-small-desktop-down">New issue</span>
         </Button>
       </div>
     </Topbar>
