@@ -609,6 +609,12 @@
     flex: 1;
     min-width: 0;
   }
+  .section-header-label .label {
+    min-width: 0;
+  }
+  .section-header-label .global-counter-badge {
+    flex-shrink: 0;
+  }
   /* Moved by `order`, not in the markup: the FLIP matches by element identity,
      so the button has to stay one element across the toggle. */
   .filter-action {
@@ -1075,7 +1081,7 @@
           </span>
         </span>
       </span>
-      <span class="label">
+      <span class="label txt-overflow">
         {repoListScope.value === "all" ? "All Repos" : "Seeded Repos"}
       </span>
       {#if !sidebarCollapsed.value && unpinnedReposCount > 1}
