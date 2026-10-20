@@ -82,10 +82,10 @@
 }
 
 [data-codefont="jetbrains"] {
-  --font-family-code: "JetBrains Mono";
-  --txt-code-small: 400 0.75rem/1rem "JetBrains Mono";
-  --txt-code-regular: 400 0.875rem/1.25rem "JetBrains Mono";
-  --txt-code-semibold: 600 0.875rem/1.25rem "JetBrains Mono";
+  --font-family-code: "JetBrains Mono", monospace;
+  --txt-code-small: 400 0.75rem/1rem "JetBrains Mono", monospace;
+  --txt-code-regular: 400 0.875rem/1.25rem "JetBrains Mono", monospace;
+  --txt-code-semibold: 600 0.875rem/1.25rem "JetBrains Mono", monospace;
 }
 
 html {

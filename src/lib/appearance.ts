@@ -40,7 +40,7 @@ export const codeFonts: {
 }[] = [
   {
     storedName: "jetbrains",
-    fontFamily: "JetBrains Mono",
+    fontFamily: "JetBrains Mono, monospace",
     displayName: "JetBrains Mono",
   },
   { storedName: "system", fontFamily: "monospace", displayName: "System" },
