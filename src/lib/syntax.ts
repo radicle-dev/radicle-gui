@@ -156,12 +156,17 @@ export function lineNumbersGutter(tree: Root) {
           });
         }
 
-        // Add a line, and the eol.
-        lineNumber += 1;
-        replacement.push(createLine(line, lineNumber), {
-          type: "text",
-          value: match[0],
+        // Add a line, with its eol inside the line's content so that copying
+        // the line keeps it. The eol is wrapped in a span because the HTML
+        // parser drops a newline that directly follows a `<pre>` start tag.
+        line.push({
+          type: "element",
+          tagName: "span",
+          properties: {},
+          children: [{ type: "text", value: match[0] }],
         });
+        lineNumber += 1;
+        replacement.push(createLine(line, lineNumber));
 
         start = index + 1;
         textStart = match.index + match[0].length;

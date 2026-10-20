@@ -87,6 +87,22 @@ test("copy to clipboard", async ({ page, browserName, context }) => {
     await expectClipboard("Inline `code` has `back-ticks around` it.\n");
   }
 
+  // Selected source lines keep their newlines, including an empty line.
+  {
+    await page.goto(`${markdownUrl}/tree/main/markdown-code.md#L1`);
+    const from = await page.locator("#L5").getByText("```").boundingBox();
+    const to = await page.locator("#L8").getByText("plain:").boundingBox();
+    if (!from || !to) {
+      throw new Error("source lines not rendered");
+    }
+    await page.mouse.move(from.x, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y + to.height / 2, { steps: 5 });
+    await page.mouse.up();
+    await page.keyboard.press("ControlOrMeta+C");
+    await expectClipboard("```\n\n```\n");
+  }
+
   // Link to a patch comment.
   {
     await page.goto(`${cobUrl}/patches`);
