@@ -405,7 +405,7 @@ async function updateConfig(radHome: string, configParams: Partial<Config>) {
   const configPath = Path.join(radHome, "config.json");
   const configFile = await Fs.readFile(configPath, "utf-8");
   const config = configSchema.parse({
-    defaultConfig,
+    ...defaultConfig,
     ...JSON.parse(configFile),
   });
   config.preferredSeeds = [];
