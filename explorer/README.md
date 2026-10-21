@@ -3,8 +3,9 @@
 This user interface lets you interact with [Radicle][rad], a peer-to-peer code
 collaboration and publishing stack, directly from your web browser.
 
-The [Radicle desktop app](desktop/README.md) lives in the `desktop/` folder of
-this repository.
+It lives in the `explorer/` folder of the radicle-gui repository, next to the
+[Radicle desktop app](../desktop/README.md). Run all commands below from
+`explorer/`.
 
 **Deployment Options:**
 
@@ -22,8 +23,8 @@ this repository.
 Run the following commands to access the web UI locally:
 
 ``` shell
-git clone https://seed.radicle.dev/z4V1sjrXqjvFdnCUbxPFqd5p4DtH5.git radicle-explorer
-cd radicle-explorer
+git clone https://seed.radicle.dev/z4V1sjrXqjvFdnCUbxPFqd5p4DtH5.git radicle-gui
+cd radicle-gui/explorer
 npm install
 npm start
 ```
@@ -55,7 +56,7 @@ Caddy:
 
 ```
 example.com {
-    root * /path/to/radicle-explorer/build
+    root * /path/to/radicle-gui/explorer/build
     try_files {path} /index.html
     file_server
 }
