@@ -188,12 +188,35 @@ git clone https://seed.example.com/heartwood.git
 ```
 
 
+## Development
+
+Run `npm run check` before proposing a patch, along with the test suites:
+`npm run test:unit`, `npm run test:http-client:unit` and `npm run test:e2e`.
+
+E2E tests build the app and create fixtures before running. If neither the
+source nor the fixtures changed since the last run, skip that with
+`SKIP_SETUP=true`:
+
+```sh
+npm run test:e2e -- --project chromium
+SKIP_SETUP=true npm run test:e2e -- tests/e2e/repo/commits.spec.ts:90 --project chromium
+```
+
+When changing `radicle-httpd`, `npm run test:e2e:local` compiles it from
+`crates/radicle-httpd/` and runs the suite against that build instead of
+the released binary.
+
+If Playwright's browsers don't support your OS, `scripts/test-e2e-docker`
+runs the suite in a container (Docker with the Compose plugin). It forwards
+its arguments and `SKIP_SETUP` to `npm run test:e2e`, and `--local` tests
+against httpd built from source. The first run downloads Chromium and is
+slow.
+
+
 ## Contributing
 
-* For detailed contribution guidelines, refer to the [CONTRIBUTING.md][con]
-  file
-* To propose changes, open an [issue][iss] or submit a [patch][pat] using
-  Radicle
+See [CONTRIBUTING.md][con] for how to propose changes and write commit
+messages. Open an [issue][iss] or a [patch][pat] using Radicle.
 
 
 ## Getting in touch
@@ -209,7 +232,7 @@ The UI is distributed under the terms of GPLv3. See [LICENSE][lic] for details.
 
 
 [app]: https://radicle.network
-[con]: ./CONTRIBUTING.md
+[con]: ../CONTRIBUTING.md
 [def]: ./config/default.json
 [env]: ./config/custom-environment-variables.json
 [iss]: https://radicle.network/nodes/iris.radicle.network/rad:z4V1sjrXqjvFdnCUbxPFqd5p4DtH5/issues

@@ -72,7 +72,7 @@ export default async function globalSetup(): Promise<() => void> {
 
   // Evaluated once at startup; captured by async setup operations.
   // Set SKIP_SETUP=true to skip both build and fixture creation on subsequent runs.
-  // See CONTRIBUTING.md for details.
+  // See README.md for details.
   const shouldSetup = !process.env.SKIP_SETUP;
 
   if (shouldSetup) {
