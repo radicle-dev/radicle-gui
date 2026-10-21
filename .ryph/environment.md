@@ -1,8 +1,8 @@
 # radicle-gui environment
 
 This repository holds two projects: the explorer web app and `radicle-httpd`
-at the root, and the desktop app in `desktop/`. Each has its own npm package
-and Cargo workspace.
+in `explorer/`, and the desktop app in `desktop/`. Each has its own npm
+package and Cargo workspace.
 
 `.ryph/Dockerfile` is written as the machine for the whole Radicle
 workspace, and a workspace builds only its environment repository's
@@ -21,18 +21,19 @@ is on. On top of the universal image it adds:
   override it, or every crate rebuilds.
 
 `.ryph/setup.yml` installs the npm dependencies and the pinned Radicle
-binaries (`tests/tmp/bin`, `desktop/tests/tmp/bin`) for both projects,
+binaries (`explorer/tests/tmp/bin`, `desktop/tests/tmp/bin`) for both projects,
 Playwright's Chromium for the explorer and its WebKit for the desktop app.
 At image build it warms clippy and the Rust test builds of both workspaces,
-and the desktop e2e backend (`test-http-api`, `rad-job`), in `target/` and
-`desktop/target/`. At run start it only reinstalls what the lockfiles
+and the desktop e2e backend (`test-http-api`, `rad-job`), in
+`explorer/target/` and `desktop/target/`. At run start it only reinstalls what the lockfiles
 changed, and cargo builds what a command needs when it runs. Node 24.15.0
-(`.nvmrc`) and Rust 1.97.1 (`rust-toolchain`, `desktop/rust-toolchain.toml`)
-come from mise and rustup.
+(`explorer/.nvmrc`, `desktop/.nvmrc`) and Rust 1.97.1
+(`explorer/rust-toolchain`, `desktop/rust-toolchain.toml`) come from mise and
+rustup.
 
 ## Checks (what CI runs)
 
-Explorer and `radicle-httpd`, from the repository root:
+Explorer and `radicle-httpd`, from `explorer/`:
 
 ```sh
 npm run check
@@ -47,7 +48,7 @@ npm run test:e2e -- --project chromium
 ```
 
 `npm run check:ci` runs all of the explorer's checks in order, plus the build
-smoke test, and logs to `tests/tmp/check-ci.log`.
+smoke test, and logs to `explorer/tests/tmp/check-ci.log`.
 
 Desktop, from `desktop/`:
 
