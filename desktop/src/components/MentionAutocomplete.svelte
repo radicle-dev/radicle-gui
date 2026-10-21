@@ -21,6 +21,7 @@
     shift,
     size,
   } from "@floating-ui/dom";
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
   import fuzzysort from "fuzzysort";
   import debounce from "lodash/debounce";
   import { useOverlayScrollbars } from "overlayscrollbars-svelte";
@@ -57,7 +58,6 @@
   import { formatOid, publicKeyFromDid, truncateId } from "@app/lib/utils";
 
   import Icon from "@app/components/Icon.svelte";
-  import UserAvatar from "@app/components/UserAvatar.svelte";
 
   type IconName = ComponentProps<typeof Icon>["name"];
 

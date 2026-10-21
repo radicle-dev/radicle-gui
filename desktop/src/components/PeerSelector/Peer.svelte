@@ -3,13 +3,14 @@
   import type { Remote } from "@bindings/repo/Remote";
   import type { Tag } from "@bindings/repo/Tag";
 
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
+
   import { sortedTags } from "@app/lib/refs";
   import * as router from "@app/lib/router";
   import { formatOid, truncateId } from "@app/lib/utils";
 
   import Icon from "@app/components/Icon.svelte";
   import TagIcon from "@app/components/PeerSelector/TagIcon.svelte";
-  import UserAvatar from "@app/components/UserAvatar.svelte";
 
   interface Props {
     baseRoute: SourceBaseRoute;

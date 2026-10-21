@@ -1,11 +1,16 @@
 name: explorer-visual
-# Only explorer changes, or changes to this workflow, run it. Rust-only
-# changes don't affect the web app: its tests run against a pinned, pre-built
-# radicle-httpd.
+# Only explorer, shared/ui and root npm changes, or changes to this workflow,
+# run it. Rust-only changes don't affect the web app: its tests run against a
+# pinned, pre-built radicle-httpd.
 on:
   push:
     paths:
       - "explorer/**"
+      - "shared/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".npmrc"
+      - ".nvmrc"
       - "!explorer/crates/**"
       - "!explorer/Cargo.toml"
       - "!explorer/Cargo.lock"
@@ -45,7 +50,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version-file: "explorer/.nvmrc"
+          node-version-file: ".nvmrc"
 
       - name: Install dependencies
         run: npm ci

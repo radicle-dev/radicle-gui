@@ -3,6 +3,8 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 
+import { sharedPublic } from "@radicle-gui/ui/vite";
+
 import { assets } from "./vite-plugin-assets.ts";
 
 export default defineConfig({
@@ -16,6 +18,7 @@ export default defineConfig({
   },
   plugins: [
     assets(),
+    sharedPublic(),
     svelte({
       extensions: [".svelte", ".md"],
       // Reference: https://github.com/sveltejs/vite-plugin-svelte/issues/270#issuecomment-1033190138

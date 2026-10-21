@@ -1,0 +1,8 @@
+{
+  "arrowParens": "avoid",
+  "plugins": ["prettier-plugin-svelte"],
+  "svelteSortOrder": "options-scripts-styles-markup",
+  "bracketSameLine": true,
+  "proseWrap": "never",
+  "htmlWhitespaceSensitivity": "ignore"
+}

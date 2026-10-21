@@ -25,7 +25,7 @@
   import Peer from "./PeerBranchSelector/Peer.svelte";
   import Popover from "@app/components/Popover.svelte";
   import TextInput from "@app/components/TextInput.svelte";
-  import UserAvatar from "@app/components/UserAvatar.svelte";
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
 
   export let baseRoute: Extract<
     RepoRoute,

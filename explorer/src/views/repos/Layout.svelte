@@ -15,7 +15,7 @@
   import SeedPicker from "@app/views/explore/SeedPicker.svelte";
   import Separator from "./Separator.svelte";
   import NodeAvatar from "@app/components/NodeAvatar.svelte";
-  import RepoAvatar from "@app/components/RepoAvatar.svelte";
+  import RepoAvatar from "@radicle-gui/ui/components/RepoAvatar.svelte";
 
   export let activeTab: ActiveTab | undefined = undefined;
   export let baseUrl: BaseUrl;

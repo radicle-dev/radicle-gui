@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Author } from "@bindings/cob/Author";
 
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
   import debounce from "lodash/debounce";
 
   import type { AssigneeSuggestion } from "@app/lib/assigneeSuggestions";
@@ -22,7 +23,6 @@
   import Icon from "@app/components/Icon.svelte";
   import NodeId from "@app/components/NodeId.svelte";
   import TextInput from "@app/components/TextInput.svelte";
-  import UserAvatar from "@app/components/UserAvatar.svelte";
 
   interface Props {
     allowedToEdit: boolean;

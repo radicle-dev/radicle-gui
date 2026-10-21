@@ -1,0 +1,19 @@
+{
+  "name": "radicle-gui",
+  "private": true,
+  "workspaces": [
+    "shared/ui",
+    "explorer",
+    "desktop"
+  ],
+  "engines": {
+    "node": ">=24",
+    "npm": ">=11.16"
+  },
+  "overrides": {
+    "katex": "^0.18.9"
+  },
+  "allowScripts": {
+    "fsevents": false
+  }
+}

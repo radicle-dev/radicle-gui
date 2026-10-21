@@ -5,6 +5,7 @@
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
   import type { Tag } from "@bindings/repo/Tag";
 
+  import RepoAvatar from "@radicle-gui/ui/components/RepoAvatar.svelte";
   import { untrack } from "svelte";
 
   import { pickFiles, pickFolder } from "@app/lib/artifactPickers";
@@ -25,7 +26,6 @@
   import DropdownListItem from "@app/components/DropdownListItem.svelte";
   import Icon from "@app/components/Icon.svelte";
   import Popover, { closeFocused } from "@app/components/Popover.svelte";
-  import RepoAvatar from "@app/components/RepoAvatar.svelte";
   import ScrollArea from "@app/components/ScrollArea.svelte";
   import TextInput from "@app/components/TextInput.svelte";
 

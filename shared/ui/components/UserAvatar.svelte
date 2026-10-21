@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { cachedUserAvatar } from "@app/lib/avatar";
+  import { cachedUserAvatar } from "../lib/avatar";
 
   interface Props {
     nodeId: string;
@@ -18,5 +18,9 @@
 </script>
 
 {#if dataUri}
-  <img style:width={styleWidth} src={dataUri} alt="Avatar" />
+  <img
+    style:width={styleWidth}
+    style:height={styleWidth}
+    src={dataUri}
+    alt="Avatar" />
 {/if}

@@ -1,0 +1,39 @@
+name: shared-ui
+# Only shared/ui changes, root npm changes, or changes to this workflow, run it.
+on:
+  pull_request:
+    paths:
+      - "shared/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".npmrc"
+      - ".nvmrc"
+      - ".github/workflows/shared-ui.yml"
+  push:
+    paths:
+      - "shared/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".npmrc"
+      - ".nvmrc"
+      - ".github/workflows/shared-ui.yml"
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+defaults:
+  run:
+    working-directory: shared/ui
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test:unit

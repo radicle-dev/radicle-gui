@@ -15,7 +15,7 @@
   import SeedPicker from "@app/views/explore/SeedPicker.svelte";
   import Separator from "@app/views/repos/Separator.svelte";
   import UserAddress from "@app/views/users/UserAddress.svelte";
-  import UserAvatar from "@app/components/UserAvatar.svelte";
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
   import UserReposView from "./UserReposView.svelte";
 
   export let baseUrl: BaseUrl;

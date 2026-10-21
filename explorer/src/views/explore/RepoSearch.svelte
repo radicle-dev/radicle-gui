@@ -12,7 +12,7 @@
   import IconButton from "@app/components/IconButton.svelte";
   import Link from "@app/components/Link.svelte";
   import Loading from "@app/components/Loading.svelte";
-  import RepoAvatar from "@app/components/RepoAvatar.svelte";
+  import RepoAvatar from "@radicle-gui/ui/components/RepoAvatar.svelte";
 
   export let baseUrl: BaseUrl;
   export let autofocus = false;

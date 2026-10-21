@@ -2,7 +2,7 @@
   import type { BaseUrl } from "@http-client";
   import { formatNodeId, parseNodeId, truncateId } from "@app/lib/utils";
 
-  import UserAvatar from "./UserAvatar.svelte";
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
   import Link from "./Link.svelte";
 
   export let baseUrl: BaseUrl;

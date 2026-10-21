@@ -5,6 +5,8 @@
   import type { Config } from "@bindings/config/Config";
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
+  import RepoAvatar from "@radicle-gui/ui/components/RepoAvatar.svelte";
+
   import { nodeRunning } from "@app/lib/events";
   import { invoke } from "@app/lib/invoke";
   import { disableHide, enableHide, forceHide, hide } from "@app/lib/modal";
@@ -17,7 +19,6 @@
   import ExtendedTextarea from "@app/components/ExtendedTextarea.svelte";
   import Icon from "@app/components/Icon.svelte";
   import LabelInput from "@app/components/LabelInput.svelte";
-  import RepoAvatar from "@app/components/RepoAvatar.svelte";
   import TextInput from "@app/components/TextInput.svelte";
 
   interface Props {

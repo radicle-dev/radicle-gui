@@ -8,6 +8,8 @@
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
   import type { RepoRefs } from "@bindings/repo/RepoRefs";
 
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
+
   import { nodeRunning } from "@app/lib/events";
   import { invoke } from "@app/lib/invoke";
   import type { ReviewEntry } from "@app/lib/reviewSummary";
@@ -37,7 +39,6 @@
   import LabelInput from "@app/components/LabelInput.svelte";
   import NodeId from "@app/components/NodeId.svelte";
   import Popover, { closeFocused } from "@app/components/Popover.svelte";
-  import UserAvatar from "@app/components/UserAvatar.svelte";
 
   interface Props {
     config: Config;

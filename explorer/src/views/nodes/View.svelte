@@ -12,7 +12,7 @@
   import ReposView from "./ReposView.svelte";
   import NodeAvatar from "@app/components/NodeAvatar.svelte";
   import SeedPicker from "@app/views/explore/SeedPicker.svelte";
-  import UserAvatar from "@app/components/UserAvatar.svelte";
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
 
   import PolicyExplainer from "./PolicyExplainer.svelte";
   import Seeding from "./Seeding.svelte";

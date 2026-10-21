@@ -4,6 +4,8 @@
   import type { Comment } from "@bindings/cob/thread/Comment";
   import type { Thread } from "@bindings/cob/thread/Thread";
 
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
+
   import type { Resolution } from "@app/lib/commentResolutions";
   import { plainText } from "@app/lib/markdownPlain";
   import type { CommentAnchor } from "@app/lib/pierreComments";
@@ -16,7 +18,6 @@
 
   import Icon from "@app/components/Icon.svelte";
   import Path from "@app/components/Path.svelte";
-  import UserAvatar from "@app/components/UserAvatar.svelte";
 
   interface Props {
     /// Threads grouped per file, in the order the files appear in the diff, so

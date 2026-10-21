@@ -1,7 +1,0 @@
-:root {
-  --elevation-low: 0 0 48px 0 #000000ee;
-}
-
-[data-theme="light"] {
-  --elevation-low: 0 0 16px 0 #00000022;
-}
