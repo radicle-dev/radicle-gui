@@ -3,11 +3,11 @@ name: explorer-rust
 on:
   push:
     paths:
-      - "crates/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "rust-toolchain"
-      - ".cargo/**"
+      - "explorer/crates/**"
+      - "explorer/Cargo.toml"
+      - "explorer/Cargo.lock"
+      - "explorer/rust-toolchain"
+      - "explorer/.cargo/**"
       - ".github/workflows/explorer-rust.yml"
   workflow_dispatch:
 
@@ -16,6 +16,10 @@ env:
   # Debug info is most of a target/ directory. Line tables keep file:line in
   # panics and backtraces, and make builds and caches much smaller.
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
+defaults:
+  run:
+    working-directory: explorer
 
 jobs:
   test:
@@ -26,7 +30,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.97.1
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ". -> target"
+          workspaces: "explorer -> target"
           # Only master saves, so patches share its caches instead of each
           # storing their own, which pushes the repo over GitHub's 10 GB limit.
           save-if: ${{ github.ref == 'refs/heads/master' }}
@@ -49,7 +53,7 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ". -> target"
+          workspaces: "explorer -> target"
           # Only master saves, so patches share its caches instead of each
           # storing their own, which pushes the repo over GitHub's 10 GB limit.
           save-if: ${{ github.ref == 'refs/heads/master' }}

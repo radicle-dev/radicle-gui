@@ -16,6 +16,10 @@
 #
 # Stale content is safe. The npm cache is content-addressed, and install-binaries
 # keys its download on the pinned version.
+#
+# Every step starts with `cd explorer`. Cache and artifact paths are resolved
+# from the checkout root, so they carry the explorer/ prefix, while the relative
+# NPM_CONFIG_CACHE is resolved from explorer/.
 
 env:
   CI: "true"
@@ -53,12 +57,12 @@ __defs:
   deps_cache: &deps_cache
     name: deps
     paths:
-      - ".npm-cache"
-      - "tests/tmp/bin"
+      - "explorer/.npm-cache"
+      - "explorer/tests/tmp/bin"
       # The eslint and prettier caches, which scripts/check keeps here rather
       # than under node_modules so that `npm ci` cannot delete them. A cache
       # path is always a directory, so the two files share one.
-      - ".lintcache"
+      - "explorer/.lintcache"
 
 steps:
   - label: "🔎 explorer check"
@@ -68,6 +72,7 @@ steps:
     plugins:
       - *node_image
     commands:
+      - cd explorer
       - npm ci
       # check does not use the binaries. It installs them while it is the only
       # writer of the volume, so that no later step has to win a race to keep
@@ -83,6 +88,7 @@ steps:
     plugins:
       - *node_image
     commands:
+      - cd explorer
       - npm ci
       - npm run test:unit
 
@@ -94,10 +100,11 @@ steps:
     timeout_in_minutes: 15
     cache: *deps_cache
     artifact_paths:
-      - "tests/artifacts/**/*"
+      - "explorer/tests/artifacts/**/*"
     plugins:
       - *node_image
     commands:
+      - cd explorer
       - npm ci
       - mkdir -p tests/artifacts
       - ./scripts/install-binaries
@@ -111,10 +118,11 @@ steps:
     timeout_in_minutes: 30
     cache: *deps_cache
     artifact_paths:
-      - "tests/artifacts/**/*"
+      - "explorer/tests/artifacts/**/*"
     plugins:
       - *playwright_image
     commands:
+      - cd explorer
       - npm ci
       - npm run build
       - npm run test:e2e -- --project chromium --config playwright.buildSmoke.config.ts

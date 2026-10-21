@@ -40,13 +40,13 @@ steps:
     cache: &deps_cache
       name: deps
       paths:
-        - ".npm-cache"
-        - "tests/tmp/bin"
-        - ".lintcache"
+        - "explorer/.npm-cache"
+        - "explorer/tests/tmp/bin"
+        - "explorer/.lintcache"
     artifact_paths:
       # The baseline set that every branch build compares against.
-      - "tests/visual/snapshots/**/*.png"
-      - "tests/artifacts/**/*"
+      - "explorer/tests/visual/snapshots/**/*.png"
+      - "explorer/tests/artifacts/**/*"
     plugins:
       # The image ships WebKit as well as Chromium, which this suite needs: the
       # visual-mobile project uses the iPhone 13 Mini device descriptor, whose
@@ -71,6 +71,7 @@ steps:
             - BUILDKITE_ORGANIZATION_SLUG
             - BUILDKITE_PIPELINE_SLUG
     commands:
+      - cd explorer
       - npm ci
       # The image ships no decompressors: install-binaries unpacks .tar.xz
       # releases, and the repo fixtures are .tar.bz2 archives.
@@ -90,7 +91,7 @@ steps:
     timeout_in_minutes: 30
     cache: *deps_cache
     artifact_paths:
-      - "tests/artifacts/**/*"
+      - "explorer/tests/artifacts/**/*"
     plugins:
       - *playwright_docker
     commands:
@@ -104,16 +105,17 @@ steps:
         # A master build older than this file uploaded no baselines, so let a
         # download that finds none pass and judge the result below instead.
         if [ -n "$$baseline" ]; then
-          buildkite-agent artifact download "tests/visual/snapshots/**/*.png" . --build "$$baseline" || true
+          buildkite-agent artifact download "explorer/tests/visual/snapshots/**/*.png" . --build "$$baseline" || true
         fi
         # Comparing with no baselines makes Playwright report all 89 screenshots
         # as missing, which reads like a total regression. Report the real state
         # instead, and stop before the expensive part of the step.
-        if ! find tests/visual/snapshots -name '*.png' 2>/dev/null | grep -q .; then
+        if ! find explorer/tests/visual/snapshots -name '*.png' 2>/dev/null | grep -q .; then
           buildkite-agent annotate "📸 visual: no baselines yet — a master build must publish them first" \
             --style warning --context visual
           exit 0
         fi
+      - cd explorer
       - npm ci
       - mkdir -p tests/artifacts
       - ./scripts/install-binaries

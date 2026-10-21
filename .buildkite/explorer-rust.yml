@@ -1,4 +1,5 @@
-# CI for the Rust workspace (crates/radicle-httpd, crates/radicle-search).
+# CI for the Rust workspace (explorer/crates/radicle-httpd,
+# explorer/crates/radicle-search).
 #
 # Each step gets its own named cache volume. Clippy and test each produce a
 # different target directory, and a shared volume would let whichever step
@@ -6,7 +7,7 @@
 #
 # These steps run on the agent rather than in a container, so ~-rooted cache
 # paths work. The toolchain version is not pinned here: rustup reads
-# ./rust-toolchain.
+# explorer/rust-toolchain, so every step changes into explorer/ first.
 #
 # Every step needs network access to seed.radicle.dev as well as crates.io — the
 # workspace patches radicle-job to a git dependency served from a Radicle seed.
@@ -53,6 +54,7 @@ steps:
       name: rust-test
       paths: *cargo_cache
     commands:
+      - cd explorer
       - *install_rust
       - *install_zstd
       - RUSTFLAGS="-D warnings" cargo build --workspace --all-features
@@ -66,6 +68,7 @@ steps:
       name: rust-lint
       paths: *cargo_cache
     commands:
+      - cd explorer
       - *install_rust
       # The minimal profile ships neither, and rust-toolchain names no
       # components. Only this step needs them.

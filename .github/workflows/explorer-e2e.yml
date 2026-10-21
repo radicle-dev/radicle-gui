@@ -1,21 +1,25 @@
 name: explorer-e2e
-# Desktop and Rust-only changes don't affect the web app: its tests run
-# against a pinned, pre-built radicle-httpd.
+# Only explorer changes, or changes to this workflow, run it. Rust-only
+# changes don't affect the web app: its tests run against a pinned, pre-built
+# radicle-httpd.
 on:
   push:
-    paths-ignore:
-      - "desktop/**"
-      - "crates/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "rust-toolchain"
-      - ".cargo/**"
-      - ".github/workflows/desktop-*.yml"
-      - ".github/workflows/explorer-rust.yml"
+    paths:
+      - "explorer/**"
+      - "!explorer/crates/**"
+      - "!explorer/Cargo.toml"
+      - "!explorer/Cargo.lock"
+      - "!explorer/rust-toolchain"
+      - "!explorer/.cargo/**"
+      - ".github/workflows/explorer-e2e.yml"
   workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+defaults:
+  run:
+    working-directory: explorer
 
 jobs:
   e2e:
@@ -25,7 +29,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version-file: ".nvmrc"
+          node-version-file: "explorer/.nvmrc"
 
       - name: Install dependencies
         run: npm ci
@@ -35,7 +39,7 @@ jobs:
         id: playwright-dep-cache
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('explorer/package-lock.json') }}
 
       - name: Install Playwright browsers
         if: steps.playwright-dep-cache.outputs.cache-hit != 'true'
@@ -57,4 +61,4 @@ jobs:
           retention-days: 30
           if-no-files-found: "ignore"
           path: |
-            tests/artifacts/**/*
+            explorer/tests/artifacts/**/*

@@ -20,11 +20,11 @@ steps:
     cache:
       name: deps
       paths:
-        - ".npm-cache"
-        - "tests/tmp/bin"
-        - ".lintcache"
+        - "explorer/.npm-cache"
+        - "explorer/tests/tmp/bin"
+        - "explorer/.lintcache"
     artifact_paths:
-      - "tests/artifacts/**/*"
+      - "explorer/tests/artifacts/**/*"
     plugins:
       # Ships the browsers at /ms-playwright, so nothing here installs them. The
       # tag must match @playwright/test in package.json — Playwright refuses
@@ -40,6 +40,7 @@ steps:
             - CI
             - NPM_CONFIG_CACHE
     commands:
+      - cd explorer
       - npm ci
       # The image ships no decompressors: install-binaries unpacks .tar.xz
       # releases, and the repo fixtures are .tar.bz2 archives.
