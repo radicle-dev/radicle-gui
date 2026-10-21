@@ -3,6 +3,7 @@
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
   import type { RepoRefs } from "@bindings/repo/RepoRefs";
 
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
   import fuzzysort from "fuzzysort";
 
   import { debounced } from "@app/lib/debounced.svelte";
@@ -17,7 +18,6 @@
   import Popover, { closeFocused } from "@app/components/Popover.svelte";
   import ScrollArea from "@app/components/ScrollArea.svelte";
   import TextInput from "@app/components/TextInput.svelte";
-  import UserAvatar from "@app/components/UserAvatar.svelte";
 
   interface Props {
     baseRoute: SourceBaseRoute;

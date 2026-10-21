@@ -4,12 +4,6 @@
 }
 
 :root {
-  --border-radius-xs: 0.0625rem;
-  --border-radius-sm: 0.125rem;
-  --border-radius-md: 0.25rem;
-  --border-radius-lg: 0.5rem;
-  --border-radius-full: 99rem;
-
   --scrollbar-width: 0.5rem;
 
   --button-regular-height: 2.5rem;

@@ -12,6 +12,7 @@
   import type { Commit } from "@bindings/repo/Commit";
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
   import countBy from "lodash/countBy";
   import mapValues from "lodash/mapValues";
   import { SvelteSet } from "svelte/reactivity";
@@ -69,7 +70,6 @@
   import ShareButton from "@app/components/ShareButton.svelte";
   import Spinner from "@app/components/Spinner.svelte";
   import Topbar from "@app/components/Topbar.svelte";
-  import UserAvatar from "@app/components/UserAvatar.svelte";
 
   import Layout from "./Layout.svelte";
 

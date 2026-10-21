@@ -210,7 +210,7 @@ function createLine(children: ElementContent[], line: number): ElementContent {
         type: "element",
         tagName: "td",
         properties: {
-          className: "line-number",
+          className: ["line-number"],
         },
         children: [
           {
@@ -225,14 +225,14 @@ function createLine(children: ElementContent[], line: number): ElementContent {
         type: "element",
         tagName: "td",
         properties: {
-          className: "line-content",
+          className: ["line-content"],
         },
         children: [
           {
             type: "element",
             tagName: "pre",
             properties: {
-              className: "content",
+              className: ["content"],
             },
             children,
           },

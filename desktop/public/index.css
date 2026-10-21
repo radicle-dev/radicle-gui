@@ -2,14 +2,6 @@
   box-sizing: border-box;
 }
 
-:root {
-  --border-radius-xs: 0.0625rem;
-  --border-radius-sm: 0.125rem;
-  --border-radius-md: 0.25rem;
-  --border-radius-lg: 0.5rem;
-  --border-radius-full: 99rem;
-}
-
 html {
   height: 100%;
   width: 100%;
@@ -135,14 +127,6 @@ a {
     --os-handle-bg-active: var(--color-border-mid);
     --os-track-bg: transparent;
   }
-}
-
-:root {
-  --elevation-low: 0 0 48px 0 #000000ee;
-}
-
-[data-theme="light"] {
-  --elevation-low: 0 0 16px 0 #00000022;
 }
 
 /*

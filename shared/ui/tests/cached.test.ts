@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { cached } from "@app/lib/cached";
+import { cached } from "../lib/cached";
 
 describe("cached", () => {
   test("returns the cached result for the same key", async () => {

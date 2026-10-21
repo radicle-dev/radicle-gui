@@ -1,10 +1,11 @@
 <script lang="ts">
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
+
   import type { ReviewEntry } from "@app/lib/reviewSummary";
   import { reviewSummary, summaryTitle } from "@app/lib/reviewSummary";
   import { publicKeyFromDid } from "@app/lib/utils";
 
   import Icon from "@app/components/Icon.svelte";
-  import UserAvatar from "@app/components/UserAvatar.svelte";
 
   interface Props {
     reviews: ReviewEntry[];

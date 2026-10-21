@@ -1,8 +1,8 @@
 steps:
-  # Explorer and radicle-httpd, in explorer/. Each project is its own npm
-  # package and Cargo workspace.
-  - name: install explorer npm dependencies
-    run: cd explorer && npm install --prefer-offline
+  # One npm workspace at the root holds explorer, desktop and shared/ui.
+  - name: install npm dependencies
+    run: npm install --prefer-offline
+  # Explorer and radicle-httpd, in explorer/, with its own Cargo workspace.
   - name: install Playwright Chromium (explorer e2e)
     run: cd explorer && npx playwright install chromium
   - name: install the pinned Radicle binaries for http-client and e2e tests
@@ -18,9 +18,7 @@ steps:
     run: 'cd explorer && { [ "$RYPH_SETUP_PHASE" != image ] || RUSTFLAGS="-D warnings" cargo clippy --workspace --all-features --tests --locked; }'
   - name: warm the Rust test build (explorer-rust test, image builds only)
     run: 'cd explorer && { [ "$RYPH_SETUP_PHASE" != image ] || cargo test --workspace --all-features --no-run --locked; }'
-  # Desktop, in desktop/.
-  - name: install desktop npm dependencies
-    run: cd desktop && npm install --prefer-offline
+  # Desktop, in desktop/, with its own Cargo workspace.
   - name: install Playwright WebKit (desktop e2e)
     run: cd desktop && npx playwright install webkit
   - name: install the pinned Radicle binaries for desktop e2e tests

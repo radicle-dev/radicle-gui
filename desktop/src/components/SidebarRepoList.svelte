@@ -57,6 +57,7 @@
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
   import type { CrossfadeParams } from "svelte/transition";
 
+  import RepoAvatar from "@radicle-gui/ui/components/RepoAvatar.svelte";
   import { onMount, untrack } from "svelte";
   import { flip } from "svelte/animate";
   import { backOut, cubicOut } from "svelte/easing";
@@ -89,7 +90,6 @@
   import AddRepoButton from "@app/components/AddRepoButton.svelte";
   import ContextMenu from "@app/components/ContextMenu.svelte";
   import Icon from "@app/components/Icon.svelte";
-  import RepoAvatar from "@app/components/RepoAvatar.svelte";
   import ScrollArea from "@app/components/ScrollArea.svelte";
   import usePinnedDragReorder, {
     DRAG_RID_ATTRIBUTE,

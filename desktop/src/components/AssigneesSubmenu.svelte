@@ -1,10 +1,11 @@
 <script lang="ts">
   import type { Author } from "@bindings/cob/Author";
 
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
+
   import { publicKeyFromDid, truncateId } from "@app/lib/utils";
 
   import MenuCheckItem from "@app/components/MenuCheckItem.svelte";
-  import UserAvatar from "@app/components/UserAvatar.svelte";
 
   interface Props {
     assignees: Author[];

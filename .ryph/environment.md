@@ -1,8 +1,9 @@
 # radicle-gui environment
 
 This repository holds two projects: the explorer web app and `radicle-httpd`
-in `explorer/`, and the desktop app in `desktop/`. Each has its own npm
-package and Cargo workspace.
+in `explorer/`, and the desktop app in `desktop/`, plus the UI code they share
+in `shared/ui/`. One npm workspace at the root holds all three; each project
+has its own Cargo workspace.
 
 `.ryph/Dockerfile` is written as the machine for the whole Radicle
 workspace, and a workspace builds only its environment repository's
@@ -27,7 +28,7 @@ At image build it warms clippy and the Rust test builds of both workspaces,
 and the desktop e2e backend (`test-http-api`, `rad-job`), in
 `explorer/target/` and `desktop/target/`. At run start it only reinstalls what the lockfiles
 changed, and cargo builds what a command needs when it runs. Node 24.15.0
-(`explorer/.nvmrc`, `desktop/.nvmrc`) and Rust 1.97.1
+(`.nvmrc`) and Rust 1.97.1
 (`explorer/rust-toolchain`, `desktop/rust-toolchain.toml`) come from mise and
 rustup.
 

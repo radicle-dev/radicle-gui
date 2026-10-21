@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { sharedPublic } from "@radicle-gui/ui/vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vitest/config";
 
@@ -58,6 +59,7 @@ export default defineConfig({
         },
       },
     },
+    sharedPublic(),
     svelte({
       // Reference: https://github.com/sveltejs/vite-plugin-svelte/issues/270#issuecomment-1033190138
       dynamicCompileOptions({ filename }) {

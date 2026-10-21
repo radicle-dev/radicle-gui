@@ -11,7 +11,7 @@
   import Button from "@app/marketing/Button.svelte";
   import PlatformBadges from "@app/marketing/PlatformBadges.svelte";
 
-  import { renderRepoAvatar } from "@app/lib/avatar";
+  import { renderRepoAvatar } from "@radicle-gui/ui/lib/avatar";
 
   interface CarouselRepo {
     name: string;

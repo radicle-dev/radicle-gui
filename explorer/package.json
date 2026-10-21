@@ -64,6 +64,7 @@
     "wait-on": "^9.0.10"
   },
   "dependencies": {
+    "@radicle-gui/ui": "0.0.0",
     "@twemoji/svg": "^15.0.0",
     "@wooorm/starry-night": "^3.10.0",
     "async-mutex": "^0.5.0",
@@ -89,10 +90,5 @@
     "svelte": "^5.56.5",
     "twemoji": "^14.0.2",
     "zod": "^4.4.3"
-  },
-  "overrides": {
-    "mermaid": {
-      "katex": "$katex"
-    }
   }
 }

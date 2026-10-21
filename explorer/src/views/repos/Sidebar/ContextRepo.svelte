@@ -5,7 +5,7 @@
   import HoverPopover from "@app/components/HoverPopover.svelte";
   import Link from "@app/components/Link.svelte";
   import NodeId from "@app/components/NodeId.svelte";
-  import UserAvatar from "@app/components/UserAvatar.svelte";
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
 
   export let baseUrl: BaseUrl;
 

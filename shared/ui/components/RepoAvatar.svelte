@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { cachedRepoAvatar } from "@app/lib/avatar";
+  import { cachedRepoAvatar } from "../lib/avatar";
 
   interface Props {
     name: string;

@@ -1,6 +1,7 @@
 <script lang="ts">
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
+
   import Icon from "@app/components/Icon.svelte";
-  import UserAvatar from "@app/components/UserAvatar.svelte";
 
   interface Props {
     // Given when the chip navigates somewhere; otherwise it is a plain marker,

@@ -1,13 +1,24 @@
 name: desktop-e2e
-# Only desktop changes, or changes to this workflow, run it.
+# Only desktop, shared/ui and root npm changes, or changes to this workflow,
+# run it.
 on:
   pull_request:
     paths:
       - "desktop/**"
+      - "shared/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".npmrc"
+      - ".nvmrc"
       - ".github/workflows/desktop-e2e.yml"
   push:
     paths:
       - "desktop/**"
+      - "shared/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".npmrc"
+      - ".nvmrc"
       - ".github/workflows/desktop-e2e.yml"
   workflow_dispatch:
 
@@ -31,7 +42,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version-file: "desktop/.nvmrc"
+          node-version-file: ".nvmrc"
 
       - run: |
           apt-get update && apt-get install -y --no-install-recommends \

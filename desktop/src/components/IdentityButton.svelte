@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Config } from "@bindings/config/Config";
 
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
   import debounce from "lodash/debounce";
 
   import { writeToClipboard } from "@app/lib/invoke";
@@ -12,7 +13,6 @@
   import Icon from "@app/components/Icon.svelte";
   import Popover from "@app/components/Popover.svelte";
   import { closeFocused } from "@app/components/Popover.svelte";
-  import UserAvatar from "@app/components/UserAvatar.svelte";
 
   interface Props {
     config: Config;

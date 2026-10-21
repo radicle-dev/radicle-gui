@@ -1,5 +1,5 @@
 <script lang="ts">
-  import UserAvatar from "@app/components/UserAvatar.svelte";
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
 
   export let nodeId: string;
   export let avatarUrl: string | undefined = undefined;

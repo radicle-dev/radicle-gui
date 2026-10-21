@@ -3,6 +3,8 @@
   import type { Placement } from "@floating-ui/dom";
   import type { ComponentProps } from "svelte";
 
+  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
+
   import { cachedAlias, cachedConfig, writeToClipboard } from "@app/lib/invoke";
   import { entityUrl } from "@app/lib/mentions";
   import { getPatchActivitySource } from "@app/lib/patchActivityContext";
@@ -10,7 +12,6 @@
 
   import Icon from "@app/components/Icon.svelte";
   import Popover from "@app/components/Popover.svelte";
-  import UserAvatar from "@app/components/UserAvatar.svelte";
 
   type IconName = ComponentProps<typeof Icon>["name"];
 

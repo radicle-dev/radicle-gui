@@ -1,0 +1,43 @@
+{
+  "name": "@radicle-gui/ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./components/*": "./components/*",
+    "./lib/*": "./lib/*.ts",
+    "./vite": "./vite.ts",
+    "./eslint": "./eslint.base.js"
+  },
+  "scripts": {
+    "check": "svelte-check --tsconfig tsconfig.json --fail-on-warnings && eslint --max-warnings 0 . && prettier '**/*.@(ts|js|svelte|json|css)' --check",
+    "format": "prettier '**/*.@(ts|js|svelte|json|css)' --write && eslint --fix .",
+    "test:unit": "TZ='UTC' vitest run"
+  },
+  "peerDependencies": {
+    "svelte": "^5.56.6"
+  },
+  "dependencies": {
+    "lru-cache": "^11.5.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@sveltejs/vite-plugin-svelte": "^7.2.0",
+    "@tsconfig/svelte": "^5.0.8",
+    "@types/node": "^24",
+    "eslint": "^10.7.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-simple-import-sort": "^14.0.0",
+    "eslint-plugin-svelte": "^3.22.0",
+    "globals": "^17.7.0",
+    "prettier": "^3.9.5",
+    "prettier-plugin-svelte": "^4.1.1",
+    "svelte": "^5.56.6",
+    "svelte-check": "^4.7.3",
+    "svelte-eslint-parser": "^1.8.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.64.0",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.12"
+  }
+}

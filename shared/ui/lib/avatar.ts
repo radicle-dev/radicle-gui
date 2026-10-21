@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-import { cached } from "@app/lib/cached";
+import { cached } from "./cached";
 
 type AtomType = "A" | "B" | "C" | "D";
 type ShapeModel =
@@ -417,7 +417,7 @@ export const cachedUserAvatar = cached(
   { max: 2000 },
 );
 
-function renderRepoAvatar(key: string): string {
+export function renderRepoAvatar(key: string): string {
   if (typeof window === "undefined") {
     return "";
   }

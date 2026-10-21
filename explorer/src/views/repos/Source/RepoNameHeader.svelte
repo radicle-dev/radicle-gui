@@ -10,7 +10,7 @@
   import Icon from "@app/components/Icon.svelte";
   import Id from "@app/components/Id.svelte";
   import Link from "@app/components/Link.svelte";
-  import RepoAvatar from "@app/components/RepoAvatar.svelte";
+  import RepoAvatar from "@radicle-gui/ui/components/RepoAvatar.svelte";
 
   export let repo: Repo;
   export let repoId: string;
@@ -87,6 +87,7 @@
     }
     .avatar :global(img) {
       width: 4rem !important;
+      height: 4rem !important;
     }
     .meta {
       flex-basis: 0;

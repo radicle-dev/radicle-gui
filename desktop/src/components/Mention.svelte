@@ -5,6 +5,8 @@
   import type { Config } from "@bindings/config/Config";
   import type { ComponentProps } from "svelte";
 
+  import RepoAvatar from "@radicle-gui/ui/components/RepoAvatar.svelte";
+
   import {
     cachedConfig,
     cachedIssueById,
@@ -37,7 +39,6 @@
   } from "@app/components/ExplorerMenu.svelte";
   import Icon from "@app/components/Icon.svelte";
   import NodeId from "@app/components/NodeId.svelte";
-  import RepoAvatar from "@app/components/RepoAvatar.svelte";
 
   type IconName = ComponentProps<typeof Icon>["name"];
 
