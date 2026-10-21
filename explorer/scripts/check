@@ -8,7 +8,5 @@ npx svelte-check --tsconfig tsconfig.json --config ./vite.config.ts --fail-on-wa
 # CI can then carry them between builds. They share one directory because a
 # Buildkite cache path is always a directory, never a file.
 mkdir -p .lintcache
-# desktop/ has its own eslint config, which eslint would otherwise pick up for
-# its files. It is linted by desktop/scripts/check-js.
-npx eslint --cache --cache-location .lintcache/eslint --cache-strategy content --max-warnings 0 --ignore-pattern desktop/ .
+npx eslint --cache --cache-location .lintcache/eslint --cache-strategy content --max-warnings 0 .
 npx prettier "**/*.@(ts|js|svelte|json|css|html|yml)" --ignore-path .gitignore --ignore-path .prettierignore --check --cache --cache-location .lintcache/prettier

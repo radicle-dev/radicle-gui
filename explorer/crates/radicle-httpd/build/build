@@ -34,7 +34,7 @@ main() {
   keypath="$(rad path)/keys/radicle.pub"
   version="$("$(dirname "$0")/version")"
   image=radicle-build-$version
-  rust_version="$(cat "$(git rev-parse --show-toplevel)/rust-toolchain")"
+  rust_version="$(cat "$(dirname "$0")/../../../rust-toolchain")"
 
   if [ ! -f "$keypath" ]; then
     echo "fatal: no key found at $keypath" >&2
@@ -45,8 +45,8 @@ main() {
 
   echo "Building Radicle $version.."
   echo "Creating archive of repository at $rev in $gitarchive.."
-  # desktop/ is a separate project and not part of the build.
-  git archive --format tar.gz -o "$gitarchive" HEAD -- ':(exclude)desktop'
+  # Only explorer/ is part of the build, with paths relative to it.
+  git archive --format tar.gz -o "$gitarchive" HEAD:explorer
 
   echo "Building image ($image).."
 

@@ -31,14 +31,7 @@ done
 # Heartwood repo id
 rid=z3gqcJUoA1n9HaHKufZs5FCSGazv5
 
-# Some root detection guess work...
-root=$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
-if [ ! -e "$root/tests/support/heartwood-release" ]; then
-  root=$(
-    cd ..
-    pwd
-  )
-fi
+root=$(cd "$(dirname "$0")/.." && pwd)
 
 if [ -z "$release" ]; then
   # No release given, take from heartwood-release
@@ -67,7 +60,7 @@ if [ -e "$root/flake.nix" ]; then
     sed -E -e '/npmDepsHash/s#".*"#"'"$npmDepsHash"'"#' "$root/flake.nix" >$root/flake.nix.tmp
     mv "$root/flake.nix.tmp" "$root/flake.nix"
 
-    nix --experimental-features 'nix-command flakes' flake update --flake git+file://"$root"
+    nix --experimental-features 'nix-command flakes' flake update --flake "$root"
   else
     printf >&2 'Node dependencies may be out of date!
 Re-run on a nix-enabled system to update npmDepsHash.\n'
