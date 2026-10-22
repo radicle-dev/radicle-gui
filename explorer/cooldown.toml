@@ -1,0 +1,8 @@
+[cooldown]
+incompatible-publish-age = "deny"
+# `floor` keeps initial Cargo.lock versions as the minimum; `ignore` allows
+# lower versions.
+lockfile-baseline = "floor"
+
+[registry]
+global-min-publish-age = "7 days"
