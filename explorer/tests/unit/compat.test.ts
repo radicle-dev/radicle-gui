@@ -5,6 +5,7 @@ import {
   legacyHasOtherReleases,
   legacyReleasesQuery,
   legacyScopeReleases,
+  releasedAtSchema,
 } from "@http-client/lib/compat";
 import { repoSchema } from "@http-client/lib/repo";
 
@@ -185,6 +186,22 @@ describe("repo shape", () => {
     expect(parsed.cobs).toBeUndefined();
     expect(parsed.defaultBranch).toBeUndefined();
     expect(parsed.releaseCount).toBeUndefined();
+  });
+});
+
+describe("releasedAtSchema", () => {
+  test("counts older nodes as released on 2026-09-14", () => {
+    expect(releasedAtSchema.parse(undefined)).toBe(
+      Date.UTC(2026, 8, 14) / 1000,
+    );
+  });
+
+  test("keeps an unknown date unknown", () => {
+    expect(releasedAtSchema.parse(null)).toBeUndefined();
+  });
+
+  test("keeps a reported date", () => {
+    expect(releasedAtSchema.parse(1792682464)).toBe(1792682464);
   });
 });
 

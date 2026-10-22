@@ -55,7 +55,11 @@
   $: outdatedSince =
     mode === "node"
       ? nodeReleasedAt(baseUrl)
-          .then(releasedAt => (isOutdated(releasedAt) ? releasedAt : undefined))
+          .then(releasedAt =>
+            releasedAt !== undefined && isOutdated(releasedAt)
+              ? releasedAt
+              : undefined,
+          )
           .catch(() => undefined)
       : Promise.resolve(undefined);
 

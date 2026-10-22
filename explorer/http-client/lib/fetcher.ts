@@ -4,7 +4,7 @@
 import type { ZodIssue, ZodType, TypeOf } from "zod";
 
 import config from "@app/lib/config";
-import { isOutdated, legacyReleasedAt, releaseDate } from "./compat.js";
+import { isOutdated, releaseDate, releasedAtSchema } from "./compat.js";
 
 export interface BaseUrl {
   hostname: string;
@@ -144,9 +144,7 @@ export class Fetcher {
         responseBody,
         typeof info?.version === "string" ? info.version : undefined,
         info
-          ? legacyReleasedAt(
-              typeof info.releasedAt === "number" ? info.releasedAt : undefined,
-            )
+          ? releasedAtSchema.catch(undefined).parse(info.releasedAt)
           : undefined,
         result.error.issues,
         params.path,

@@ -57,7 +57,7 @@ import * as z from "zod";
 
 import * as repo from "./lib/repo.js";
 import { Fetcher, ResponseError } from "./lib/fetcher.js";
-import { legacyReleasedAt } from "./lib/compat.js";
+import { releasedAtSchema } from "./lib/compat.js";
 
 export { ResponseError };
 import {
@@ -152,7 +152,7 @@ const nodeInfoSchema = z.object({
   message: z.string(),
   service: z.string(),
   version: z.string(),
-  releasedAt: z.number().optional().transform(legacyReleasedAt),
+  releasedAt: releasedAtSchema,
   nid: z.string(),
   path: z.string(),
   links: z.array(

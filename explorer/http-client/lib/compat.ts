@@ -154,9 +154,17 @@ export async function legacyHasOtherReleases(
   return legacyScopeReleases(everyAuthor, delegates, "untrusted").length > 0;
 }
 
+// The `releasedAt` of the API root, in seconds since the epoch, or undefined
+// if the build has no date, which httpd reports as `null`.
+//
 // Compat: older httpd doesn't report `releasedAt`, so count it as released on
 // 2026-09-14, the date of the last release without it. Client: remove after
 // 2027-03-14.
-export function legacyReleasedAt(releasedAt: number | undefined): number {
-  return releasedAt ?? Date.UTC(2026, 8, 14) / 1000;
-}
+export const releasedAtSchema = number()
+  .nullable()
+  .optional()
+  .transform(releasedAt =>
+    releasedAt === undefined
+      ? Date.UTC(2026, 8, 14) / 1000
+      : (releasedAt ?? undefined),
+  );

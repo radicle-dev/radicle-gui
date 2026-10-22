@@ -41,11 +41,11 @@ Contract:
 
 ### `releasedAt`
 
-Expand: httpd reports its release date as `releasedAt`, in seconds since the epoch. Explorer warns on nodes past the support window. A missing `releasedAt` counts as 2026-09-14. Read by the explorer client.
+Expand: httpd reports its release date as `releasedAt`, in seconds since the epoch, or `null` if its build has no date. Explorer warns on nodes past the support window. A missing `releasedAt` counts as 2026-09-14. Read by the explorer client.
 
 Contract:
 
-- Client, 2027-03-14: `legacyReleasedAt` in `http-client/lib/compat.ts`
+- Client, 2027-03-14: the missing-field fallback in `releasedAtSchema` in `http-client/lib/compat.ts`
 
 ### Frozen `apiVersion`
 
