@@ -6,3 +6,12 @@ lockfile-baseline = "floor"
 
 [registry]
 global-min-publish-age = "7 days"
+# Taken before the cooldown to fix RUSTSEC-2026-0381 and RUSTSEC-2026-0382.
+# Reviewed against upstream; remove once they are 7 days old (2026-10-27).
+[[allow.exact]]
+crate = "rustls-webpki"
+version = "0.103.16"
+
+[[allow.exact]]
+crate = "webpki-roots"
+version = "1.0.10"
