@@ -429,10 +429,9 @@ export class Client {
       );
       return commits;
     } catch (error) {
-      // Compat: httpd < 0.27.0 doesn't serve the commit-count endpoint, so fall
+      // Compat: older httpd doesn't serve the commit-count endpoint, so fall
       // back to the tree stats endpoint, which also returns the commit count.
-      // Outside the support window; remove once the e2e tests stop running
-      // against httpd 0.26.0.
+      // Client: remove after 2027-01-15.
       if (error instanceof ResponseError && error.status === 404) {
         const stats = await this.getTreeStatsBySha(rid, sha, options);
         return stats.commits;
@@ -539,10 +538,9 @@ export class Client {
         diffStatsSchema,
       );
     } catch (error) {
-      // Compat: httpd < 0.27.0 doesn't serve the diff-stats endpoint, so fall
-      // back to the full diff, which also carries the stats. Outside the
-      // support window; remove once the e2e tests stop running against httpd
-      // 0.26.0.
+      // Compat: older httpd doesn't serve the diff-stats endpoint, so fall
+      // back to the full diff, which also carries the stats. Client: remove
+      // after 2027-01-15.
       if (error instanceof ResponseError && error.status === 404) {
         const { diff } = await this.getDiff(
           rid,

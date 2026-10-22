@@ -55,6 +55,16 @@ Contract:
 
 - Server, 0.30.0 + 6 months: root handler in `crates/radicle-httpd/src/api/v1.rs`
 
+## Expanded in 0.27.0
+
+### Commit-count and diff-stats endpoints
+
+Expand: httpd serves `stats/commits/:sha` and `diff/:base/:oid/stats`. The client falls back to the tree stats and the full diff. Read by the explorer client.
+
+Contract:
+
+- Client, 2027-01-15: `getCommitCountBySha` and `getDiffStats` in `http-client/lib/repo.ts`
+
 ## Expanded in 0.26.0
 
 ### `/info` endpoint
