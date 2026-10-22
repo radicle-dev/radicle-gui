@@ -54,3 +54,13 @@ Expand: httpd no longer bumps `apiVersion` in the API root, and explorer no long
 Contract:
 
 - Server, 0.30.0 + 6 months: root handler in `crates/radicle-httpd/src/api/v1.rs`
+
+## Expanded in 0.26.0
+
+### `/info` endpoint
+
+Expand: httpd serves `/info`, which says whether the seed has search. Older httpd answers 404 or 405. Read by the explorer client.
+
+Contract:
+
+- Client, 2026-10-23: `isMissingInfo` in `http-client/lib/compat.ts`

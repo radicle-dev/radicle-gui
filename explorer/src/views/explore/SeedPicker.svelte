@@ -5,7 +5,7 @@
   import { get } from "svelte/store";
 
   import config from "@app/lib/config";
-  import { HttpdClient, ResponseError } from "@http-client";
+  import { HttpdClient } from "@http-client";
   import {
     activeUnloadedRouteStore,
     push,
@@ -13,7 +13,11 @@
     withBaseUrl,
   } from "@app/lib/router";
   import { isLocal, isOnion } from "@app/lib/utils";
-  import { isOutdated, releaseDate } from "@http-client/lib/compat";
+  import {
+    isMissingInfo,
+    isOutdated,
+    releaseDate,
+  } from "@http-client/lib/compat";
   import { nodeReleasedAt } from "@app/lib/nodeRelease";
   import {
     addBookmark,
@@ -96,8 +100,8 @@
   }
 
   // Probe a seed to decide if it's reachable. Mirrors the reachability
-  // check in `tryWithFailover`: prefer `/info`, only swallow 404/405 (older
-  // httpd) and try `/node` instead. Any other error → not reachable.
+  // check in `tryWithFailover`: prefer `/info`, and only when the seed has
+  // none try `/node` instead. Any other error → not reachable.
   async function probeSeed(seed: BaseUrl): Promise<boolean> {
     const api = new HttpdClient(seed);
     const controller = new AbortController();
@@ -107,10 +111,7 @@
         await api.getInfo({ abort: controller.signal });
         return true;
       } catch (error) {
-        if (
-          error instanceof ResponseError &&
-          (error.status === 404 || error.status === 405)
-        ) {
+        if (isMissingInfo(error)) {
           await api.getNode({ abort: controller.signal });
           return true;
         }

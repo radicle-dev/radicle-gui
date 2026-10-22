@@ -4,8 +4,8 @@
 //
 // Each shim has a "Compat:" comment that says what older httpd does and the
 // date after which no supported seed does it: "Client: remove after
-// YYYY-MM-DD". Fallbacks to an older endpoint stay in the client method
-// that calls the endpoint, with the same comment.
+// YYYY-MM-DD". Fallbacks to an older endpoint stay in the client method that
+// calls the endpoint, with the same comment.
 
 import type { Release } from "./repo/release.js";
 import type { ReleaseScope } from "./repo.js";
@@ -29,6 +29,18 @@ export function isOutdated(releasedAt: number, now: Date = new Date()) {
 // The release date as YYYY-MM-DD.
 export function releaseDate(releasedAt: number) {
   return new Date(releasedAt * 1000).toISOString().slice(0, 10);
+}
+
+// Compat: older httpd has no `/info` endpoint and answers it with 404 or 405.
+// Callers then fall back to `/node`, and the seed has no search. Checks the
+// status instead of `ResponseError`, so that the Open Graph worker can import
+// this module without the fetcher. Client: remove after 2026-10-23.
+export function isMissingInfo(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "status" in error &&
+    (error.status === 404 || error.status === 405)
+  );
 }
 
 // Compat: older httpd reports the issue and patch counts inside the project
