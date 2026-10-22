@@ -97,7 +97,7 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.64.0",
     "vite": "^8.1.5",
-    "vitest": "^4.1.10",
+    "vitest": "^4.1.12",
     "vscode-oniguruma": "^2.0.1",
     "wait-on": "^9.0.10"
   },
