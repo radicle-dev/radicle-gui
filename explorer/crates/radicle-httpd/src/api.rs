@@ -1,8 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use axum::response::{IntoResponse, Json};
-use axum::routing::get;
 use axum::Router;
 use serde_json::{json, Value};
 
@@ -469,25 +467,12 @@ where
     Ok(canonical)
 }
 
+/// Compat: explorer and the Open Graph worker call the API at `/api/v1` until
+/// 2027-03-14. Server: keep `/v1` until they switch to `/api`, and at least 6
+/// months after release, see docs/api-changes.md.
 pub fn router(ctx: Context) -> Router {
-    Router::new()
-        .route("/", get(root_handler))
-        .merge(v1::router(ctx))
-}
-
-async fn root_handler() -> impl IntoResponse {
-    let response = json!({
-        "path": "/api",
-        "links": [
-            {
-                "href": "/v1",
-                "rel": "v1",
-                "type": "GET"
-            }
-        ]
-    });
-
-    Json(response)
+    let routes = v1::router(ctx);
+    routes.clone().nest("/v1", routes)
 }
 
 mod search {
@@ -648,7 +633,23 @@ mod repo {
 
 #[cfg(test)]
 mod tests {
+    use axum::http::StatusCode;
+
     use crate::test;
+
+    #[tokio::test]
+    async fn test_v1_serves_the_api() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = super::router(test::seed(tmp.path()));
+
+        for (path, v1_path) in [("/", "/v1"), ("/repos?show=all", "/v1/repos?show=all")] {
+            let response = test::get(&app, path).await;
+            let v1_response = test::get(&app, v1_path).await;
+
+            assert_eq!(v1_response.status(), StatusCode::OK);
+            assert_eq!(v1_response.json().await, response.json().await);
+        }
+    }
 
     #[tokio::test]
     async fn test_web_config_accessor() {

@@ -168,6 +168,8 @@ export class Fetcher {
 
     const pathSegment = path === undefined ? "" : `/${path}`;
 
+    // Compat: older httpd serves the API only at `/api/v1`, newer httpd
+    // serves it at both `/api` and `/api/v1`. Client: switch to `/api` after 2027-03-14.
     let url = `${this.#baseUrl.scheme}://${this.#baseUrl.hostname}:${this.#baseUrl.port}/api/v1${pathSegment}`;
 
     if (query) {

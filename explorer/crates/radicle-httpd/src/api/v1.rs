@@ -17,15 +17,13 @@ pub fn router(ctx: Context) -> Router {
         .route("/", get(root_handler))
         .with_state(ctx.clone());
 
-    let routes = Router::new()
+    Router::new()
         .merge(root_router)
         .merge(info::router(ctx.clone()))
         .merge(node::router(ctx.clone()))
         .merge(delegates::router(ctx.clone()))
         .merge(repos::router(ctx.clone()))
-        .merge(stats::router(ctx));
-
-    Router::new().nest("/v1", routes)
+        .merge(stats::router(ctx))
 }
 
 async fn root_handler(State(ctx): State<Context>) -> impl IntoResponse {
@@ -38,7 +36,7 @@ async fn root_handler(State(ctx): State<Context>) -> impl IntoResponse {
         // see docs/api-changes.md.
         "apiVersion": "6.3.0",
         "nid": ctx.profile.public_key,
-        "path": "/api/v1",
+        "path": "/api",
         "links": [
             {
                 "href": "/repos",
