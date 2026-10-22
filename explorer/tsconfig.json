@@ -4,6 +4,7 @@
   "exclude": ["node_modules/*", "radicle-httpd/*"],
   "compilerOptions": {
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "target": "es2023",
     "module": "es2022",
     "types": ["vite/client"],

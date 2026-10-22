@@ -3,7 +3,7 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 
-import { assets } from "./vite-plugin-assets";
+import { assets } from "./vite-plugin-assets.ts";
 
 export default defineConfig({
   define: {
