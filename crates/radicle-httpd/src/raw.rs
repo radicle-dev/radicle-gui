@@ -229,12 +229,10 @@ async fn archive_by_committish(
     let project = doc.project()?;
     let repo_name = project.name();
 
-    let not_found = |e: radicle::git::raw::Error| {
-        if e.code() == ErrorCode::NotFound {
-            Error::NotFound
-        } else {
-            Error::Git(e)
-        }
+    let map_git_error = |e: radicle::git::raw::Error| match e.code() {
+        ErrorCode::NotFound => Error::NotFound,
+        ErrorCode::InvalidSpec => Error::BadRequest,
+        _ => Error::Git(e),
     };
 
     let oid = match committish {
@@ -242,7 +240,7 @@ async fn archive_by_committish(
         Committish::Ref(refname) => repo
             .backend
             .resolve_reference_from_short_name(refname)
-            .map_err(not_found)?
+            .map_err(map_git_error)?
             .target()
             .ok_or(Error::NotFound)?
             .into(),
@@ -250,7 +248,7 @@ async fn archive_by_committish(
 
     repo.backend
         .find_object(oid.into(), None)
-        .map_err(not_found)?;
+        .map_err(map_git_error)?;
 
     // Build a prefix for the archive, which includes the
     // refname (if one was given):
@@ -399,7 +397,7 @@ mod routes {
 
     use axum::http::StatusCode;
 
-    use crate::test::{self, get, RID, RID_PRIVATE};
+    use crate::test::{self, get, HEAD, RID, RID_PRIVATE};
     use radicle::storage::ReadStorage;
 
     #[tokio::test]
@@ -462,6 +460,13 @@ mod routes {
 
         let response = get(&app, format!("/{RID}/archive/does-not-exist.tar.gz")).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        // Commits are archived via `/{rid}/{sha}`, not as refs.
+        let response = get(&app, format!("/{RID}/archive/{HEAD}.tar.gz")).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let response = get(&app, format!("/{RID}/archive/foo..bar.tar.gz")).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
