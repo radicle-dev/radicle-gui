@@ -69,6 +69,10 @@ async function createRichRepo(peer: RadiclePeer) {
       "graph TD; Start-->Finish",
       "```",
       "",
+      "$$",
+      "\\sum_{k=1}^n a_k",
+      "$$",
+      "",
     ].join("\n"),
   );
   await Fs.writeFile(
@@ -81,7 +85,7 @@ async function createRichRepo(peer: RadiclePeer) {
   return { rid };
 }
 
-test("render alerts, diagrams and repository images in a readme", async ({
+test("render alerts, diagrams, math and repository images in a readme", async ({
   page,
   peer,
 }) => {
@@ -94,6 +98,12 @@ test("render alerts, diagrams and repository images in a readme", async ({
   ).toBeVisible();
   await expect(readme.locator(".mermaid-diagram svg")).toBeVisible();
   await expect(readme.locator(".mermaid-diagram")).toContainText("Finish");
+
+  // KaTeX's stylesheet takes its MathML copy out of the layout. It stays
+  // 1px wide for screen readers, which Playwright counts as visible.
+  const math = readme.locator(".katex-display");
+  await expect(math.locator(".katex-html")).toBeVisible();
+  await expect(math.locator(".katex-mathml")).toHaveCSS("position", "absolute");
 
   const logoImage = readme.getByRole("img", { name: "Logo" });
   await expect(logoImage).toHaveAttribute("src", /^blob:/);

@@ -7,6 +7,7 @@ import type {
 } from "marked";
 
 import dompurify from "dompurify";
+import katex from "katex";
 import escape from "lodash/escape.js";
 import { Marked, Renderer as BaseRenderer } from "marked";
 import { markedEmoji } from "marked-emoji";
@@ -191,6 +192,42 @@ const radicleReferenceMarkedExtension: TokenizerExtension & RendererExtension =
       `<a href="${escape(token.text)}">${escape(token.text)}</a>`,
   };
 
+// KaTeX's markup doesn't survive sanitization, so math renders as a
+// placeholder holding the TeX source, and `renderMath` swaps in KaTeX's
+// output once the HTML is sanitized.
+const MATH_CLASS = "math";
+const MATH_DISPLAY_CLASS = "math-display";
+
+const mathMarkedExtension: MarkedExtension = {
+  extensions: (
+    katexMarkedExtension().extensions as (TokenizerExtension &
+      RendererExtension)[]
+  ).map(extension => ({
+    ...extension,
+    renderer: ({ text, displayMode }: Tokens.Generic) => {
+      const classes = displayMode
+        ? `${MATH_CLASS} ${MATH_DISPLAY_CLASS}`
+        : MATH_CLASS;
+      const newline = extension.level === "block" ? "\n" : "";
+      return `<code class="${classes}">${escape(text)}</code>${newline}`;
+    },
+  })),
+};
+
+function renderMath(html: string): string {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  for (const element of template.content.querySelectorAll(
+    `code.${MATH_CLASS}`,
+  )) {
+    element.outerHTML = katex.renderToString(element.textContent ?? "", {
+      displayMode: element.classList.contains(MATH_DISPLAY_CLASS),
+      throwOnError: false,
+    });
+  }
+  return template.innerHTML;
+}
+
 const TASK_CHECKBOX_CLASS = "task-checkbox";
 
 export class Renderer extends BaseRenderer {
@@ -234,7 +271,7 @@ export class Renderer extends BaseRenderer {
 export default new Marked();
 
 export const markdownWithExtensions = new Marked(
-  katexMarkedExtension({ throwOnError: false }),
+  mathMarkedExtension,
   markedLinkifyIt({ fuzzyLink: false }),
   markedFootnote({ refMarkers: true }),
   markedEmoji({ emojis }),
@@ -248,12 +285,14 @@ export const markdownWithExtensions = new Marked(
 );
 
 export function renderMarkdown(content: string, breaks = false): string {
-  return dompurify.sanitize(
-    markdownWithExtensions.parse(content, {
-      renderer: new Renderer(),
-      breaks,
-    }) as string,
-    sanitizeConfig,
+  return renderMath(
+    dompurify.sanitize(
+      markdownWithExtensions.parse(content, {
+        renderer: new Renderer(),
+        breaks,
+      }) as string,
+      sanitizeConfig,
+    ),
   );
 }
 
