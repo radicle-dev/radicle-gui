@@ -22,7 +22,6 @@
 </script>
 
 <script lang="ts">
-  import dompurify from "dompurify";
   import { afterUpdate } from "svelte";
   import { toDom } from "hast-util-to-dom";
 
@@ -41,7 +40,7 @@
     canonicalizeGithubImageUrl,
     isCommit,
   } from "@app/lib/utils";
-  import { Renderer, markdown, sanitizeConfig } from "@app/lib/markdown";
+  import { Renderer, renderMarkdown } from "@app/lib/markdown";
   import { parseFrontmatter } from "@app/lib/frontmatter";
 
   export let content: string;
@@ -111,18 +110,11 @@
   }
 
   function render(content: string): string {
-    return dompurify.sanitize(
-      markdown({
-        katex: true,
-        emojis: true,
-        footnotes: true,
-        linkify: true,
-      }).parse(content, {
-        renderer: new Renderer($activeUnloadedRouteStore),
-        breaks,
-      }) as string,
-      sanitizeConfig,
-    ) as string;
+    return renderMarkdown(
+      content,
+      new Renderer($activeUnloadedRouteStore),
+      breaks,
+    );
   }
 
   afterUpdate(async () => {

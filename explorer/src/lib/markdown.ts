@@ -1,7 +1,14 @@
 import type { Config } from "dompurify";
-import type { MarkedExtension, Tokens } from "marked";
+import type {
+  MarkedExtension,
+  RendererExtension,
+  TokenizerExtension,
+  Tokens,
+} from "marked";
 import type { Route } from "@app/lib/router";
 
+import dompurify from "dompurify";
+import katex from "katex";
 import escape from "lodash/escape";
 import footnoteMarkedExtension from "marked-footnote";
 import katexMarkedExtension from "marked-katex-extension";
@@ -175,7 +182,28 @@ const emojiExtension = markedEmoji({
 
 const footnoteExtension = footnoteMarkedExtension({ refMarkers: true });
 const linkifyExtension = linkifyMarkedExtension({}, { fuzzyLink: false });
-const katexExtension = katexMarkedExtension({ throwOnError: false });
+
+// KaTeX's markup doesn't survive sanitization, so math renders as a
+// placeholder holding the TeX source, and `renderMath` swaps in KaTeX's
+// output once the HTML is sanitized.
+const MATH_CLASS = "math";
+const MATH_DISPLAY_CLASS = "math-display";
+
+const mathExtension: MarkedExtension = {
+  extensions: (
+    katexMarkedExtension().extensions as (TokenizerExtension &
+      RendererExtension)[]
+  ).map(extension => ({
+    ...extension,
+    renderer: ({ text, displayMode }: Tokens.Generic) => {
+      const classes = displayMode
+        ? `${MATH_CLASS} ${MATH_DISPLAY_CLASS}`
+        : MATH_CLASS;
+      const newline = extension.level === "block" ? "\n" : "";
+      return `<code class="${classes}">${escape(text)}</code>${newline}`;
+    },
+  })),
+};
 
 export function markdown(options: MarkedOptions): Marked {
   return new Marked(
@@ -185,8 +213,37 @@ export function markdown(options: MarkedOptions): Marked {
     ...[
       ...(options.emojis ? [emojiExtension] : []),
       ...(options.footnotes ? [footnoteExtension] : []),
-      ...(options.katex ? [katexExtension] : []),
+      ...(options.katex ? [mathExtension] : []),
       ...(options.linkify ? [linkifyExtension] : []),
     ],
   );
+}
+
+function renderMath(html: string): string {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  for (const element of template.content.querySelectorAll(
+    `code.${MATH_CLASS}`,
+  )) {
+    element.outerHTML = katex.renderToString(element.textContent ?? "", {
+      displayMode: element.classList.contains(MATH_DISPLAY_CLASS),
+      throwOnError: false,
+    });
+  }
+  return template.innerHTML;
+}
+
+export function renderMarkdown(
+  content: string,
+  renderer: Renderer,
+  breaks: boolean,
+): string {
+  const html = markdown({
+    katex: true,
+    emojis: true,
+    footnotes: true,
+    linkify: true,
+  }).parse(content, { renderer, breaks }) as string;
+
+  return renderMath(dompurify.sanitize(html, sanitizeConfig));
 }
