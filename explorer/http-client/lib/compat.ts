@@ -1,6 +1,6 @@
-// Shims that let this client read older httpd releases, so the app only ever
-// sees one shape. We support an httpd release for six months after its
-// release date; see docs/adr/0001 and docs/api-changes.md.
+// The httpd support window, and shims that let this client read older httpd
+// releases, so the app only ever sees one shape. See docs/adr/0001 and
+// docs/api-changes.md.
 //
 // Each shim has a "Compat:" comment that says what older httpd does and the
 // date after which no supported seed does it: "Client: remove after
@@ -13,6 +13,23 @@ import type { Author } from "./shared.js";
 import type { z } from "zod";
 
 import { number, object, record, string } from "zod";
+
+// Explorer supports an httpd release for this many months after its release
+// date.
+export const supportMonths = 6;
+
+// Whether a release from `releasedAt`, in seconds since the epoch, is past
+// the support window.
+export function isOutdated(releasedAt: number, now: Date = new Date()) {
+  const supportedUntil = new Date(releasedAt * 1000);
+  supportedUntil.setUTCMonth(supportedUntil.getUTCMonth() + supportMonths);
+  return now > supportedUntil;
+}
+
+// The release date as YYYY-MM-DD.
+export function releaseDate(releasedAt: number) {
+  return new Date(releasedAt * 1000).toISOString().slice(0, 10);
+}
 
 // Compat: older httpd reports the issue and patch counts inside the project
 // payload, and the release count as a single number. Client: remove after
@@ -123,4 +140,11 @@ export async function legacyHasOtherReleases(
     return true;
   }
   return legacyScopeReleases(everyAuthor, delegates, "untrusted").length > 0;
+}
+
+// Compat: older httpd doesn't report `releasedAt`, so count it as released on
+// 2026-09-14, the date of the last release without it. Client: remove after
+// 2027-03-14.
+export function legacyReleasedAt(releasedAt: number | undefined): number {
+  return releasedAt ?? Date.UTC(2026, 8, 14) / 1000;
 }

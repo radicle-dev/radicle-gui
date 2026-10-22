@@ -4,7 +4,7 @@
 import type { ZodIssue, ZodType, TypeOf } from "zod";
 
 import config from "@app/lib/config";
-import { satisfies } from "compare-versions";
+import { isOutdated, legacyReleasedAt, releaseDate } from "./compat.js";
 
 export interface BaseUrl {
   hostname: string;
@@ -45,34 +45,32 @@ export class ResponseParseError extends Error {
   public method: string;
   public body: unknown;
   public description: string;
-  public apiVersion: string | undefined;
+  public nodeVersion: string | undefined;
+  public releasedAt: number | undefined;
   public zodIssues: ZodIssue[];
   public path?: string;
 
   public constructor(
     method: string,
     body: unknown,
-    apiVersion: string,
+    nodeVersion: string | undefined,
+    releasedAt: number | undefined,
     zodIssues: ZodIssue[],
     path?: string,
   ) {
     super("Failed to parse response body");
-    const explorerRequiredApiVersion = config.nodes.requiredApiVersion;
-    const nodeApiVersion = apiVersion;
-
-    let description: string;
-    if (!satisfies(nodeApiVersion, explorerRequiredApiVersion)) {
-      description = `The node you are fetching from (v${nodeApiVersion}) doesn’t match the version requirements of <code>radicle-explorer</code> ${explorerRequiredApiVersion}.`;
-    } else {
-      description = `The node (v${nodeApiVersion}) matches the version requirement of <code>radicle-explorer</code> (${explorerRequiredApiVersion}), but <code>radicle-explorer</code> isn’t able to parse the response.`;
-    }
-    this.apiVersion = apiVersion;
+    const node = nodeVersion ? `The node (v${nodeVersion})` : "The node";
+    this.nodeVersion = nodeVersion;
+    this.releasedAt = releasedAt;
+    const outdated =
+      releasedAt !== undefined && isOutdated(releasedAt)
+        ? ` It runs a radicle-httpd release from ${releaseDate(releasedAt)}, which explorer no longer supports. Its operator should upgrade it.`
+        : "";
     this.description =
-      "The response received from the seed does not match the expected schema.<br/>".concat(
-        description,
+      `${node} sent a response that radicle-explorer can’t parse.${outdated}`.concat(
         config.deploymentId
           ? ""
-          : "<br/>If you are self-hosting <code>radicle-explorer</code> and run into this error, try to clear the browser’s <code>localStorage</code> and the cache.",
+          : " If you are self-hosting radicle-explorer, try to clear the browser’s localStorage and the cache.",
       );
 
     this.method = method;
@@ -138,12 +136,18 @@ export class Fetcher {
     if (result.success) {
       return result.data;
     } else {
-      const response = await this.fetch({ method: "GET" });
-      const info = await response.json();
+      const info = await this.fetch({ method: "GET" })
+        .then(response => response.json())
+        .catch(() => undefined);
       throw new ResponseParseError(
         params.method,
         responseBody,
-        info.version,
+        typeof info?.version === "string" ? info.version : undefined,
+        info
+          ? legacyReleasedAt(
+              typeof info.releasedAt === "number" ? info.releasedAt : undefined,
+            )
+          : undefined,
         result.error.issues,
         params.path,
       );

@@ -13,6 +13,8 @@
     withBaseUrl,
   } from "@app/lib/router";
   import { isLocal, isOnion } from "@app/lib/utils";
+  import { isOutdated, releaseDate } from "@http-client/lib/compat";
+  import { nodeReleasedAt } from "@app/lib/nodeRelease";
   import {
     addBookmark,
     bookmarkedSeeds,
@@ -43,6 +45,15 @@
   export let variant: "header" | "breadcrumb" | "panel" = "header";
 
   const VALIDATION_TIMEOUT_MS = 10000;
+
+  // The release date of the seed serving the current page, if it is past
+  // the support window. Only the node picker names that seed.
+  $: outdatedSince =
+    mode === "node"
+      ? nodeReleasedAt(baseUrl)
+          .then(releasedAt => (isOutdated(releasedAt) ? releasedAt : undefined))
+          .catch(() => undefined)
+      : Promise.resolve(undefined);
 
   // The seed currently in use isn't necessarily bookmarked or a default: it
   // can be reached through a shared link or through failover. List it anyway,
@@ -335,6 +346,17 @@
     aria-expanded={expanded}>
     <slot name="icon"><Icon name="seed" /></slot>
     <div class="hostname txt-overflow">{baseUrl.hostname}</div>
+    {#await outdatedSince then releasedAt}
+      {#if releasedAt !== undefined}
+        <span
+          class="failed-icon"
+          title="This node runs a radicle-httpd release from {releaseDate(
+            releasedAt,
+          )}, which explorer no longer supports. Upgrade radicle-httpd to the latest release.">
+          <Icon name="warning" />
+        </span>
+      {/if}
+    {/await}
     {#if variant !== "breadcrumb"}
       <Icon name={expanded ? "chevron-up" : "chevron-down"} />
     {/if}

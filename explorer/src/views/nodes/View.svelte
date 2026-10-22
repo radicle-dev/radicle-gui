@@ -2,6 +2,7 @@
   import type { BaseUrl, Node, NodeStats } from "@http-client";
 
   import dompurify from "dompurify";
+  import { isOutdated } from "@http-client/lib/compat";
   import { markdown, sanitizeConfig } from "@app/lib/markdown";
 
   import Command from "@app/components/Command.svelte";
@@ -18,10 +19,12 @@
   import Seeding from "./Seeding.svelte";
   import UserAgent from "./UserAgent.svelte";
   import NodeAddress from "./NodeAddress.svelte";
+  import OutdatedWarning from "./OutdatedWarning.svelte";
 
   export let baseUrl: BaseUrl;
   export let stats: NodeStats;
   export let node: Node;
+  export let releasedAt: number | undefined = undefined;
 
   function render(content: string): string {
     return dompurify.sanitize(
@@ -186,6 +189,9 @@
             </div>
           {/if}
         </div>
+        {#if releasedAt !== undefined && isOutdated(releasedAt)}
+          <OutdatedWarning {releasedAt} />
+        {/if}
       </div>
 
       <div class="footer">
