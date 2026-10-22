@@ -47,6 +47,7 @@
     "get-port": "^7.2.0",
     "globals": "^17.7.0",
     "jsdom": "^29.1.1",
+    "katex": "^0.18.9",
     "mdsvex": "^0.12.7",
     "prettier": "^3.9.5",
     "prettier-plugin-svelte": "^4.1.1",
@@ -59,7 +60,7 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.64.0",
     "vite": "^8.1.4",
-    "vitest": "^4.1.10",
+    "vitest": "^4.1.12",
     "wait-on": "^9.0.10"
   },
   "dependencies": {
@@ -88,5 +89,10 @@
     "svelte": "^5.56.5",
     "twemoji": "^14.0.2",
     "zod": "^4.4.3"
+  },
+  "overrides": {
+    "mermaid": {
+      "katex": "$katex"
+    }
   }
 }
