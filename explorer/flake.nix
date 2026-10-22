@@ -140,6 +140,7 @@
             env =
               {
                 RADICLE_VERSION = "nix-" + (self.shortRev or self.dirtyShortRev or "unknown");
+                RADICLE_RELEASED_AT = toString self.lastModified;
               }
               // (
                 if self ? rev || self ? dirtyRev

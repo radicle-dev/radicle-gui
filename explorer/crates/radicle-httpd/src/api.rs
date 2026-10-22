@@ -33,12 +33,9 @@ pub const RADICLE_VERSION: &str = env!("RADICLE_VERSION");
 pub const SUPPORT_MONTHS: u32 = 6;
 
 /// The release date of this build, in seconds since the epoch. `None` if the
-/// build has no commit time.
+/// build has no date.
 pub fn released_at() -> Option<i64> {
-    env!("SOURCE_DATE_EPOCH")
-        .parse()
-        .ok()
-        .filter(|secs| *secs > 0)
+    env!("RADICLE_RELEASED_AT").trim().parse().ok()
 }
 
 /// Prefix of a qualified branch reference.

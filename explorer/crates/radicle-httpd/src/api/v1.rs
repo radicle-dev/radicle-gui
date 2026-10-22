@@ -27,7 +27,7 @@ pub fn router(ctx: Context) -> Router {
 }
 
 async fn root_handler(State(ctx): State<Context>) -> impl IntoResponse {
-    let mut response = json!({
+    let response = json!({
         "message": "Welcome!",
         "service": "radicle-httpd",
         "version": format!("{}-{}", RADICLE_VERSION, env!("GIT_HEAD")),
@@ -36,6 +36,7 @@ async fn root_handler(State(ctx): State<Context>) -> impl IntoResponse {
         // see docs/api-changes.md.
         "apiVersion": "6.3.0",
         "nid": ctx.profile.public_key,
+        "releasedAt": released_at(),
         "path": "/api",
         "links": [
             {
@@ -75,9 +76,6 @@ async fn root_handler(State(ctx): State<Context>) -> impl IntoResponse {
             }
         ]
     });
-    if let Some(released_at) = released_at() {
-        response["releasedAt"] = json!(released_at);
-    }
 
     Json(response)
 }

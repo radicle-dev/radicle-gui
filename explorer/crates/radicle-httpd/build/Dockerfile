@@ -11,6 +11,8 @@ ARG LC_ALL
 ARG SOURCE_DATE_EPOCH
 ARG RADICLE_VERSION
 ARG GIT_HEAD
+# The archive has no `.git`, so build.rs can't read the commit time.
+ENV RADICLE_RELEASED_AT=$SOURCE_DATE_EPOCH
 
 # Copy cargo configuration we're going to use to specify compiler options.
 RUN mkdir -p .cargo && cp crates/radicle-httpd/build/config.toml .cargo/config.toml
