@@ -46,15 +46,6 @@ export const guides: Guide[] = [
     video: false,
   },
   {
-    title: "Private collaboration over Radicle Garden",
-    description:
-      "Collaborate on a private repository from behind NAT firewalls, using Garden as an always-on relay.",
-    href: "https://radicle.garden/blog/private-collaboration-powered-by-garden",
-    image: "/marketing/images/garden-bg.png",
-    external: true,
-    video: false,
-  },
-  {
     title: "Custom domains on Radicle Garden",
     description:
       "Set up a custom domain for your repositories on Radicle Garden.",

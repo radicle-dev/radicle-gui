@@ -41,9 +41,7 @@ title: Glossary
 
 **Node** — A participant in the Radicle network, running `radicle-node`. Identified by a public key (Node ID).
 
-**Node ID (NID)** — The public key that identifies a node on the network. Also used as the node’s static key in NoiseXK handshakes. Retrieve yours with `rad self --nid`.
-
-**NoiseXK** — The cryptographic handshake pattern used to secure peer connections. Uses Ed25519 keys and requires knowing the peer’s Node ID before connecting.
+**Node ID (NID)** — The public key that identifies a node on the network. Retrieve yours with `rad self --nid`.
 
 **Patch** — A proposed code change, stored as a COB. Radicle’s equivalent of a pull request.
 

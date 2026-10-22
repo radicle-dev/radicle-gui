@@ -539,14 +539,6 @@
     </article>
 
     <article class="feature-card">
-      <h4 class="txt-bold-18">Private</h4>
-      <p class="txt-medium-16 txt-color-tertiary">
-        Direct peer-to-peer sync and Tor integration are standard. Share what
-        you want, with whom you want, without anyone watching.
-      </p>
-    </article>
-
-    <article class="feature-card">
       <h4 class="txt-bold-18">Signed by default</h4>
       <p class="txt-medium-16 txt-color-tertiary">
         Every change is cryptographically signed: commits, patches, issues,
@@ -577,8 +569,8 @@
     <article class="feature-card">
       <h4 class="txt-bold-18">Sovereign</h4>
       <p class="txt-medium-16 txt-color-tertiary">
-        Your code. Your identity. Your infrastructure. Nobody can deplatform
-        you, rate-limit you, or revoke your access.
+        Your code. Your identity. Your infrastructure. Replicated across peers,
+        so nobody can deplatform you, rate-limit you, or revoke your access.
       </p>
     </article>
   </section>
