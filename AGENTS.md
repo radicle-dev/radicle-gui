@@ -48,6 +48,8 @@ source of truth for anything inside it.
   installs are gated by `min-release-age` and `strict-allow-scripts`
 - Use npm, never `yarn` or `pnpm`: the lockfiles and `.npmrc` settings are
   npm's
+- Updates and audit fixes must respect each project's 7-day cooldown, see
+  "Updating dependencies" below
 - Run tests through the `npm run` scripts, not `npm test` (neither project
   has one), `npx vitest` or `npx playwright test`: the scripts set `TZ=UTC`
   and, in explorer, `NODE_CONFIG_ENV`, which the tests rely on
@@ -60,6 +62,28 @@ source of truth for anything inside it.
   for styling slotted or `{@html}` content
 - Loading states: `{#await promise}` blocks for inline async;
   local `loading` boolean with `try/catch` for imperative fetches
+
+## Updating dependencies
+
+Both projects only install releases that are at least 7 days old: npm through
+`min-release-age` in `.npmrc`, Cargo through `cooldown.toml` and
+`cargo-cooldown`. Run these from the project's directory:
+
+```sh
+npm audit                         # list advisories
+npm audit fix                     # apply fixes that are past the cooldown
+cargo audit                       # list advisories
+cargo cooldown update -p <crate>  # update a crate within the cooldown
+```
+
+- Never run plain `cargo update`: it ignores `cooldown.toml`
+- Never run `npm audit fix --force`: it takes major-version bumps. Ask first
+- If a fix is still cooling down, report when it clears and ask before
+  taking it early. Taking it early means reviewing the release's diff
+  against the previous version, then:
+  - npm: `npm install <pkg>@<version> --min-release-age=0`
+  - Cargo: add an `[[allow.exact]]` entry to `cooldown.toml` with a comment
+    naming the advisory and the date it can be removed
 
 ## Commit messages
 

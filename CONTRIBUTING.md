@@ -27,6 +27,30 @@ When proposing changes via a patch:
   repository or in the project's own `docs/adr/` otherwise, and get consensus
   on that before proposing the code changes.
 
+## Updating dependencies
+
+Both projects only install releases that are at least 7 days old, to give
+the ecosystem time to catch compromised packages. npm enforces this through
+`min-release-age` in each project's `.npmrc`; Cargo through its
+`cooldown.toml`, which needs `cargo install cargo-cooldown cargo-audit`.
+From the project's directory:
+
+```sh
+npm audit
+npm audit fix
+cargo audit
+cargo cooldown update -p <crate>
+```
+
+Use `cargo cooldown update` rather than `cargo update`, which ignores the
+cooldown, and avoid `npm audit fix --force`, which takes major-version bumps.
+
+When a security fix is still cooling down and can't wait, review the release's
+diff against the previous version first. Then install it with
+`npm install <pkg>@<version> --min-release-age=0`, or allow it in
+`cooldown.toml` with an `[[allow.exact]]` entry and a comment naming the
+advisory and the date it can be removed.
+
 ## Writing Git commit messages
 
 A properly formed git commit subject line should always be able to complete the
