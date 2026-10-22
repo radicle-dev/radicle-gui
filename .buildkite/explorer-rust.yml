@@ -27,7 +27,7 @@ __defs:
 
   # The tar.zst archive test needs the zstd binary, which git shells out to.
   install_zstd: &install_zstd |
-    command -v zstd >/dev/null 2>&1 || sudo apt-get install -y -qq zstd
+    command -v zstd >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq zstd; }
 
   # Only the parts of ~/.cargo that are expensive to fetch again. registry/src
   # and git/checkouts are left out on purpose: cargo re-creates both from the
