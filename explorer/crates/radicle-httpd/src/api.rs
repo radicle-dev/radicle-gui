@@ -30,8 +30,18 @@ use crate::cache::Cache;
 use crate::Options;
 
 pub const RADICLE_VERSION: &str = env!("RADICLE_VERSION");
-// This version has to be updated on every breaking change to the radicle-httpd API.
-pub const API_VERSION: &str = "6.3.0";
+
+/// How long explorers support a release after its release date.
+pub const SUPPORT_MONTHS: u32 = 6;
+
+/// The release date of this build, in seconds since the epoch. `None` if the
+/// build has no commit time.
+pub fn released_at() -> Option<i64> {
+    env!("SOURCE_DATE_EPOCH")
+        .parse()
+        .ok()
+        .filter(|secs| *secs > 0)
+}
 
 /// Prefix of a qualified branch reference.
 const REFS_HEADS: &str = "refs/heads/";

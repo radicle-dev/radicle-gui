@@ -10,7 +10,7 @@ use axum::routing::get;
 use axum::Router;
 use serde_json::json;
 
-use crate::api::{Context, API_VERSION, RADICLE_VERSION};
+use crate::api::{released_at, Context, RADICLE_VERSION};
 
 pub fn router(ctx: Context) -> Router {
     let root_router = Router::new()
@@ -29,11 +29,14 @@ pub fn router(ctx: Context) -> Router {
 }
 
 async fn root_handler(State(ctx): State<Context>) -> impl IntoResponse {
-    let response = json!({
+    let mut response = json!({
         "message": "Welcome!",
         "service": "radicle-httpd",
         "version": format!("{}-{}", RADICLE_VERSION, env!("GIT_HEAD")),
-        "apiVersion": API_VERSION,
+        // Compat: older explorers check this against a required range. It is
+        // frozen and no longer changes. Server: remove 6 months after release,
+        // see docs/api-changes.md.
+        "apiVersion": "6.3.0",
         "nid": ctx.profile.public_key,
         "path": "/api/v1",
         "links": [
@@ -74,6 +77,9 @@ async fn root_handler(State(ctx): State<Context>) -> impl IntoResponse {
             }
         ]
     });
+    if let Some(released_at) = released_at() {
+        response["releasedAt"] = json!(released_at);
+    }
 
     Json(response)
 }

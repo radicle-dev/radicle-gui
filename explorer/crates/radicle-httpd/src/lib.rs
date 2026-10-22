@@ -20,6 +20,7 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{middleware, Json, Router};
 use axum_listener::{DualAddr, DualListener};
+use chrono::{DateTime, Months, Utc};
 use hyper::body::Body as _;
 use hyper::header::CONTENT_TYPE;
 use hyper::Method;
@@ -83,6 +84,7 @@ pub async fn run(options: Options) -> anyhow::Result<()> {
         .stdout;
 
     tracing::info!("{}", str::from_utf8(&git_version)?.trim());
+    warn_if_outdated();
 
     // Listing a repo's refs resolves every remote's signed refs through libgit2,
     // opening a descriptor per packfile. Radicle storage can hold thousands of
@@ -160,6 +162,32 @@ pub async fn run(options: Options) -> anyhow::Result<()> {
     axum::serve(listener, app)
         .await
         .map_err(anyhow::Error::from)
+}
+
+/// Warn the operator if explorers no longer support this release.
+fn warn_if_outdated() {
+    let Some(released) = api::released_at().and_then(|secs| DateTime::from_timestamp(secs, 0))
+    else {
+        return;
+    };
+    let Some(supported_until) = released.checked_add_months(Months::new(api::SUPPORT_MONTHS))
+    else {
+        return;
+    };
+    if Utc::now() > supported_until {
+        tracing::warn!(
+            "\n\
+             ************************************************************\n\
+             * This radicle-httpd release is outdated.\n\
+             *\n\
+             * It was released on {}. Radicle explorers support a\n\
+             * release for {} months, so they may no longer load\n\
+             * this node. Please upgrade: https://radicle.dev/download\n\
+             ************************************************************",
+            released.format("%Y-%m-%d"),
+            api::SUPPORT_MONTHS,
+        );
+    }
 }
 
 /// Create a router consisting of other sub-routers.
