@@ -48,7 +48,7 @@ There are several ways to deploy the UI publicly. Here are two common options:
 
 **Add Rewrite Rules for Client-Side Routing**
 
-The explorer is a single-page application (SPA). To ensure that all routes are
+Explorer is a single-page application (SPA). To ensure that all routes are
 handled correctly, add a [try_files rule](try) to your web server configuration.
 For example:
 
@@ -145,7 +145,7 @@ radicle.network, run `npm run deploy`.
 
 #### Node-homepage deployment
 
-If you operate your own seed node and want the explorer to act as a
+If you operate your own seed node and want explorer to act as a
 dedicated front-end for it (the default behaviour), put your own node first
 (and ideally as the only entry) in `preferredSeeds` so it is always picked
 as the primary seed.
