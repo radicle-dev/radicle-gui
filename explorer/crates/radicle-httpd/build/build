@@ -30,7 +30,7 @@ main() {
 
   rev="$(git rev-parse --short HEAD)"
   tempdir="$(mktemp -d)"
-  gitarchive="$tempdir/heartwood-$rev.tar.gz"
+  context="$tempdir/heartwood-$rev"
   keypath="$(rad path)/keys/radicle.pub"
   version="$("$(dirname "$0")/version")"
   image=radicle-build-$version
@@ -44,9 +44,13 @@ main() {
   rad auth
 
   echo "Building Radicle $version.."
-  echo "Creating archive of repository at $rev in $gitarchive.."
-  # Only explorer/ is part of the build, with paths relative to it.
-  git archive --format tar.gz -o "$gitarchive" HEAD:explorer
+  echo "Exporting repository at $rev to $context.."
+  # Only explorer/ is part of the build, with paths relative to it. Run from
+  # the repository root, since in a subdirectory `git archive` only includes
+  # paths under that subdirectory. Pass a directory, not a tarball on stdin, as
+  # the build context: podman on macOS fails to copy symlinks from a tarball.
+  mkdir "$context"
+  git -C "$(git rev-parse --show-toplevel)" archive HEAD:explorer | tar -x -C "$context"
 
   echo "Building image ($image).."
 
@@ -59,7 +63,7 @@ main() {
       --build-arg LC_ALL \
       --build-arg RADICLE_VERSION=$version \
       --build-arg GIT_HEAD=$rev \
-      --arch $ARCH --tag $image -f "$(dirname "$0")/Dockerfile" - <$gitarchive
+      --arch $ARCH --tag $image -f "$(dirname "$0")/Dockerfile" "$context"
 
     echo "Creating container (radicle-build-container).."
     podman create --ulimit=host --replace --name radicle-build-container $image
@@ -72,7 +76,7 @@ main() {
       --build-arg LC_ALL \
       --build-arg GIT_HEAD=$rev \
       --build-arg RADICLE_VERSION=$version \
-      --arch $ARCH --tag $image -f "$(dirname "$0")/Dockerfile" - <$gitarchive
+      --arch $ARCH --tag $image -f "$(dirname "$0")/Dockerfile" "$context"
 
     echo "Creating container (radicle-build-container).."
     podman --cgroup-manager=cgroupfs create --ulimit=host --replace --name radicle-build-container $image
@@ -106,7 +110,7 @@ main() {
   done
 
   # Remove build artifacts that aren't needed anymore.
-  rm -f $gitarchive
+  rm -rf "$tempdir"
   podman rm radicle-build-container >/dev/null
   podman rmi --ignore localhost/$image
 }
