@@ -19,6 +19,8 @@
   import PersonLink from "@app/components/PersonLink.svelte";
   import RyphRunCard from "@app/components/RyphRunCard.svelte";
   import SummonButton from "@app/components/SummonButton.svelte";
+  import SheetControls from "@app/components/SheetControls.svelte";
+  import { useSheet } from "@app/lib/sheet";
   import Thread from "@app/components/Thread.svelte";
   import Timeline from "@app/components/Timeline.svelte";
 
@@ -28,6 +30,7 @@
   }
 
   const { repo, id }: Props = $props();
+  const sheet = useSheet();
 
   const issue = $derived(repo.issues.find(i => i.id === id));
   const base = $derived(node.repoPath(repo));
@@ -106,6 +109,18 @@
   .description {
     margin-bottom: 0;
   }
+  @media (max-width: 700px) {
+    .title-row {
+      flex-wrap: wrap;
+    }
+    .title-row :global(.title) {
+      order: -1;
+      flex-basis: 100%;
+    }
+    .actions {
+      display: contents;
+    }
+  }
 </style>
 
 {#if !issue}
@@ -126,17 +141,21 @@
           kind="issue"
           {busy}
           onSummon={body => node.do({ type: "issueComment", rid: repo.rid, issue: issue.id, body })} />
-        <Button variant="naked" title="Copy link" onclick={() => copy(location.href)}>
-          <Icon name="link" />
-        </Button>
-        <Button variant="naked" onclick={() => navigate(`${base}/issues/new`)}>
-          <Icon name="plus" />New issue
-        </Button>
+        {#if sheet}
+          <SheetControls sheet={sheet()} />
+        {:else}
+          <Button variant="naked" title="Copy link" onclick={() => copy(location.href, "link")}>
+            <Icon name="link" />
+          </Button>
+          <Button variant="naked" onclick={() => navigate(`${base}/issues/new`)}>
+            <Icon name="plus" />New issue
+          </Button>
+        {/if}
       </div>
     </div>
 
     <div class="meta">
-      <span class="chip"><PersonLink person={issue.author} size="1rem" /></span>
+      <PersonLink person={issue.author} size="1rem" chip />
       <IdChip id={issue.id} label="issue ID" />
       <LabelsChip
         labels={issue.labels}

@@ -3,9 +3,12 @@
 
   import { copy, fullDate, plural, shortId, timeAgo } from "@app/lib/utils";
   import { node } from "@app/node/node.svelte";
+  import { announceIdentity, proposeIdentity } from "@app/lib/actions";
   import { describeChange, majority, rawIdentity, revisionTitle } from "@app/node/repoIdentity";
 
   import Button from "@app/components/Button.svelte";
+  import Dropdown from "@app/components/Dropdown.svelte";
+  import SegmentedSwitch from "@app/components/SegmentedSwitch.svelte";
   import Icon from "@app/components/Icon.svelte";
   import IdChip from "@app/components/IdChip.svelte";
   import Markdown from "@app/components/Markdown.svelte";
@@ -77,15 +80,14 @@
 
   function propose() {
     if (!change) return;
-    node.do({
-      type: "idPropose",
-      rid: repo.rid,
-      title: "",
-      description: reason.trim(),
-      changes: [change],
-    });
+    proposeIdentity(repo, change, reason);
     proposing = false;
     reason = "";
+  }
+
+  function vote(revision: string, approve: boolean) {
+    node.do({ type: "idVote", rid: repo.rid, revision, approve });
+    announceIdentity(repo, revision, approve);
   }
 
   function parentDoc(rev: IdentityRevision) {
@@ -198,7 +200,8 @@
     overflow-x: auto;
   }
   .proposal {
-    border: 1px solid var(--color-feedback-warning-border);
+    background: color-mix(in srgb, var(--color-surface-brand-primary) 6%, var(--color-surface-canvas));
+    border: 1px solid color-mix(in srgb, var(--color-surface-brand-primary) 30%, transparent);
     border-radius: var(--border-radius-sm);
     padding: 0.875rem 1rem;
     display: flex;
@@ -216,10 +219,12 @@
   .proposal .what {
     font: var(--txt-body-m-medium);
   }
-  .change {
+  .changes {
+    margin: 0;
+    padding-left: 1.25rem;
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    flex-direction: column;
+    gap: 0.25rem;
     font: var(--txt-body-m-regular);
     color: var(--color-text-secondary);
   }
@@ -346,6 +351,17 @@
       grid-template-columns: 1fr;
     }
   }
+  .signed {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    height: 1.5rem;
+    padding: 0 0.5rem;
+    border-radius: var(--border-radius-sm);
+    font: var(--txt-body-s-medium);
+    color: var(--color-feedback-success-text);
+    background: color-mix(in srgb, var(--color-feedback-success-text) 12%, transparent);
+  }
 </style>
 
 <div class="main">
@@ -373,45 +389,58 @@
       <span class="txt-body-m-semibold">Propose a change</span>
       <div class="field">
         <label for="kind">Change</label>
-        <select id="kind" class="select" bind:value={kind}>
-          <option value="addDelegate">Add a delegate</option>
-          <option value="removeDelegate">Remove a delegate</option>
-          <option value="setThreshold">Change the default-branch threshold</option>
-          <option value="setVisibility">Change visibility</option>
-          <option value="setDescription">Edit the description</option>
-          <option value="setDefaultBranch">Change the default branch</option>
-        </select>
+        <Dropdown
+          id="kind"
+          options={[
+            { value: "addDelegate", label: "Add a delegate", icon: "plus" },
+            { value: "removeDelegate", label: "Remove a delegate", icon: "minus" },
+            { value: "setThreshold", label: "Change the default-branch threshold", icon: "comment-checkmark" },
+            { value: "setVisibility", label: "Change visibility", icon: "globe" },
+            { value: "setDescription", label: "Edit the description", icon: "edit" },
+            { value: "setDefaultBranch", label: "Change the default branch", icon: "branch" },
+          ]}
+          value={kind}
+          onchange={v => (kind = v as typeof kind)} />
       </div>
       {#if kind === "addDelegate"}
         <div class="field">
           <label for="person">Person</label>
-          <select id="person" class="select" bind:value={person}>
-            <option value="">Choose someone…</option>
-            {#each candidates as p (p.id)}<option value={p.id}>{p.alias} · {p.name}</option>{/each}
-          </select>
+          <Dropdown
+            id="person"
+            options={candidates.map(p => ({ value: p.id, label: p.alias, description: p.name, person: p.id }))}
+            value={person || undefined}
+            onchange={v => (person = v)}
+            placeholder="Choose someone…" />
         </div>
       {:else if kind === "removeDelegate"}
         <div class="field">
           <label for="person">Delegate</label>
-          <select id="person" class="select" bind:value={person}>
-            <option value="">Choose a delegate…</option>
-            {#each doc.delegates as d (d)}<option value={d}>{alias(d)}{d === "self" ? " (you)" : ""}</option>{/each}
-          </select>
+          <Dropdown
+            id="person"
+            options={doc.delegates.map(d => ({ value: d as string, label: d === "self" ? `${alias(d)} (you)` : alias(d), person: d }))}
+            value={person || undefined}
+            onchange={v => (person = v)}
+            placeholder="Choose a delegate…" />
         </div>
       {:else if kind === "setThreshold"}
         <div class="field">
           <label for="threshold">Delegates who must agree on {doc.defaultBranch}</label>
-          <select id="threshold" class="select" bind:value={threshold}>
-            {#each Array(doc.delegates.length) as _, i (i)}<option value={i + 1}>{i + 1} of {doc.delegates.length}</option>{/each}
-          </select>
+          <SegmentedSwitch
+            options={doc.delegates.map((_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
+            value={String(threshold)}
+            onchange={v => (threshold = Number(v))} />
         </div>
       {:else if kind === "setVisibility"}
         <div class="field">
           <label for="vis">Visibility</label>
-          <select id="vis" class="select" bind:value={visibility}>
-            <option value="public">Public</option>
-            <option value="private">Private</option>
-          </select>
+          <Dropdown
+            id="vis"
+            options={[
+              { value: "public", label: "Public", icon: "globe" },
+              { value: "private", label: "Private", icon: "lock" },
+            ]}
+            value={visibility}
+            onchange={v => (visibility = v as "public" | "private")} />
         </div>
       {:else if kind === "setDescription"}
         <div class="field">
@@ -446,16 +475,18 @@
       {#each pending as rev (rev.id)}
         {@const signed = rev.accepted.filter(p => voters(rev).includes(p)).length}
         {@const needed = parentDoc(rev) ? majority(parentDoc(rev)!) : 1}
-        <div class="proposal">
+        <div class="proposal" id={`revision-${rev.id}`}>
           <div class="top">
             <PersonLink person={rev.author} size="1rem" />
             <span class="caption">proposed</span>
             <span class="what">{revisionTitle(rev, alias)}</span>
             <span class="caption" title={fullDate(rev.time)}>{timeAgo(rev.time)}</span>
           </div>
-          {#each rev.changes as c, i (i)}
-            <div class="change"><Icon name="arrow-right" />{describeChange(c, alias)}</div>
-          {/each}
+          {#if rev.changes.length > 1}
+            <ul class="changes">
+              {#each rev.changes as c, i (i)}<li>{describeChange(c, alias)}</li>{/each}
+            </ul>
+          {/if}
           {#if rev.description}<Markdown content={rev.description} compact />{/if}
           <div class="sigs">
             {#each voters(rev) as v (v)}
@@ -467,24 +498,23 @@
                 {:else}
                   <span class="none"><Icon name="minus" /></span>
                 {/if}
-                <PersonLink person={v} avatar={false} />
+                <PersonLink person={v} size="1rem" />
               </span>
             {/each}
           </div>
           <div class="actions">
             <span class="note" style="margin-right: auto;">{signed} of {needed} signatures needed</span>
             {#if voters(rev).includes("self")}
-              {#if !rev.rejected.includes("self")}
-                <Button variant="naked" onclick={() => node.do({ type: "idVote", rid: repo.rid, revision: rev.id, approve: false })}>
-                  Reject
-                </Button>
-              {/if}
-              {#if !rev.accepted.includes("self")}
-                <Button variant="secondary" onclick={() => node.do({ type: "idVote", rid: repo.rid, revision: rev.id, approve: true })}>
-                  Sign
-                </Button>
+              {#if rev.accepted.includes("self")}
+                <span class="signed"><Icon name="checkmark" /> Signed by you</span>
+                {#if rev.author !== "self"}
+                  <Button variant="naked" onclick={() => vote(rev.id, false)}>Reject</Button>
+                {/if}
               {:else}
-                <span class="note">You signed this</span>
+                {#if !rev.rejected.includes("self")}
+                  <Button variant="naked" onclick={() => vote(rev.id, false)}>Reject</Button>
+                {/if}
+                <Button variant="secondary" onclick={() => vote(rev.id, true)}>Sign</Button>
               {/if}
             {/if}
           </div>
@@ -499,7 +529,7 @@
       <span class="note">{majority(doc)} of {doc.delegates.length} must sign to change this document</span>
     </div>
     <div class="delegates">
-      {#each doc.delegates as d (d)}<span class="chip"><PersonLink person={d} size="1rem" /></span>{/each}
+      {#each doc.delegates as d (d)}<PersonLink person={d} size="1rem" chip />{/each}
     </div>
   </section>
 
@@ -524,7 +554,7 @@
       <span class="label">Repository ID</span>
       <span class="value row">
         <span class="mono">{repo.rid}</span>
-        <Button variant="naked" styleHeight="1.5rem" onclick={() => copy(repo.rid)}><Icon name="copy" /></Button>
+        <Button variant="naked" styleHeight="1.5rem" onclick={() => copy(repo.rid, "repository ID")}><Icon name="copy" /></Button>
       </span>
     </div>
     {#if showRaw}
@@ -583,7 +613,9 @@
               {/if}
               <div>
                 <div class="head">Changes</div>
-                {#each rev.changes as c, i (i)}<div class="change"><Icon name="arrow-right" />{describeChange(c, alias)}</div>{/each}
+                <ul class="changes">
+                  {#each rev.changes as c, i (i)}<li>{describeChange(c, alias)}</li>{/each}
+                </ul>
               </div>
               <div>
                 <div class="head">
@@ -600,7 +632,7 @@
                       {:else}
                         <span class="none"><Icon name="minus" /></span>
                       {/if}
-                      <PersonLink person={v} avatar={false} />
+                      <PersonLink person={v} size="1rem" />
                     </span>
                   {/each}
                 </div>

@@ -4,10 +4,13 @@
   import { copy, shortDate, shortNid } from "@app/lib/utils";
   import { nidFor } from "@app/node/hash";
   import { node } from "@app/node/node.svelte";
+  import { toast } from "@app/lib/toast.svelte";
+  import { hasDismissedHints, restoreHints } from "@app/lib/hints.svelte";
 
   import Avatar from "@app/components/Avatar.svelte";
   import Button from "@app/components/Button.svelte";
   import Icon from "@app/components/Icon.svelte";
+  import Hint from "@app/components/Hint.svelte";
 
   interface Props {
     section: string;
@@ -23,7 +26,6 @@
   let pronouns = $state(node.person("self").pronouns ?? "");
   let location = $state(node.person("self").location ?? "");
   let website = $state(node.person("self").website ?? "");
-  let savedAt = $state<number | undefined>(undefined);
 
   function saveProfile() {
     node.do({
@@ -34,7 +36,7 @@
       location: location.trim() || undefined,
       website: website.trim() || undefined,
     });
-    savedAt = Date.now();
+    toast("Profile signed and announced to your peers", { icon: "checkmark" });
   }
 
   // Keys & devices
@@ -61,6 +63,7 @@
     enrolling = "idle";
     code = "";
     node.updateIdentity({ recoverySaved: true });
+    toast(`${pendingDevice.name} added to your identity`, { icon: "device" });
   }
 
   let words = $state<string[] | undefined>(undefined);
@@ -246,18 +249,20 @@
       {#if section === "keys"}
         <h1>Keys &amp; devices</h1>
         <p class="lede">
-          Your identity is shared by the devices below. Each holds its own key; any of
-          them can sign as you. Adding a second device means losing one isn't losing
-          your identity.
+          Your identity is shared by the devices below. Each holds its own key, and any
+          one of them can sign as you. With a second device, if you lose one you can
+          still sign, and remove the lost one from the other.
         </p>
 
         {#if node.identity && !node.identity.recoverySaved && devices.length === 1}
           <section>
-            <div class="card panel warn">
-              <strong>This browser is your only key</strong>
-              If its site data is cleared, your identity is gone. Add a device or save
-              a recovery key.
-            </div>
+            <Hint id="keys-only-key">
+              <div class="card panel warn">
+                <strong>This browser is your only key</strong>
+                If its site data is cleared, your identity is gone. Add a device or save
+                a recovery key.
+              </div>
+            </Hint>
           </section>
         {/if}
 
@@ -332,7 +337,7 @@
             {#if words}
               <div class="words">{#each words as w, i (i)}<span>{w}</span>{/each}</div>
               <div class="row">
-                <Button variant="ghost" onclick={() => words && copy(words.join(" "))}><Icon name="copy" /> Copy</Button>
+                <Button variant="ghost" onclick={() => words && copy(words.join(" "), "recovery key")}><Icon name="copy" /> Copy</Button>
                 <Button
                   variant="secondary"
                   onclick={() => {
@@ -391,6 +396,23 @@
         </section>
         <section>
           <div class="card panel">
+            <strong>Hints</strong>
+            Bring back the explanations you've dismissed around the app.
+            <div>
+              <Button
+                variant="ghost"
+                disabled={!hasDismissedHints()}
+                onclick={() => {
+                  restoreHints();
+                  toast("Hints restored", { icon: "lightbulb" });
+                }}>
+                <Icon name="lightbulb" /> Show hints again
+              </Button>
+            </div>
+          </div>
+        </section>
+        <section>
+          <div class="card panel">
             <strong>This device</strong>
             {describeDevice()}
           </div>
@@ -435,7 +457,6 @@
           </div>
           <div class="row">
             <Button variant="secondary" onclick={saveProfile}>Save &amp; publish</Button>
-            {#if savedAt}<span class="muted txt-body-s-regular">Signed and announced to your peers.</span>{/if}
           </div>
         </div>
       {/if}

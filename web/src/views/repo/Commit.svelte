@@ -5,6 +5,7 @@
   import { fullDate, plural, shortId } from "@app/lib/utils";
   import { node } from "@app/node/node.svelte";
 
+  import DiffStyleSwitch from "@app/components/DiffStyleSwitch.svelte";
   import DiffView from "@app/components/DiffView.svelte";
   import Empty from "@app/components/Empty.svelte";
   import PersonLink from "@app/components/PersonLink.svelte";
@@ -17,7 +18,8 @@
   const { repo, sha }: Props = $props();
 
   const commit = $derived(
-    repo.commits[sha] ?? Object.values(repo.commits).find(c => c.id.startsWith(sha)),
+    repo.commits[sha] ??
+      Object.values(repo.commits).find(c => c.id.startsWith(sha)),
   );
   const files = $derived(
     commit
@@ -28,7 +30,9 @@
       : [],
   );
   const stats = $derived(diffStats(files));
-  const body = $derived(commit?.message.split("\n").slice(1).join("\n").trim() ?? "");
+  const body = $derived(
+    commit?.message.split("\n").slice(1).join("\n").trim() ?? "",
+  );
   const base = $derived(node.repoPath(repo));
 </script>
 
@@ -63,14 +67,22 @@
     color: var(--color-text-secondary);
   }
   .stats {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
     margin: 1.5rem 0 1rem;
     font: var(--txt-body-m-medium);
     color: var(--color-text-secondary);
   }
+  .stats-right {
+    margin-left: auto;
+  }
 </style>
 
 {#if !commit}
-  <Empty icon="commit" title="Commit not found">This commit isn't on your node.</Empty>
+  <Empty icon="commit" title="Commit not found">
+    This commit isn't on your node.
+  </Empty>
 {:else}
   <div class="head">
     <h1>{commit.summary}</h1>
@@ -79,15 +91,22 @@
       <PersonLink person={commit.author} /> committed on {fullDate(commit.time)}
       <span class="sha">{shortId(commit.id, 12)}</span>
       {#if commit.parents[0]}
-        parent <a class="sha link" href={`${base}/commit/${commit.parents[0]}`}>{shortId(commit.parents[0])}</a>
+        parent <a class="sha link" href={`${base}/commit/${commit.parents[0]}`}>
+          {shortId(commit.parents[0])}
+        </a>
       {/if}
       <a class="link" href={`${base}/tree/${commit.id}`}>Browse files</a>
     </div>
   </div>
   <div class="stats">
     {plural(stats.files, "file")} changed ·
-    <span style="color: var(--color-feedback-success-text)">+{stats.additions}</span>
-    <span style="color: var(--color-feedback-error-text)">−{stats.deletions}</span>
+    <span style="color: var(--color-feedback-success-text)">
+      +{stats.additions}
+    </span>
+    <span style="color: var(--color-feedback-error-text)">
+      −{stats.deletions}
+    </span>
+    <span class="stats-right"><DiffStyleSwitch /></span>
   </div>
   <DiffView {files} />
 {/if}

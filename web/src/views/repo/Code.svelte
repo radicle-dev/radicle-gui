@@ -12,6 +12,7 @@
   import Markdown from "@app/components/Markdown.svelte";
   import PeerSelector from "@app/components/PeerSelector.svelte";
   import PersonLink from "@app/components/PersonLink.svelte";
+  import IdentityEdit from "@app/components/IdentityEdit.svelte";
   import SegmentedSwitch from "@app/components/SegmentedSwitch.svelte";
 
   interface Props {
@@ -34,6 +35,7 @@
   const readme = $derived(dir ? findReadme(snapshot, path) : undefined);
   const file = $derived(!dir ? snapshot[path] : undefined);
   const base = $derived(node.repoPath(repo));
+  const delegate = $derived(node.isDelegate(repo));
   const peerQuery = $derived(peerBranches && peer ? `?peer=${encodeURIComponent(peer)}` : "");
   const treeHref = (p: string) => `${base}/tree/${resolved.ref}${p ? `/${p}` : ""}${peerQuery}`;
   const latest = $derived(
@@ -224,6 +226,36 @@
     color: var(--color-text-tertiary);
     word-break: break-all;
   }
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .editable-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .editable-row :global(.container) {
+    margin-left: auto;
+  }
+  .inline-edit {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    padding: 0.125rem;
+    border-radius: var(--border-radius-sm);
+    color: var(--color-text-tertiary);
+    visibility: hidden;
+  }
+  .section-head .inline-edit,
+  .editable-row:is(:hover, :focus-within) .inline-edit {
+    visibility: visible;
+  }
+  .inline-edit:hover {
+    background: var(--color-surface-subtle);
+    color: var(--color-text-primary);
+  }
   .delegate {
     display: flex;
     align-items: center;
@@ -316,7 +348,7 @@
               value={mode}
               onchange={v => (mode = v)} />
           {/if}
-          <Button variant="naked" styleHeight="1.75rem" onclick={() => copy(file)}>
+          <Button variant="naked" styleHeight="1.75rem" onclick={() => copy(file, "file contents")}>
             <Icon name="copy" /> Copy
           </Button>
         </div>
@@ -341,7 +373,18 @@
       </div>
       <div class="facts">
         <span class="row"><Icon name="seed" />Seeded by {plural(repo.seedCount, "node")}</span>
-        <span class="row"><Icon name="branch" />Default branch <span class="mono">{repo.defaultBranch}</span></span>
+        <span class="row editable-row">
+          <Icon name="branch" />Default branch <span class="mono">{repo.defaultBranch}</span>
+          {#if delegate}
+            <IdentityEdit {repo} kind="setDefaultBranch" placement="bottom-end">
+              {#snippet trigger(toggle)}
+                <button class="inline-edit" onclick={toggle} title="Change default branch" aria-label="Change default branch">
+                  <Icon name="edit" />
+                </button>
+              {/snippet}
+            </IdentityEdit>
+          {/if}
+        </span>
         {#if release}
           <a class="row link" href={`${base}/releases`}>
             <Icon name="parcel" />Latest release {release.tag}
@@ -349,15 +392,48 @@
         {/if}
       </div>
       <div>
-        <h2 class="section-title">Maintainers</h2>
+        <div class="section-head">
+          <h2 class="section-title">Maintainers</h2>
+          {#if delegate}
+            <IdentityEdit {repo} kind="addDelegate" placement="bottom-end">
+              {#snippet trigger(toggle)}
+                <button class="inline-edit" onclick={toggle} title="Add a maintainer" aria-label="Add a maintainer">
+                  <Icon name="plus" />
+                </button>
+              {/snippet}
+            </IdentityEdit>
+          {/if}
+        </div>
         <div class="stack">
           {#each repo.delegates as d (d)}
-            <div class="delegate"><PersonLink person={d} size="1.25rem" /></div>
+            <div class="delegate editable-row">
+              <PersonLink person={d} size="1.25rem" />
+              {#if delegate && repo.delegates.length > 1}
+                <IdentityEdit {repo} kind="removeDelegate" person={d} placement="bottom-end">
+                  {#snippet trigger(toggle)}
+                    <button class="inline-edit" onclick={toggle} title="Remove maintainer" aria-label={`Remove ${node.person(d).alias}`}>
+                      <Icon name="close" />
+                    </button>
+                  {/snippet}
+                </IdentityEdit>
+              {/if}
+            </div>
           {/each}
         </div>
-        <p class="muted txt-body-s-regular" style="margin-top: 0.625rem;">
-          {repo.threshold} of {repo.delegates.length} must agree for a change to
-          {repo.defaultBranch} to count.
+        <p class="muted txt-body-s-regular editable-row" style="margin-top: 0.625rem;">
+          <span>
+            {repo.threshold} of {repo.delegates.length} must agree for a change to
+            {repo.defaultBranch} to count.
+          </span>
+          {#if delegate && repo.delegates.length > 1}
+            <IdentityEdit {repo} kind="setThreshold" placement="bottom-end">
+              {#snippet trigger(toggle)}
+                <button class="inline-edit" onclick={toggle} title="Change approvals needed" aria-label="Change approvals needed">
+                  <Icon name="edit" />
+                </button>
+              {/snippet}
+            </IdentityEdit>
+          {/if}
         </p>
         <a class="link txt-body-s-medium row" style="margin-top: 0.5rem;" href={`${node.repoPath(repo)}/identity`}>
           <Icon name="key" />Identity document
@@ -384,7 +460,7 @@
         <h2 class="section-title">Repository ID</h2>
         <div class="row">
           <span class="rid">{repo.rid}</span>
-          <Button variant="naked" styleHeight="1.5rem" onclick={() => copy(repo.rid)}>
+          <Button variant="naked" styleHeight="1.5rem" onclick={() => copy(repo.rid, "repository ID")}>
             <Icon name="copy" />
           </Button>
         </div>

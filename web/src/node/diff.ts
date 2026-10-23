@@ -19,6 +19,9 @@ export interface FileDiff {
   additions: number;
   deletions: number;
   hunks: Hunk[];
+  // The file on each side, for renderers that diff and highlight themselves.
+  before?: string;
+  after?: string;
 }
 
 export interface DiffStats {
@@ -133,6 +136,8 @@ export function diffFile(
     additions: ops.filter(o => o.type === "add").length,
     deletions: ops.filter(o => o.type === "del").length,
     hunks: toHunks(ops, context),
+    before,
+    after,
   };
 }
 

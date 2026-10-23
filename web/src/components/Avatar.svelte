@@ -22,11 +22,8 @@
     overflow: hidden;
     background: var(--color-surface-subtle);
   }
-  .person {
-    border-radius: 50%;
-  }
   .org {
-    border-radius: var(--border-radius-md);
+    border-radius: var(--border-radius-sm);
   }
   .avatar :global(img),
   .avatar :global(div) {

@@ -100,7 +100,7 @@
   }
   @media (max-width: 760px) {
     .release {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
       gap: 1rem;
     }
   }

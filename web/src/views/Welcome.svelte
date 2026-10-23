@@ -1,6 +1,7 @@
 <script lang="ts">
   import { describeDevice, generateNid, recoveryPhrase } from "@app/node/identity";
   import { navigate } from "@app/lib/router.svelte";
+  import { toast } from "@app/lib/toast.svelte";
   import { node } from "@app/node/node.svelte";
 
   import Button from "@app/components/Button.svelte";
@@ -194,7 +195,6 @@
   .preview .avatar {
     width: 3rem;
     height: 3rem;
-    border-radius: 50%;
     overflow: hidden;
     background: var(--color-surface-subtle);
     flex-shrink: 0;
@@ -401,6 +401,7 @@
             onclick={() => {
               void navigator.clipboard?.writeText(words.join(" "));
               saved = true;
+              toast("Recovery key copied", { icon: "copy" });
             }}>
             <Icon name="copy" /> Copy
           </Button>

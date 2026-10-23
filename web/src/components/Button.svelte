@@ -15,7 +15,8 @@
     bordered?: boolean;
     title?: string;
     ariaLabel?: string;
-    styleHeight?: "1.5rem" | "1.75rem" | "2rem" | "2.5rem";
+    // 2.25rem matches a text field or select, for buttons that sit beside one.
+    styleHeight?: "1.5rem" | "1.75rem" | "2rem" | "2.25rem" | "2.5rem";
     styleWidth?: string;
     styleJustifyContent?: string;
     stylePadding?: string;
@@ -42,22 +43,22 @@
   }: Props = $props();
 
   const fills: Record<Variant, string> = {
-    secondary: "var(--color-surface-brand-secondary)",
+    secondary: "var(--color-surface-brand-primary)",
     ghost: "var(--color-surface-subtle)",
     naked: "transparent",
     outline: "transparent",
   };
   const fillsHover: Record<Variant, string> = {
-    secondary: "var(--color-surface-brand-secondary)",
+    secondary: "var(--color-surface-brand-primary)",
     ghost: "var(--color-surface-mid)",
-    naked: "var(--color-surface-subtle)",
-    outline: "var(--color-surface-subtle)",
+    naked: "var(--color-surface-alpha-subtle)",
+    outline: "var(--color-surface-alpha-subtle)",
   };
   const fillsActive: Record<Variant, string> = {
     secondary: "var(--color-surface-brand-primary)",
     ghost: "var(--color-surface-strong)",
-    naked: "var(--color-surface-strong)",
-    outline: "var(--color-surface-strong)",
+    naked: "var(--color-surface-alpha-mid)",
+    outline: "var(--color-surface-alpha-mid)",
   };
   const colors: Record<Variant, string> = {
     secondary: "var(--color-text-on-brand)",

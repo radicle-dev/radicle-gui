@@ -3,9 +3,14 @@
 
   import { copy, formatBytes, shortNid, timeAgo } from "@app/lib/utils";
   import { node } from "@app/node/node.svelte";
+  import { setSeed } from "@app/lib/actions";
 
   import Button from "@app/components/Button.svelte";
   import Icon from "@app/components/Icon.svelte";
+  import Hint from "@app/components/Hint.svelte";
+  import RepoAvatar from "@app/components/RepoAvatar.svelte";
+  import UserAvatar from "@app/components/UserAvatar.svelte";
+  import Avatar from "@app/components/Avatar.svelte";
 
   const net = node.network;
   let now = $state(Date.now());
@@ -138,6 +143,10 @@
   .num {
     text-align: right;
   }
+  /* Only the digits are fixed-width; the font widens spaces too otherwise. */
+  .digits {
+    font-variant-numeric: tabular-nums;
+  }
   .kind {
     font: var(--txt-body-s-medium);
     color: var(--color-text-tertiary);
@@ -207,11 +216,32 @@
   }
   @media (max-width: 960px) {
     .cols {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
     .stats {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+  }
+  .peer-avatar {
+    display: inline-flex;
+    flex-shrink: 0;
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  .peer-avatar.seed {
+    border-radius: var(--border-radius-sm);
+    overflow: hidden;
+    background: var(--color-surface-subtle);
+  }
+  .seed-avatar {
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+  .seed-avatar.unseeded {
+    opacity: 0.4;
+  }
+  .table-scroll {
+    overflow-x: auto;
   }
 </style>
 
@@ -219,11 +249,7 @@
   <div class="hero">
     <div>
       <h1><span class="dot" style:background={statusColor}></span>Your node · {statusText}</h1>
-      <p class="lede">
-        A full Radicle node running inside this browser tab. It stores the repositories
-        you seed, syncs them with peers over WebTransport and WebRTC, and signs
-        everything you do with your key.
-      </p>
+      <p class="lede">A full Radicle node running inside this browser tab.</p>
     </div>
     <div class="row">
       {#if net.status === "offline"}
@@ -261,7 +287,7 @@
     <div>
       <section>
         <h2 class="section-title">Peers</h2>
-        <div class="card">
+        <div class="card table-scroll">
           <table>
             <thead>
               <tr>
@@ -276,7 +302,13 @@
                 <tr>
                   <td>
                     <div class="row">
-                      <Icon name={peer.kind === "seed" ? "globe" : "device"} />
+                      <span class="peer-avatar" class:seed={!peer.person}>
+                        {#if peer.person}
+                          <Avatar person={peer.person} size="1.25rem" />
+                        {:else}
+                          <UserAvatar nodeId={peer.nid} styleWidth="1.25rem" />
+                        {/if}
+                      </span>
                       {#if peer.person}
                         <a class="link" href={`/@${node.person(peer.person).alias}`}>{peer.label}</a>
                       {:else}
@@ -286,7 +318,7 @@
                     </div>
                   </td>
                   <td>{peer.transport}</td>
-                  <td class="num">{peer.latencyMs} ms</td>
+                  <td class="num"><span class="digits">{peer.latencyMs}</span> ms</td>
                   <td class="num">{formatBytes(peer.inBytes)} / {formatBytes(peer.outBytes)}</td>
                 </tr>
               {:else}
@@ -302,7 +334,9 @@
         <div class="card">
           {#each sizes as { repo, bytes } (repo.rid)}
             <div class="seed-row">
-              <Icon name={node.seeding[repo.rid] ? "seed-filled" : "seed"} />
+              <span class="seed-avatar" class:unseeded={!node.seeding[repo.rid]}>
+                <RepoAvatar name={repo.name} rid={repo.rid} styleWidth="1.25rem" />
+              </span>
               <a class="link ellipsis" href={node.repoPath(repo)}>
                 {node.ownerHandle(repo.owner)}/{repo.name}
               </a>
@@ -310,8 +344,7 @@
               <Button
                 variant={node.seeding[repo.rid] ? "ghost" : "outline"}
                 styleHeight="1.75rem"
-                onclick={() =>
-                  node.do({ type: "seed", rid: repo.rid, on: !node.seeding[repo.rid] })}>
+                onclick={() => setSeed(repo, !node.seeding[repo.rid])}>
                 {node.seeding[repo.rid] ? "Unseed" : "Seed"}
               </Button>
             </div>
@@ -371,6 +404,7 @@
         </div>
       </section>
 
+      <Hint id="node-close-tab" variant="text">
       <section>
         <h2 class="section-title">When you close this tab</h2>
         <div class="card info">
@@ -386,13 +420,14 @@
           {#if !net.tabVisible}<div><strong>Tab in background:</strong> syncing slowed down.</div>{/if}
         </div>
       </section>
+      </Hint>
 
       <section>
         <h2 class="section-title">Identity</h2>
         <div class="card info">
           <div class="row" style="justify-content: space-between;">
             <strong>{self.alias}</strong>
-            <Button variant="naked" styleHeight="1.5rem" onclick={() => copy(self.did)}>
+            <Button variant="naked" styleHeight="1.5rem" onclick={() => copy(self.did, "DID")}>
               <Icon name="copy" /> Copy DID
             </Button>
           </div>

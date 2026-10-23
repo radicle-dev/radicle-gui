@@ -1,13 +1,27 @@
 <script lang="ts">
+  import { untrack } from "svelte";
+
   import { node } from "@app/node/node.svelte";
 
+  import { toast } from "@app/lib/toast.svelte";
+  import Avatar from "@app/components/Avatar.svelte";
   import Button from "@app/components/Button.svelte";
+  import Icon from "@app/components/Icon.svelte";
+  import RepoAvatar from "@app/components/RepoAvatar.svelte";
+  import ConfirmDialog from "@app/components/ConfirmDialog.svelte";
   import Empty from "@app/components/Empty.svelte";
   import InboxRow from "@app/components/InboxRow.svelte";
   import SegmentedSwitch from "@app/components/SegmentedSwitch.svelte";
 
   type Filter = "all" | "needs" | "unread";
-  let filter = $state<Filter>("all");
+
+  interface Props {
+    // The filter to start on, from the URL, e.g. from Home's summary.
+    filter?: string;
+  }
+
+  const { filter: initial }: Props = $props();
+  let filter = $state<Filter>(untrack(() => (initial === "needs" || initial === "unread" ? initial : "all")));
   let repoFilter = $state<string | undefined>(undefined);
 
   const items = $derived(
@@ -20,6 +34,7 @@
   );
 
   const sources = $derived.by(() => {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- built and read in one call, never reactive
     const counts = new Map<string, number>();
     for (const i of node.inbox) {
       const key = i.rid ?? i.org;
@@ -32,6 +47,8 @@
         return {
           key: key as string,
           label: repo ? `${node.ownerHandle(repo.owner)}/${repo.name}` : (org?.name ?? ""),
+          repo,
+          org,
           count: counts.get(key as string) ?? 0,
         };
       },
@@ -40,6 +57,7 @@
 
   const groups = $derived.by(() => {
     const out: { label: string; items: typeof items }[] = [];
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- built and read in one call, never reactive
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const label = (t: number) => {
@@ -58,8 +76,18 @@
     return out;
   });
 
+  let confirming = $state(false);
+  const unread = $derived(items.filter(i => !node.read[i.id]));
+
   function markAll() {
-    node.do({ type: "readInbox", ids: items.map(i => i.id) });
+    const ids = unread.map(i => i.id);
+    node.do({ type: "readInbox", ids });
+    toast(`Marked ${ids.length} ${ids.length === 1 ? "notification" : "notifications"} as read`, {
+      icon: "mark-read",
+      duration: 8000,
+      countdown: true,
+      action: { label: "Undo", run: () => node.do({ type: "unreadInbox", ids }) },
+    });
   }
 </script>
 
@@ -107,13 +135,32 @@
     background: var(--color-surface-subtle);
     color: var(--color-text-primary);
   }
+  .source {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+  .source-avatar,
+  .source-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    width: 1.25rem;
+    justify-content: center;
+  }
+  .source-icon {
+    color: var(--color-text-tertiary);
+  }
+  .sources button {
+    align-items: center;
+  }
   .count {
     font: var(--txt-body-s-medium);
     color: var(--color-text-tertiary);
   }
   @media (max-width: 860px) {
     .layout {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
     .sources {
       display: none;
@@ -124,19 +171,26 @@
 <div class="page">
   <div class="bar">
     <h1>Inbox</h1>
-    <Button variant="ghost" onclick={markAll} disabled={items.every(i => node.read[i.id])}>
-      Mark all as read
-    </Button>
   </div>
   <div class="layout">
     <div class="sources">
-      <h2 class="section-title">From</h2>
       <button class:active={!repoFilter} onclick={() => (repoFilter = undefined)}>
-        Everything <span class="count">{node.unreadCount}</span>
+        <span class="source">
+          <span class="source-icon"><Icon name="inbox" /></span>
+          Everything
+        </span>
+        <span class="count">{node.unreadCount}</span>
       </button>
       {#each sources as s (s.key)}
         <button class:active={repoFilter === s.key} onclick={() => (repoFilter = s.key)}>
-          <span class="ellipsis">{s.label}</span>
+          <span class="source">
+            {#if s.repo}
+              <span class="source-avatar"><RepoAvatar name={s.repo.name} rid={s.repo.rid} styleWidth="1.25rem" /></span>
+            {:else if s.org}
+              <Avatar org={s.org.id} size="1.25rem" />
+            {/if}
+            <span class="ellipsis">{s.label}</span>
+          </span>
           {#if s.count > 0}<span class="count">{s.count}</span>{/if}
         </button>
       {/each}
@@ -151,10 +205,16 @@
           ]}
           value={filter}
           onchange={v => (filter = v)} />
-        <span class="muted txt-body-s-regular">
-          Notifications come from repos you maintain, contribute to or follow, and
-          your orgs.
-        </span>
+        <Button variant="ghost" onclick={() => (confirming = true)} disabled={unread.length === 0}>
+          Mark all as read
+        </Button>
+        <ConfirmDialog
+          bind:open={confirming}
+          title={`Mark ${unread.length} ${unread.length === 1 ? "notification" : "notifications"} as read?`}
+          confirmLabel="Mark all as read"
+          onConfirm={markAll}>
+          They'll move out of your unread list.
+        </ConfirmDialog>
       </div>
       {#each groups as group (group.label)}
         <div class="group">

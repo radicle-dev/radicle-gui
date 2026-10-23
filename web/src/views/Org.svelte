@@ -5,12 +5,16 @@
   import { navigate } from "@app/lib/router.svelte";
   import { copy, plural, shortDate } from "@app/lib/utils";
   import { node } from "@app/node/node.svelte";
+  import { toast } from "@app/lib/toast.svelte";
+  import { setFollow } from "@app/lib/actions";
 
   import ActivityList from "@app/components/ActivityList.svelte";
   import Avatar from "@app/components/Avatar.svelte";
   import Button from "@app/components/Button.svelte";
+  import Dropdown from "@app/components/Dropdown.svelte";
   import Empty from "@app/components/Empty.svelte";
   import Icon from "@app/components/Icon.svelte";
+  import Hint from "@app/components/Hint.svelte";
   import PersonLink from "@app/components/PersonLink.svelte";
   import ProposalCard from "@app/components/ProposalCard.svelte";
   import RepoCard from "@app/components/RepoCard.svelte";
@@ -48,14 +52,27 @@
     ),
   );
 
+  function announce(ids: (string | undefined)[]) {
+    const proposals = ids.flatMap(id => org?.proposals.find(p => p.id === id) ?? []);
+    if (proposals.length === 0) return;
+    if (proposals.every(p => p.state === "applied")) {
+      toast(proposals.length === 1 ? "Change applied" : "Changes applied", { icon: "checkmark" });
+    } else {
+      toast(
+        proposals.length === 1 ? "Proposal sent for approval" : `${proposals.length} proposals sent for approval`,
+      );
+    }
+  }
+
   function invite() {
     if (!org || !invitee) return;
-    node.do({
+    const id = node.do({
       type: "propose",
       org: org.id,
       title: `Add ${node.person(invitee).alias} as ${inviteRole === "admin" ? "an admin" : "a member"}`,
       change: { type: "addMember", person: invitee, role: inviteRole },
     });
+    announce([id]);
     inviting = false;
     invitee = "";
     navigate(`${base}?tab=approvals`);
@@ -75,30 +92,32 @@
 
   function proposeSettings() {
     if (!org) return;
+    const ids: (string | undefined)[] = [];
     if (editName.trim() && editName.trim() !== org.name) {
-      node.do({
+      ids.push(node.do({
         type: "propose",
         org: org.id,
         title: "Rename the org",
         change: { type: "editProfile", field: "name", value: editName.trim() },
-      });
+      }));
     }
     if (editDescription.trim() !== org.description) {
-      node.do({
+      ids.push(node.do({
         type: "propose",
         org: org.id,
         title: "Update the description",
         change: { type: "editProfile", field: "description", value: editDescription.trim() },
-      });
+      }));
     }
     if (editThreshold !== org.threshold) {
-      node.do({
+      ids.push(node.do({
         type: "propose",
         org: org.id,
         title: `Change approvals needed to ${editThreshold}`,
         change: { type: "setThreshold", threshold: editThreshold },
-      });
+      }));
     }
+    announce(ids);
     navigate(`${base}?tab=approvals`);
   }
 </script>
@@ -191,7 +210,8 @@
     color: var(--color-text-primary);
   }
   .callout.attention {
-    border-color: var(--color-feedback-warning-border);
+    background: color-mix(in srgb, var(--color-surface-brand-primary) 6%, var(--color-surface-canvas));
+    border-color: color-mix(in srgb, var(--color-surface-brand-primary) 30%, transparent);
   }
   .members-mini {
     display: flex;
@@ -226,6 +246,68 @@
       grid-template-columns: minmax(0, 1fr);
     }
   }
+  /* Sits in the grid like a repository card, but asks to be filled. */
+  .new-repo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    min-height: 9rem;
+    padding: 1rem;
+    border-style: dashed;
+    border-color: var(--color-border-mid);
+    background: transparent;
+    text-align: center;
+  }
+  .new-repo-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    margin-bottom: 0.25rem;
+    border-radius: var(--border-radius-sm);
+    background: var(--color-surface-subtle);
+    color: var(--color-text-secondary);
+  }
+  .new-repo-label {
+    font: var(--txt-body-m-semibold);
+  }
+  .new-repo-sub {
+    font: var(--txt-body-s-regular);
+    color: var(--color-text-tertiary);
+  }
+  /* The last row of the members list, opening the invite form above it. */
+  .add-member {
+    all: unset;
+    box-sizing: border-box;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    /* Same gap as between a member's avatar and name, so the text lines up. */
+    gap: 0.375rem;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    font: var(--txt-body-m-medium);
+    color: var(--color-text-secondary);
+  }
+  .add-member:hover {
+    background: var(--color-surface-subtle);
+    color: var(--color-text-primary);
+  }
+  .add-member:focus-visible {
+    outline: 2px solid var(--color-border-brand);
+    outline-offset: -2px;
+  }
+  .add-member-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: 1px dashed var(--color-border-mid);
+  }
 </style>
 
 <div class="page">
@@ -257,7 +339,7 @@
         {:else}
           <Button
             variant={following ? "ghost" : "secondary"}
-            onclick={() => node.do({ type: "follow", id: org.id, on: !following })}>
+            onclick={() => setFollow(org.id, !following)}>
             {following ? "Following" : "Follow"}
           </Button>
         {/if}
@@ -280,23 +362,38 @@
     <div class="layout" class:full={tab !== "overview"}>
       <div>
         {#if tab === "repos"}
-          <div class="grid">{#each repos as repo (repo.rid)}<RepoCard {repo} />{/each}</div>
+          <div class="grid">
+            {#each repos as repo (repo.rid)}<RepoCard {repo} />{/each}
+            {#if me}
+              <a class="card new-repo" href={`/new?owner=org:${org.id}`}>
+                <span class="new-repo-icon"><Icon name="plus" /></span>
+                <span class="new-repo-label">New repository</span>
+                <span class="new-repo-sub">Owned by {org.name}</span>
+              </a>
+            {/if}
+          </div>
         {:else if tab === "members"}
           {#if inviting && me}
             <div class="card invite">
               <div class="field">
                 <label for="invitee">Invite someone</label>
-                <select id="invitee" class="select" bind:value={invitee}>
-                  <option value="">Choose a person you know…</option>
-                  {#each candidates as p (p.id)}<option value={p.id}>{p.alias} · {p.name}</option>{/each}
-                </select>
+                <Dropdown
+                  id="invitee"
+                  options={candidates.map(p => ({ value: p.id, label: p.alias, description: p.name, person: p.id }))}
+                  value={invitee || undefined}
+                  onchange={v => (invitee = v)}
+                  placeholder="Choose a person you know…" />
               </div>
               <div class="field" style="flex: 0 0 9rem;">
                 <label for="role">Role</label>
-                <select id="role" class="select" bind:value={inviteRole}>
-                  <option value="member">Member</option>
-                  <option value="admin">Admin</option>
-                </select>
+                <Dropdown
+                  id="role"
+                  options={[
+                    { value: "member", label: "Member", description: "Signs org changes" },
+                    { value: "admin", label: "Admin", description: "Also manages members" },
+                  ]}
+                  value={inviteRole}
+                  onchange={v => (inviteRole = v as "member" | "admin")} />
               </div>
               <Button variant="naked" onclick={() => (inviting = false)}>Cancel</Button>
               <Button variant="secondary" disabled={!invitee} onclick={invite}>Propose</Button>
@@ -315,6 +412,12 @@
                 <span class="since">Since {shortDate(m.since)}</span>
               </div>
             {/each}
+            {#if me && !inviting}
+              <button class="member add-member" onclick={() => (inviting = true)}>
+                <span class="add-member-icon"><Icon name="plus" /></span>
+                Invite a member
+              </button>
+            {/if}
           </div>
         {:else if tab === "approvals" && me}
           <section>
@@ -347,11 +450,15 @@
             </div>
             <div class="field">
               <label for="org-threshold">Approvals needed for changes</label>
-              <select id="org-threshold" class="select" bind:value={editThreshold}>
-                {#each Array(org.members.length) as _, i (i)}
-                  <option value={i + 1}>{i + 1} of {org.members.length}{i + 1 > org.members.length / 2 ? "" : " (less than a majority)"}</option>
-                {/each}
-              </select>
+              <Dropdown
+                id="org-threshold"
+                options={org.members.map((_, i) => ({
+                  value: String(i + 1),
+                  label: `${i + 1} of ${org.members.length}`,
+                  description: i + 1 > org.members.length / 2 ? undefined : "Less than a majority",
+                }))}
+                value={String(editThreshold)}
+                onchange={v => (editThreshold = Number(v))} />
               <span class="hint">More approvals make the org safer from a single lost key, but slower to change.</span>
             </div>
             <div class="row">
@@ -360,7 +467,7 @@
             <div class="card callout">
               <strong>Org identity</strong>
               <span class="mono txt-body-s-regular">{org.rid}</span>
-              <div><Button variant="naked" onclick={() => copy(org.rid)}><Icon name="copy" /> Copy ID</Button></div>
+              <div><Button variant="naked" onclick={() => copy(org.rid, "org ID")}><Icon name="copy" /> Copy ID</Button></div>
             </div>
           </div>
         {:else}
@@ -392,12 +499,14 @@
               {/each}
             </div>
           </div>
-          <div class="card callout">
-            <strong>How this org works</strong>
-            The org is a repository its members sign together. Adding people, changing the
-            profile or the rules takes {org.threshold} of {org.members.length} member
-            signatures, so no single key controls it.
-          </div>
+          <Hint id="org-how-it-works">
+            <div class="card callout">
+              <strong>How this org works</strong>
+              The org is a repository its members sign together. Adding people, changing the
+              profile or the rules takes {org.threshold} of {org.members.length} member
+              signatures, so no single key controls it.
+            </div>
+          </Hint>
         </aside>
       {/if}
     </div>

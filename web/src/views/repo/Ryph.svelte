@@ -4,11 +4,13 @@
   import { plural, shortDate } from "@app/lib/utils";
   import { AGENTS, checksFor } from "@app/node/ryph";
   import { node } from "@app/node/node.svelte";
+  import { toast } from "@app/lib/toast.svelte";
 
   import Avatar from "@app/components/Avatar.svelte";
   import Button from "@app/components/Button.svelte";
   import Empty from "@app/components/Empty.svelte";
   import Icon from "@app/components/Icon.svelte";
+  import Hint from "@app/components/Hint.svelte";
   import PersonLink from "@app/components/PersonLink.svelte";
   import RyphRunCard from "@app/components/RyphRunCard.svelte";
 
@@ -28,11 +30,21 @@
   let picked = $state<AgentKey[]>(["agent-mender", "agent-scout", "agent-sweeper"]);
 
   function connect() {
-    node.do({
-      type: "ryphConnect",
-      rid: repo.rid,
-      instance: instance.trim().replace(/^https?:\/\//, "").replace(/\/$/, ""),
-      agents: picked,
+    const host = instance.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+    node.do({ type: "ryphConnect", rid: repo.rid, instance: host, agents: picked });
+    toast(`Connected to ${host}`, { icon: "online" });
+  }
+
+  function disconnect() {
+    if (!conn) return;
+    const { instance: host, agents } = conn;
+    node.do({ type: "ryphDisconnect", rid: repo.rid });
+    toast(`Disconnected from ${host}`, {
+      icon: "disconnect",
+      action: {
+        label: "Undo",
+        run: () => node.do({ type: "ryphConnect", rid: repo.rid, instance: host, agents }),
+      },
     });
   }
 </script>
@@ -218,6 +230,7 @@
     {/if}
   </div>
 {:else}
+  <Hint id="ryph-connected">
   <div class="card intro">
     <Icon name="lightbulb" size="32" />
     <div style="flex: 1;">
@@ -228,12 +241,8 @@
         <span class="mono">{conn.instance}</span>.
       </p>
     </div>
-    {#if delegate}
-      <Button variant="naked" onclick={() => node.do({ type: "ryphDisconnect", rid: repo.rid })}>
-        Disconnect
-      </Button>
-    {/if}
   </div>
+  </Hint>
 
   <div class="layout">
     <div>
@@ -303,6 +312,11 @@
           <span class="row"><Icon name="globe" />{conn.instance}</span>
           <span class="row"><Icon name="avatar-incognito" />Connected by {node.person(conn.connectedBy).alias} on {shortDate(conn.connectedAt)}</span>
         </div>
+        {#if delegate}
+          <div style="margin-top: 0.75rem;">
+            <Button variant="outline" onclick={disconnect}><Icon name="disconnect" /> Disconnect</Button>
+          </div>
+        {/if}
       </div>
     </aside>
   </div>

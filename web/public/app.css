@@ -8,6 +8,23 @@ body {
   height: auto;
 }
 
+/* Full-width pieces such as the board reach the window edges with 100vw,
+   which counts a classic scrollbar too. Clipping keeps that sliver from
+   scrolling the page sideways without breaking sticky elements. */
+html {
+  overflow-x: clip;
+}
+
+/* Desktop's index.css turns off text selection everywhere, as a native app
+   would. On the web, text and code should be selectable; gutters, line numbers
+   and controls still opt out where they're defined. */
+html {
+  cursor: auto;
+  -webkit-touch-callout: default;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 body {
   margin: 0;
   background: var(--color-surface-canvas);
@@ -64,10 +81,100 @@ body {
   white-space: nowrap;
 }
 
+/* Native radios and checkboxes drawn like the design system's Checkbox: the
+   same size, border, hover and focus ring, with the brand colour when on. */
+input[type="radio"],
+input[type="checkbox"] {
+  appearance: none;
+  flex-shrink: 0;
+  display: inline-grid;
+  place-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0;
+  border: 1px solid var(--color-border-mid);
+  background-color: var(--color-surface-base);
+  cursor: pointer;
+  vertical-align: middle;
+}
+input[type="radio"] {
+  border-radius: 50%;
+}
+input[type="checkbox"] {
+  border-radius: var(--border-radius-md);
+}
+/* Hover only on what's off; a selected control keeps its brand ring. */
+input[type="radio"]:not(:checked):hover,
+input[type="checkbox"]:not(:checked):hover,
+label:hover > input[type="radio"]:not(:checked),
+label:hover > input[type="checkbox"]:not(:checked) {
+  background-color: var(--color-surface-subtle);
+  border-color: var(--color-border-strong);
+}
+input[type="radio"]::before {
+  content: "";
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background: var(--color-surface-brand-primary);
+  transform: scale(0);
+  transition: transform 0.12s ease;
+}
+input[type="radio"]:checked {
+  border-color: var(--color-border-brand);
+}
+input[type="radio"]:checked::before {
+  transform: scale(1);
+}
+/* The same checkmark as the icon set. */
+input[type="checkbox"]::before {
+  content: "";
+  width: 1rem;
+  height: 1rem;
+  background: var(--color-text-brand);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 7.79297L6 10.793L13 3.79297L13.707 4.5L6 12.207L2.29297 8.5L3 7.79297Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  opacity: 0;
+}
+input[type="checkbox"]:checked::before {
+  opacity: 1;
+}
+input[type="radio"]:focus-visible,
+input[type="checkbox"]:focus-visible {
+  outline: 1px solid var(--color-border-brand);
+  outline-offset: 1px;
+}
+input[type="radio"]:disabled,
+input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  background-color: var(--color-surface-base);
+  border-color: var(--color-border-subtle);
+}
+
 .card {
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--border-radius-md);
   background: var(--color-surface-canvas);
+}
+
+/* Every card that is itself a link hovers, presses and focuses the same way. */
+a.card {
+  color: inherit;
+  text-decoration: none;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+}
+a.card:hover {
+  background: var(--color-surface-subtle);
+  border-color: var(--color-border-mid);
+}
+a.card:active {
+  background: var(--color-surface-mid);
+}
+a.card:focus-visible {
+  outline: 2px solid var(--color-border-brand);
+  outline-offset: 2px;
 }
 
 .section-title {
@@ -98,6 +205,11 @@ body {
   border-radius: var(--border-radius-sm);
   padding: 0.4375rem 0.625rem;
   outline: none;
+}
+
+/* Browsers size selects their own way; match a single-line text field. */
+.select {
+  height: 2.25rem;
 }
 
 .textarea {
@@ -241,6 +353,19 @@ body {
   text-decoration: none;
   box-sizing: border-box;
 }
+/* Marks the viewer next to their own name. */
+.you-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 1.125rem;
+  padding: 0 0.375rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--border-radius-sm);
+  font: var(--txt-body-s-regular);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
 button.chip,
 a.chip {
   cursor: pointer;
@@ -269,7 +394,7 @@ a.chip:hover {
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--border-radius-sm);
   background-color: var(--color-surface-canvas);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.12);
+  box-shadow: var(--elevation-low);
   padding: 0.25rem;
   min-width: 12rem;
 }
@@ -295,4 +420,32 @@ a.chip:hover {
 }
 .caption {
   color: var(--color-text-quaternary);
+}
+
+/* Honours the OS reduced-motion setting for CSS animations and transitions.
+   Svelte transitions go through `motion()` in src/lib/motion.ts instead. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* The target of a followed link, such as a notification's comment, rung for a
+   moment so it stands out on a busy page. */
+.arrived {
+  border-radius: var(--border-radius-sm);
+  box-shadow:
+    0 0 0 2px var(--color-border-brand),
+    0 0 0 6px color-mix(in srgb, var(--color-surface-brand-primary) 18%, transparent) !important;
+  background-color: color-mix(in srgb, var(--color-surface-brand-primary) 7%, var(--color-surface-canvas)) !important;
+}
+.arrived-fading {
+  transition:
+    box-shadow 0.7s ease,
+    background-color 0.7s ease;
 }

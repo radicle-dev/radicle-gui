@@ -41,12 +41,19 @@
     word-break: break-word;
   }
   .edit {
-    display: none;
-  }
-  .title:hover .edit {
     display: flex;
+    visibility: hidden;
+  }
+  .title:is(:hover, :focus-within) .edit {
+    visibility: visible;
   }
   input {
+    flex: 1;
+    min-width: 0;
+    box-sizing: border-box;
+    height: 2rem;
+    padding: 0 0.5rem;
+    margin-left: calc(-0.5rem - 1px);
     font: var(--txt-heading-m);
   }
 </style>

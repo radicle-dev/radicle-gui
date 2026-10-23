@@ -7,6 +7,7 @@
   import { shortId, timeAgo } from "@app/lib/utils";
   import { node } from "@app/node/node.svelte";
 
+  import Dropdown from "@app/components/Dropdown.svelte";
   import Avatar from "@app/components/Avatar.svelte";
   import PersonLink from "@app/components/PersonLink.svelte";
 
@@ -44,9 +45,6 @@
     align-items: center;
     gap: 0.75rem;
     margin-bottom: 1.25rem;
-  }
-  select {
-    width: auto;
   }
   .group {
     margin-bottom: 1.5rem;
@@ -87,9 +85,12 @@
 </style>
 
 <div class="bar">
-  <select class="select" bind:value={branch}>
-    {#each Object.keys(repo.branches) as b (b)}<option value={b}>{b}</option>{/each}
-  </select>
+  <Dropdown
+    options={Object.keys(repo.branches).map(b => ({ value: b, label: b, icon: "branch" as const, mono: true }))}
+    value={branch}
+    onchange={v => (branch = v)}
+    ariaLabel="Branch"
+    styleWidth="16rem" />
   <span class="muted txt-body-m-regular">{commits.length} commits</span>
 </div>
 
@@ -114,7 +115,7 @@
             style="border:none; cursor:pointer;"
             title="Browse files at this commit"
             onclick={() => navigate(`${base}/tree/${commit.id}`)}>
-            {"</>"}
+            &lt;/&gt;
           </button>
         </div>
       {/each}

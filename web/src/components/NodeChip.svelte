@@ -25,6 +25,19 @@
 </script>
 
 <style>
+  .short {
+    display: none;
+    font-variant-numeric: tabular-nums;
+  }
+  /* On narrower screens, just the status dot and the number of peers. */
+  @media (max-width: 1100px) {
+    .full {
+      display: none;
+    }
+    .short {
+      display: inline;
+    }
+  }
   a {
     display: inline-flex;
     align-items: center;
@@ -50,12 +63,22 @@
       opacity: 0.35;
     }
   }
+  @media (max-width: 400px) {
+    a {
+      padding: 0 0.5rem;
+      gap: 0;
+    }
+    .short {
+      display: none;
+    }
+  }
 </style>
 
-<a href="/node" title="Your node runs in this tab">
+<a href="/node" title={`Node · ${label}. Your node runs in this tab.`} aria-label={`Node · ${label}`}>
   <span
     class="dot"
     class:pulse={net.status === "starting" || net.status === "connecting"}
     style:background={color}></span>
-  Node · {label}
+  <span class="full">Node · {label}</span>
+  {#if net.status === "online"}<span class="short">{net.peers.length}</span>{/if}
 </a>

@@ -3,6 +3,7 @@
 
   import { navigate } from "@app/lib/router.svelte";
   import { node } from "@app/node/node.svelte";
+  import { toast } from "@app/lib/toast.svelte";
 
   import Avatar from "@app/components/Avatar.svelte";
   import Button from "@app/components/Button.svelte";
@@ -47,6 +48,12 @@
       invite,
       threshold,
     });
+    toast(
+      invite.length
+        ? `Created ${handle} and invited ${invite.length} ${invite.length === 1 ? "person" : "people"}`
+        : `Created ${handle}`,
+      { icon: "checkmark" },
+    );
     navigate(`/${handle}`);
   }
 </script>
@@ -88,6 +95,8 @@
   .handle span {
     color: var(--color-text-tertiary);
     font: var(--txt-body-m-regular);
+    white-space: nowrap;
+    flex-shrink: 0;
   }
   .person {
     display: flex;
@@ -176,7 +185,11 @@
             bind:value={handle}
             oninput={() => (handleTouched = true)} />
         </div>
-        {#if handleTaken}<span class="error">An org with this handle is already on your node.</span>{/if}
+        {#if handleTaken}
+          <span class="error">An org with this handle is already on your node.</span>
+        {:else if handle && !handleValid}
+          <span class="error">Use 2–39 lowercase letters, numbers and dashes, with no spaces.</span>
+        {/if}
         <span class="hint">Handles are how people link to the org and its repos.</span>
       </div>
       <div class="field">

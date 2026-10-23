@@ -1,17 +1,38 @@
 <script lang="ts">
+  import { untrack } from "svelte";
+
   import type { Owner } from "@app/node/model";
 
   import { navigate } from "@app/lib/router.svelte";
   import { node } from "@app/node/node.svelte";
+  import { toast } from "@app/lib/toast.svelte";
 
   import Button from "@app/components/Button.svelte";
+  import Dropdown from "@app/components/Dropdown.svelte";
 
-  let ownerKey = $state("person:self");
+  interface Props {
+    // Owner to start with, as "org:<id>", e.g. from an org's repositories.
+    owner?: string;
+  }
+
+  const { owner: initialOwner }: Props = $props();
+  let ownerKey = $state(
+    untrack(() => (initialOwner && node.org(initialOwner.replace(/^org:/, "")) ? initialOwner : "person:self")),
+  );
   let name = $state("");
   let description = $state("");
   let visibility = $state<"public" | "private">("public");
 
   const valid = $derived(/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(name));
+  // What the name would be with spaces and other characters cleaned up.
+  const suggestion = $derived(
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/^[-._]+|[-._]+$/g, "")
+      .slice(0, 64),
+  );
   const owner = $derived.by((): Owner => {
     const [type, id] = ownerKey.split(":");
     return type === "org" ? { type: "org", id } : { type: "person", id: "self" };
@@ -30,7 +51,9 @@
       readme: `# ${name}\n\n${description.trim() || "A new repository on Radicle."}\n`,
     });
     const repo = rid ? node.world.repos[rid] : undefined;
-    if (repo) navigate(node.repoPath(repo));
+    if (!repo) return;
+    toast(`Created ${node.ownerHandle(repo.owner)}/${repo.name}, now seeding`, { icon: "seed-filled" });
+    navigate(node.repoPath(repo));
   }
 </script>
 
@@ -77,6 +100,15 @@
   .error {
     color: var(--color-feedback-error-text);
   }
+  .suggest {
+    all: unset;
+    cursor: pointer;
+    margin-left: 0.25rem;
+    font: var(--txt-body-s-medium);
+    color: var(--color-text-brand);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
 </style>
 
 <div class="page-narrow">
@@ -88,10 +120,14 @@
     <div class="path">
       <div class="field">
         <label for="owner">Owner</label>
-        <select id="owner" class="select" bind:value={ownerKey}>
-          <option value="person:self">@{node.person("self").alias}</option>
-          {#each node.myOrgs as org (org.id)}<option value={`org:${org.id}`}>{org.handle}</option>{/each}
-        </select>
+        <Dropdown
+          id="owner"
+          options={[
+            { value: "person:self", label: `@${node.person("self").alias}`, person: "self" },
+            ...node.myOrgs.map(org => ({ value: `org:${org.id}`, label: org.handle, org: org.id })),
+          ]}
+          value={ownerKey}
+          onchange={v => (ownerKey = v)} />
       </div>
       <span class="slash">/</span>
       <div class="field">
@@ -100,7 +136,22 @@
         <input id="name" class="input" bind:value={name} autofocus placeholder="my-project" />
       </div>
     </div>
-    {#if taken}<span class="error txt-body-s-regular">You already have a repository with this name.</span>{/if}
+    {#if name && !valid}
+      <span class="error txt-body-s-regular">
+        Names can't contain spaces. Use letters, numbers, dots, dashes and underscores.
+        {#if suggestion && suggestion !== name}
+          <button class="suggest" onclick={() => (name = suggestion)}>Use {suggestion}</button>
+        {/if}
+      </span>
+    {:else if taken}
+      <span class="error txt-body-s-regular">
+        {owner.type === "org" ? `${node.ownerHandle(owner)} already has` : "You already have"} a repository called {name}.
+      </span>
+    {:else if name}
+      <span class="muted txt-body-s-regular">
+        It'll live at <span class="mono">{node.ownerHandle(owner)}/{name}</span>.
+      </span>
+    {/if}
     <div class="field">
       <label for="desc">Description <span class="muted">(optional)</span></label>
       <input id="desc" class="input" bind:value={description} />
@@ -128,7 +179,7 @@
       </span>
     {/if}
     <div class="row" style="justify-content: flex-end;">
-      <Button variant="naked" onclick={() => history.back()}>Cancel</Button>
+      <Button variant="naked" onclick={() => window.history.back()}>Cancel</Button>
       <Button variant="secondary" disabled={!valid || taken} onclick={create}>Create repository</Button>
     </div>
   </div>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { untrack } from "svelte";
+
   import { router } from "@app/lib/router.svelte";
   import { node } from "@app/node/node.svelte";
 
@@ -6,11 +8,56 @@
   import Icon from "./Icon.svelte";
   import Menu from "./Menu.svelte";
   import NodeChip from "./NodeChip.svelte";
-  import Search from "./Search.svelte";
+  import Search, { openSearch } from "./Search.svelte";
 
   const route = $derived(router.route.name);
   const self = $derived(node.person("self"));
   const unread = $derived(node.unreadCount);
+
+  // One background that rests on the current page's item and slides to the
+  // hovered one, like the segmented switches.
+  let nav: HTMLElement | undefined = $state();
+  const items: Record<string, HTMLElement> = $state({});
+  let hovered = $state<string | undefined>(undefined);
+  let pill = $state({ left: 0, width: 0 });
+  // Off while the pill appears from nowhere, so it fades in instead of sliding
+  // over from the edge.
+  let slide = $state(false);
+
+  const current = $derived(route === "inbox" || route === "explore" ? route : undefined);
+  const target = $derived(hovered ?? current);
+  const visible = $derived(target !== undefined);
+
+  function measure() {
+    const el = target ? items[target] : undefined;
+    pill = el ? { left: el.offsetLeft, width: el.offsetWidth } : pill;
+  }
+
+  let lastVisible = false;
+
+  // Runs before the DOM updates, so a pill that's appearing jumps into place
+  // instead of sliding there.
+  $effect.pre(() => {
+    void target;
+    void unread;
+    const wasVisible = lastVisible;
+    lastVisible = target !== undefined;
+    measure();
+    if (!wasVisible) slide = false;
+    // Two frames: the jump has to be styled before the transition comes back.
+    if (!untrack(() => slide)) requestAnimationFrame(() => requestAnimationFrame(() => (slide = true)));
+  });
+
+  // Watches every item, not just the row: a web font loading or a count
+  // changing moves items without changing the row's size.
+  $effect(() => {
+    if (!nav) return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(nav);
+    for (const el of Object.values(items)) if (el) observer.observe(el);
+    void document.fonts?.ready.then(measure);
+    return () => observer.disconnect();
+  });
 </script>
 
 <style>
@@ -22,22 +69,56 @@
     backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--color-border-subtle);
   }
+  /* Equal side columns keep the search centred however wide the node chip or
+     nav get. */
   .bar {
     max-width: 76rem;
     margin: 0 auto;
     height: 3.5rem;
     padding: 0 1.5rem;
+    display: grid;
+    /* The sides never shrink below their contents; the search gives way. */
+    grid-template-columns: minmax(max-content, 1fr) minmax(10rem, 22rem) minmax(max-content, 1fr);
+    align-items: center;
+    gap: 1rem;
+  }
+  .left {
     display: flex;
     align-items: center;
     gap: 1rem;
+    min-width: 0;
   }
   .logo {
     display: inline-flex;
     color: var(--color-text-primary);
   }
   nav {
+    position: relative;
     display: flex;
     gap: 0.125rem;
+  }
+  .pill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 2rem;
+    border-radius: var(--border-radius-sm);
+    background: var(--color-surface-subtle);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .pill.visible {
+    opacity: 1;
+  }
+  .pill.slide {
+    transition:
+      transform 0.2s ease,
+      width 0.2s ease,
+      opacity 0.15s ease;
+  }
+  nav > :global(:not(.pill)) {
+    position: relative;
   }
   nav a {
     display: inline-flex;
@@ -50,13 +131,9 @@
     color: var(--color-text-secondary);
     text-decoration: none;
   }
-  nav a:hover {
-    background: var(--color-surface-subtle);
-    color: var(--color-text-primary);
-  }
+  nav a:hover,
   nav a.active {
     color: var(--color-text-primary);
-    background: var(--color-surface-subtle);
   }
   .badge {
     font: var(--txt-body-s-semibold);
@@ -67,13 +144,13 @@
     line-height: 1.125rem;
   }
   .search {
-    flex: 1;
     display: flex;
     justify-content: center;
   }
   .right {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 0.5rem;
   }
   .icon-button {
@@ -102,16 +179,80 @@
     font: var(--txt-code-small);
     color: var(--color-text-tertiary);
   }
+  @media (max-width: 1000px) {
+    nav .label {
+      display: none;
+    }
+  }
+  /* Stands in for the search field once it's hidden on narrow screens. */
+  .search-icon {
+    all: unset;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    height: 2rem;
+    padding: 0 0.625rem;
+    border-radius: var(--border-radius-sm);
+    color: var(--color-text-secondary);
+  }
+  .search-icon:hover {
+    color: var(--color-text-primary);
+  }
+  .search-icon:focus-visible {
+    outline: 2px solid var(--color-border-brand);
+  }
   @media (max-width: 760px) {
-    nav .label,
+    .search-icon {
+      display: inline-flex;
+    }
+    .bar {
+      grid-template-columns: minmax(max-content, 1fr) auto;
+    }
     .search {
       display: none;
+    }
+  }
+  .chevron {
+    display: inline-flex;
+  }
+  /* Phones: tighter spacing and no dropdown chevrons, so everything fits. */
+  @media (max-width: 480px) {
+    .bar {
+      padding: 0 1rem;
+      gap: 0.5rem;
+    }
+    .left {
+      gap: 0.5rem;
+    }
+    .right {
+      gap: 0.25rem;
+    }
+    nav a,
+    .search-icon {
+      padding: 0 0.5rem;
+    }
+    .chevron {
+      display: none;
+    }
+  }
+  @media (max-width: 360px) {
+    .bar {
+      padding: 0 0.75rem;
+      gap: 0.375rem;
+    }
+    .left {
+      gap: 0.375rem;
+    }
+    nav a,
+    .search-icon {
+      padding: 0 0.375rem;
     }
   }
 </style>
 
 <header>
   <div class="bar">
+    <div class="left">
     <a class="logo" href="/" aria-label="Home">
       <svg width="69" height="16" viewBox="0 0 69 16" fill="currentColor">
         <path
@@ -130,18 +271,45 @@
           d="M57.9749 10.2271C57.9749 6.74989 60.1267 4.41458 63.3174 4.41458C66.2442 4.41458 68.5386 6.34197 68.2323 10.808H60.7273C60.8805 12.7855 61.9207 13.938 63.328 13.938C64.5412 13.938 65.3055 13.336 65.6013 12.2958H68.2626C67.9775 14.1822 66.1729 15.9974 63.328 15.9974C60.0963 15.9974 57.9749 13.744 57.9749 10.2258V10.2271ZM65.6013 9.01392C65.5405 7.37167 64.7036 6.38289 63.328 6.38289C62.0739 6.38289 61.0851 7.10633 60.7894 9.01392H65.6026H65.6013Z" />
       </svg>
     </a>
-    <nav>
-      <a href="/" class:active={route === "home"}>
-        <Icon name="home" /><span class="label">Home</span>
-      </a>
-      <a href="/inbox" class:active={route === "inbox"}>
+    <nav bind:this={nav} onmouseleave={() => (hovered = undefined)}>
+      <span
+        class="pill"
+        class:visible
+        class:slide
+        style:width={`${pill.width}px`}
+        style:transform={`translateX(${pill.left}px)`}></span>
+      <a
+        href="/inbox"
+        class:active={route === "inbox"}
+        bind:this={items.inbox}
+        onmouseenter={() => (hovered = "inbox")}
+        onfocus={() => (hovered = "inbox")}
+        onblur={() => (hovered = undefined)}>
         <Icon name="inbox" /><span class="label">Inbox</span>
         {#if unread > 0}<span class="badge">{unread}</span>{/if}
       </a>
-      <a href="/explore" class:active={route === "explore"}>
+      <a
+        href="/explore"
+        class:active={route === "explore"}
+        bind:this={items.explore}
+        onmouseenter={() => (hovered = "explore")}
+        onfocus={() => (hovered = "explore")}
+        onblur={() => (hovered = undefined)}>
         <Icon name="explore" /><span class="label">Explore</span>
       </a>
+      <button
+        class="search-icon"
+        bind:this={items.search}
+        onmouseenter={() => (hovered = "search")}
+        onfocus={() => (hovered = "search")}
+        onblur={() => (hovered = undefined)}
+        onclick={openSearch}
+        aria-label="Search the network"
+        title="Search the network">
+        <Icon name="search" />
+      </button>
     </nav>
+    </div>
     <div class="search"><Search /></div>
     <div class="right">
       <NodeChip />
@@ -152,7 +320,7 @@
         ]}>
         {#snippet trigger(toggle)}
           <button class="icon-button" onclick={toggle} aria-label="Create">
-            <Icon name="plus" /><Icon name="chevron-down" />
+            <Icon name="plus" /><span class="chevron"><Icon name="chevron-down" /></span>
           </button>
         {/snippet}
       </Menu>
@@ -162,7 +330,7 @@
           ...node.myOrgs.map(o => ({
             label: o.name,
             href: `/${o.handle}`,
-            icon: "badge" as const,
+            org: o.id,
           })),
           { label: "Node", href: "/node", icon: "seed", divider: true },
           { label: "Keys & devices", href: "/settings?section=keys", icon: "key" },

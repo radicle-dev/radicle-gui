@@ -17,7 +17,19 @@ export type PersonKey =
   | "sol"
   | "kofi"
   | "lena"
-  | "oskar";
+  | "oskar"
+  | "priya"
+  | "jonas"
+  | "amara"
+  | "felix"
+  | "noor"
+  | "hana"
+  | "diego"
+  | "ines"
+  | "wren"
+  | "theo"
+  | "zeynep"
+  | "malik";
 
 // A file's new content in a commit:
 // - string: the complete new content
@@ -129,7 +141,14 @@ export interface ReleaseSeed {
 
 // Organisations are actor repositories with several members. Changes to the
 // org (members, profile) need `threshold` member approvals.
-export type OrgKey = "lumen-labs" | "tidal-collective" | "fieldwork-studio";
+export type OrgKey =
+  | "lumen-labs"
+  | "tidal-collective"
+  | "fieldwork-studio"
+  | "meshwork"
+  | "quill"
+  | "keystone"
+  | "verdant";
 
 export interface PersonSeed {
   key: PersonKey;

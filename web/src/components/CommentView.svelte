@@ -130,6 +130,12 @@
   .reaction:hover {
     background-color: var(--color-surface-subtle);
   }
+  .reaction.add {
+    color: var(--color-text-tertiary);
+  }
+  .reaction.add:hover {
+    color: var(--color-text-primary);
+  }
   .reaction.mine {
     border-color: var(--color-border-brand);
     color: var(--color-text-primary);
@@ -157,6 +163,12 @@
   }
 </style>
 
+{#snippet picker()}
+  <div class="picker">
+    {#each EMOJI as e (e)}<button onclick={() => react(e)}>{e}</button>{/each}
+  </div>
+{/snippet}
+
 <div class="card" class:bordered id={`c-${comment.id}`}>
   <div class="header">
     <PersonLink person={comment.author} size="1rem" />
@@ -170,11 +182,7 @@
           {#snippet toggle(onclick)}
             <button class="icon-button" {onclick} title="React"><Icon name="add-emoji" /></button>
           {/snippet}
-          {#snippet popover()}
-            <div class="picker">
-              {#each EMOJI as e (e)}<button onclick={() => react(e)}>{e}</button>{/each}
-            </div>
-          {/snippet}
+          {#snippet popover()}{@render picker()}{/snippet}
         </Popover>
       {/if}
       {#if onReply}
@@ -201,6 +209,16 @@
           {r.emoji} {r.by.length}
         </button>
       {/each}
+      {#if reactable}
+        <Popover placement="top-start">
+          {#snippet toggle(onclick)}
+            <button class="reaction add" {onclick} title="Add reaction" aria-label="Add reaction">
+              <Icon name="add-emoji" />
+            </button>
+          {/snippet}
+          {#snippet popover()}{@render picker()}{/snippet}
+        </Popover>
+      {/if}
     </div>
   {/if}
 </div>

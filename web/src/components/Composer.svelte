@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { dismissed, dismissHint } from "@app/lib/hints.svelte";
   import { modKey } from "@app/lib/shortcuts.svelte";
 
   import Avatar from "./Avatar.svelte";
   import Button from "./Button.svelte";
+  import Icon from "./Icon.svelte";
   import Markdown from "./Markdown.svelte";
 
   interface Props {
@@ -80,16 +82,21 @@
     color: var(--color-text-primary);
     border-color: var(--color-text-primary);
   }
+  textarea,
+  .preview {
+    display: block;
+    box-sizing: border-box;
+    min-height: 5.5rem;
+    padding: 0.4375rem 0.625rem;
+    font: var(--txt-body-m-regular);
+    line-height: 1.4;
+  }
   textarea {
     border: none;
     border-radius: 0;
-    min-height: 5.5rem;
   }
-  .compact textarea {
-    min-height: 3.5rem;
-  }
-  .preview {
-    padding: 0.75rem;
+  .compact textarea,
+  .compact .preview {
     min-height: 3.5rem;
   }
   .foot {
@@ -99,6 +106,20 @@
     gap: 0.5rem;
     padding: 0.5rem;
     border-top: 1px solid var(--color-border-subtle);
+  }
+  .hint-dismiss {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    vertical-align: middle;
+    margin-left: 0.25rem;
+    padding: 0.125rem;
+    border-radius: var(--border-radius-sm);
+    color: var(--color-text-quaternary);
+  }
+  .hint-dismiss:hover {
+    background: var(--color-surface-subtle);
+    color: var(--color-text-primary);
   }
   .hint {
     margin-right: auto;
@@ -122,7 +143,16 @@
       <textarea bind:this={textarea} class="textarea" bind:value={body} {placeholder} {onkeydown}></textarea>
     {/if}
     <div class="foot">
-      <span class="hint">Markdown supported · {modKey}↵ to send · signed with your key</span>
+      {#if dismissed["composer"]}
+        <span class="hint"></span>
+      {:else}
+        <span class="hint">
+          Markdown supported · {modKey}↵ to send · signed with your key
+          <button class="hint-dismiss" title="Dismiss" aria-label="Dismiss hint" onclick={() => dismissHint("composer")}>
+            <Icon name="close" />
+          </button>
+        </span>
+      {/if}
       {#if extra}{@render extra()}{/if}
       {#if onCancel}<Button variant="naked" onclick={onCancel}>Cancel</Button>{/if}
       <Button variant="secondary" disabled={!body.trim()} onclick={submit}>{submitLabel}</Button>

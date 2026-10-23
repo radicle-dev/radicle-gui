@@ -2,39 +2,65 @@
   import { untrack } from "svelte";
 
   import { node } from "@app/node/node.svelte";
+  import { setFollow } from "@app/lib/actions";
+  import { chooseSeed, exploreSeed } from "@app/lib/exploreSeed.svelte";
+  import { navigate } from "@app/lib/router.svelte";
+  import { orgsOn, peopleOn, reposOn } from "@app/lib/seedContent";
+  import { LOCAL_NODE, SEED_NODES } from "@app/node/seedNodes";
 
   import Avatar from "@app/components/Avatar.svelte";
   import Button from "@app/components/Button.svelte";
   import RepoCard from "@app/components/RepoCard.svelte";
+  import SeedSelector from "@app/components/SeedSelector.svelte";
 
   interface Props {
     q: string;
+    seed?: string;
   }
 
-  const { q }: Props = $props();
+  const { q, seed: seedParam }: Props = $props();
   let query = $state(untrack(() => q));
+
+  // A seed in the URL wins, so links to an exploration keep their seed.
+  $effect(() => {
+    if (seedParam) chooseSeed(seedParam);
+  });
+  const seed = $derived(exploreSeed.current);
+  const seedInfo = $derived(SEED_NODES.find(s => s.host === seed));
+
+  function changeSeed(next: string) {
+    chooseSeed(next);
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- built and read in one call, never reactive
+    const params = new URLSearchParams();
+    params.set("seed", next);
+    if (query.trim()) params.set("q", query.trim());
+    navigate(`/explore?${params}`, { replace: true, scroll: false });
+  }
 
   const match = (s: string) => s.toLowerCase().includes(query.trim().toLowerCase());
   const repos = $derived(
-    node.repos
-      .filter(r => r.visibility === "public")
-      .filter(r => !query || match(r.name) || match(r.description))
+    reposOn(seed)
+      .filter(r => !query || match(r.name) || match(r.description) || match(node.ownerHandle(r.owner)))
       .sort((a, b) => b.seedCount - a.seedCount),
   );
   const people = $derived(
-    Object.values(node.world.people).filter(
-      p => p.id !== "self" && (!query || match(p.alias) || match(p.name) || match(p.bio)),
-    ),
+    peopleOn(seed).filter(p => !query || match(p.alias) || match(p.name) || match(p.bio)),
   );
   const orgs = $derived(
-    Object.values(node.world.orgs).filter(o => !query || match(o.name) || match(o.description)),
+    orgsOn(seed).filter(o => !query || match(o.name) || match(o.handle) || match(o.description)),
   );
 </script>
 
 <style>
+  .title {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.25rem;
+  }
   h1 {
     font: var(--txt-heading-xl);
-    margin: 0 0 0.25rem;
+    margin: 0;
   }
   .lede {
     color: var(--color-text-tertiary);
@@ -77,9 +103,21 @@
 </style>
 
 <div class="page">
-  <h1>Explore</h1>
-  <p class="lede">What your node and its {node.network.peers.length} peers know about.</p>
-  <input class="input search" bind:value={query} placeholder="Search the network" />
+  <div class="title">
+    <h1>Explore</h1>
+    <SeedSelector value={seed} onchange={changeSeed} />
+  </div>
+  <p class="lede">
+    {#if seed === LOCAL_NODE}
+      What your node stores. Pick a seed node to browse what's on the network.
+    {:else}
+      Browsing {seed}. {seedInfo?.description}
+    {/if}
+  </p>
+  <input
+    class="input search"
+    bind:value={query}
+    placeholder={seed === LOCAL_NODE ? "Search your node" : `Search ${seed}`} />
 
   {#if orgs.length > 0}
     <section>
@@ -97,7 +135,7 @@
               <Button
                 variant={node.following[org.id] ? "ghost" : "outline"}
                 styleHeight="1.75rem"
-                onclick={() => node.do({ type: "follow", id: org.id, on: !node.following[org.id] })}>
+                onclick={() => setFollow(org.id, !node.following[org.id])}>
                 {node.following[org.id] ? "Following" : "Follow"}
               </Button>
             {/if}
@@ -109,7 +147,9 @@
 
   <section>
     <h2 class="section-title">Repositories</h2>
-    <div class="grid">{#each repos as repo (repo.rid)}<RepoCard {repo} />{/each}</div>
+    <div class="grid">
+      {#each repos as repo (repo.rid)}<RepoCard {repo} />{:else}<span class="muted">Nothing matches on {seed === LOCAL_NODE ? "your node" : seed}.</span>{/each}
+    </div>
   </section>
 
   {#if people.length > 0}
@@ -126,7 +166,7 @@
             <Button
               variant={node.following[p.id] ? "ghost" : "outline"}
               styleHeight="1.75rem"
-              onclick={() => node.do({ type: "follow", id: p.id, on: !node.following[p.id] })}>
+              onclick={() => setFollow(p.id, !node.following[p.id])}>
               {node.following[p.id] ? "Following" : "Follow"}
             </Button>
           </div>

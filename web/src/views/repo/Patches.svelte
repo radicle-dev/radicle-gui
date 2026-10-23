@@ -12,13 +12,31 @@
   import LabelChip from "@app/components/LabelChip.svelte";
   import SegmentedSwitch from "@app/components/SegmentedSwitch.svelte";
   import StateIcon from "@app/components/StateIcon.svelte";
+  import SideSheet from "@app/components/SideSheet.svelte";
+  import PatchView from "./Patch.svelte";
 
   interface Props {
     repo: Repo;
     filter: string;
+    peek?: string;
   }
 
-  const { repo, filter }: Props = $props();
+  const { repo, filter, peek }: Props = $props();
+
+  function listHref(id?: string) {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- built and read in one call, never reactive
+    const q = new URLSearchParams();
+    if (filter !== "open") q.set("state", filter);
+    if (id) q.set("peek", id);
+    const qs = q.toString();
+    return `${base}/patches${qs ? `?${qs}` : ""}`;
+  }
+
+  function openPeek(e: MouseEvent, id: string) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    navigate(listHref(id), { scroll: false });
+  }
 
   let query = $state("");
   const base = $derived(node.repoPath(repo));
@@ -126,6 +144,9 @@
   .del {
     color: var(--color-feedback-error-text);
   }
+  .item.peeked {
+    background: var(--color-surface-subtle);
+  }
 </style>
 
 <div class="bar">
@@ -144,7 +165,12 @@
 <div class="card">
   {#each shown as patch (patch.id)}
     {@const s = stats(patch)}
-    <a class="item" href={`${base}/patches/${patch.id}`}>
+    <a
+      class="item"
+      class:peeked={peek === patch.id}
+      href={`${base}/patches/${patch.id}`}
+      data-peek
+      onclick={e => openPeek(e, patch.id)}>
       <span style="padding-top: 0.125rem;"><StateIcon kind="patch" state={patch.state} /></span>
       <div class="body">
         <div class="title">
@@ -182,3 +208,9 @@
     </Empty>
   {/each}
 </div>
+
+{#if peek}
+  <SideSheet expandHref={`${base}/patches/${peek}`} onClose={() => navigate(listHref(), { scroll: false })}>
+    <PatchView {repo} id={peek} view="activity" />
+  </SideSheet>
+{/if}

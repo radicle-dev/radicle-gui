@@ -40,9 +40,6 @@
     height: 100%;
     box-sizing: border-box;
   }
-  a:hover {
-    background: var(--color-surface-base);
-  }
   .top {
     display: flex;
     gap: 0.625rem;
@@ -105,7 +102,9 @@
     {#if language}<span>{language}</span>{/if}
     <span><Icon name="issue" />{openIssues}</span>
     <span><Icon name="patch" />{openPatches}</span>
-    <span><Icon name="seed" />{repo.seedCount}</span>
+    <span title={node.seeding[repo.rid] ? "Your node seeds this" : "Not on your node"}>
+      <Icon name="seed" />{repo.seedCount}
+    </span>
     {#if head}<span>Updated {timeAgo(head.time)}</span>{/if}
   </div>
 </a>

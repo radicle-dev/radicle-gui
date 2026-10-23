@@ -6,7 +6,8 @@ export interface Activity {
   kind: "commit" | "issue" | "patch" | "review" | "comment" | "release";
   repo: Repo;
   title: string;
-  href: string;
+  // Where the item lives. Filler activity has nowhere to go.
+  href?: string;
   detail?: string;
 }
 
@@ -99,7 +100,7 @@ export function activityOf(
 }
 
 // Activity counts per day for the last `days` days.
-export function heatmap(activity: Activity[], days = 7 * 26): number[] {
+export function heatmap(activity: Activity[], days = 7 * 52): number[] {
   const counts = new Array<number>(days).fill(0);
   const today = new Date();
   today.setHours(23, 59, 59, 999);
@@ -108,4 +109,10 @@ export function heatmap(activity: Activity[], days = 7 * 26): number[] {
     if (age >= 0 && age < days) counts[days - 1 - age]++;
   }
   return counts;
+}
+
+// The local calendar day of a timestamp, as YYYY-MM-DD.
+export function dayKey(time: number): string {
+  const d = new Date(time);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }

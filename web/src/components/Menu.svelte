@@ -3,6 +3,7 @@
 
   import { navigate } from "@app/lib/router.svelte";
 
+  import Avatar from "./Avatar.svelte";
   import Icon from "./Icon.svelte";
   import Popover, { closeFocused } from "./Popover.svelte";
 
@@ -11,6 +12,8 @@
     href?: string;
     onclick?: () => void;
     icon?: ComponentProps<typeof Icon>["name"];
+    // Shows the org's avatar in place of an icon.
+    org?: string;
     danger?: boolean;
     divider?: boolean;
   }
@@ -37,7 +40,7 @@
     background: var(--color-surface-canvas);
     border: 1px solid var(--color-border-mid);
     border-radius: var(--border-radius-md);
-    box-shadow: 0 12px 32px rgb(0 0 0 / 0.14);
+    box-shadow: var(--elevation-low);
     padding: 0.25rem;
   }
   button {
@@ -72,7 +75,7 @@
       {#each items as item (item.label)}
         {#if item.divider}<hr />{/if}
         <button class:danger={item.danger} onclick={() => run(item)}>
-          {#if item.icon}<Icon name={item.icon} />{/if}
+          {#if item.org}<Avatar org={item.org} size="1rem" />{:else if item.icon}<Icon name={item.icon} />{/if}
           {item.label}
         </button>
       {/each}

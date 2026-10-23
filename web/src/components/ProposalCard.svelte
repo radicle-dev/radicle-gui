@@ -3,6 +3,7 @@
 
   import { timeAgo } from "@app/lib/utils";
   import { node } from "@app/node/node.svelte";
+  import { toast } from "@app/lib/toast.svelte";
 
   import Avatar from "./Avatar.svelte";
   import Button from "./Button.svelte";
@@ -19,6 +20,14 @@
   const voted = $derived(
     proposal.approvals.includes("self") ? "approved" : proposal.rejections.includes("self") ? "rejected" : undefined,
   );
+  function vote(approve: boolean) {
+    node.do({ type: "vote", org: org.id, proposal: proposal.id, approve });
+    const state = node.org(org.id)?.proposals.find(p => p.id === proposal.id)?.state;
+    if (state === "applied") toast("Approved and applied", { icon: "checkmark" });
+    else if (state === "rejected") toast("Proposal rejected");
+    else toast(approve ? "Approval signed" : "Rejection signed");
+  }
+
   const detail = $derived.by(() => {
     const c = proposal.change;
     switch (c.type) {
@@ -96,7 +105,7 @@
   }
 </style>
 
-<div class="card proposal">
+<div class="card proposal" id={`proposal-${proposal.id}`}>
   <div class="top">
     <div class="stack" style="gap: 0.25rem; flex: 1;">
       <span class="title">{proposal.title}</span>
@@ -129,14 +138,14 @@
         {#if voted !== "rejected"}
           <Button
             variant="naked"
-            onclick={() => node.do({ type: "vote", org: org.id, proposal: proposal.id, approve: false })}>
+            onclick={() => vote(false)}>
             Reject
           </Button>
         {/if}
         {#if voted !== "approved"}
           <Button
             variant="secondary"
-            onclick={() => node.do({ type: "vote", org: org.id, proposal: proposal.id, approve: true })}>
+            onclick={() => vote(true)}>
             Approve &amp; sign
           </Button>
         {/if}

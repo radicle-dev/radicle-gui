@@ -138,11 +138,11 @@ a {
 }
 
 :root {
-  --elevation-low: 0 0 48px 0 #000000ee;
+  --elevation-low: 0 0 16px 0 #00000022;
 }
 
-[data-theme="light"] {
-  --elevation-low: 0 0 16px 0 #00000022;
+[data-theme="dark"] {
+  --elevation-low: 0 0 48px 0 #000000ee;
 }
 
 /*
@@ -225,7 +225,7 @@ a {
   --diffs-fg-number-addition-override: var(--color-feedback-success-text);
   --diffs-fg-number-deletion-override: var(--color-feedback-error-text);
   /* Mixed into the background of every line a comment refers to. */
-  --app-diff-comment-tint: var(--color-surface-brand-secondary);
+  --app-diff-comment-tint: var(--color-surface-brand-primary);
 
   /* The app disables selection globally on `html` and opts in per element.
      `user-select` inherits across the shadow boundary, so opt the whole Pierre

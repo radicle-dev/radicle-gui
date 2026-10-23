@@ -207,6 +207,7 @@ export interface IdentityDoc {
 }
 
 export type IdentityChange =
+  | { type: "setName"; name: string }
   | { type: "addDelegate"; person: PersonId }
   | { type: "removeDelegate"; person: PersonId }
   | { type: "setThreshold"; threshold: number }
@@ -236,6 +237,29 @@ export interface Remote {
   branches: Record<string, string>;
 }
 
+// A board only stores where cards sit; titles, state and labels come from the
+// issues and patches themselves.
+export interface BoardColumn {
+  id: string;
+  name: string;
+  // Dropping an issue here closes it.
+  closes?: "solved" | "closed";
+}
+
+export interface BoardPlacement {
+  kind: "issue" | "patch";
+  id: string;
+  column: string;
+  position: number;
+  movedBy: PersonId;
+  movedAt: number;
+}
+
+export interface Board {
+  columns: BoardColumn[];
+  cards: BoardPlacement[];
+}
+
 export interface Repo {
   rid: string;
   name: string;
@@ -255,6 +279,7 @@ export interface Repo {
   issues: Issue[];
   patches: Patch[];
   releases: Release[];
+  board?: Board;
   created: number;
   identity: { current: string; revisions: IdentityRevision[] };
 }

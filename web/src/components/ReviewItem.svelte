@@ -138,15 +138,16 @@
     padding-right: 0.75rem;
     color: var(--color-text-quaternary);
   }
+  /* The commented line, tinted like commented lines in the changes view. */
   .snippet .last {
-    background: color-mix(in srgb, var(--color-feedback-warning-border) 14%, transparent);
+    background: color-mix(in srgb, var(--color-surface-brand-primary) 14%, transparent);
   }
   .comment-body {
     padding: 0.5rem 0.625rem;
   }
 </style>
 
-<div class="review">
+<div class="review" id={`review-${review.id}`}>
   <div class="header">
     <PersonLink person={review.author} size="1rem" />
     <span class="caption">reviewed</span>

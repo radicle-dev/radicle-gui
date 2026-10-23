@@ -40,7 +40,7 @@
   style:border={grouped ? "0" : undefined}
   title={copied ? "Copied to clipboard" : `Copy ${label}`}
   onclick={() => {
-    copy(id);
+    copy(id, label);
     copied = true;
     setTimeout(() => (copied = false), 1500);
   }}>

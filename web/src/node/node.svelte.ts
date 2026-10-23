@@ -30,8 +30,11 @@ import {
   runDuration,
   runState,
 } from "./ryph";
+import { DEFAULT_COLUMNS } from "./board";
 import { oid, ridFor } from "./hash";
 import { Network } from "./network.svelte";
+import { navigate } from "@app/lib/router.svelte";
+import { toast } from "@app/lib/toast.svelte";
 import { initialFollowing, initialSeeding, seeds } from "./seeds";
 
 const STORAGE_KEY = "radicle2:v1";
@@ -42,6 +45,7 @@ export type Op = { at: number } & (
   | { type: "createIssue"; rid: string; title: string; body: string; labels: string[] }
   | { type: "issueComment"; rid: string; issue: string; body: string; replyTo?: string }
   | { type: "issueState"; rid: string; issue: string; state: IssueState }
+  | { type: "moveCard"; rid: string; kind: "issue" | "patch"; id: string; column: string; position: number }
   | {
       type: "editCob";
       rid: string;
@@ -79,6 +83,7 @@ export type Op = { at: number } & (
       readme: string;
     }
   | { type: "readInbox"; ids: string[] }
+  | { type: "unreadInbox"; ids: string[] }
   | { type: "ryphConnect"; rid: string; instance: string; agents: AgentKey[] }
   | { type: "ryphDisconnect"; rid: string }
   | { type: "ryphDeliver"; run: string }
@@ -380,7 +385,13 @@ class BrowserNode {
             rid: repo.rid,
             target,
             reason,
-            needsYou: delegate && issue.labels.includes("bug"),
+            // A bug needs triage until a delegate replies or someone is assigned.
+            needsYou:
+              delegate &&
+              issue.state === "open" &&
+              issue.labels.includes("bug") &&
+              issue.assignees.length === 0 &&
+              !issue.comments.some(c => repo.delegates.includes(c.author)),
           });
         }
         for (const c of issue.comments) {
@@ -610,6 +621,20 @@ class BrowserNode {
         issue.state = op.state;
         issue.closedAt = op.state === "open" ? undefined : op.at;
         issue.events.push({ kind: "state", author: "self", time: op.at, state: op.state });
+        return;
+      }
+      case "moveCard": {
+        const repo = this.#repo(op.rid);
+        repo.board ??= { columns: DEFAULT_COLUMNS.map(c => ({ ...c })), cards: [] };
+        repo.board.cards = repo.board.cards.filter(c => !(c.kind === op.kind && c.id === op.id));
+        repo.board.cards.push({
+          kind: op.kind,
+          id: op.id,
+          column: op.column,
+          position: op.position,
+          movedBy: "self",
+          movedAt: op.at,
+        });
         return;
       }
       case "editCob": {
@@ -899,6 +924,10 @@ class BrowserNode {
         for (const id of op.ids) this.read[id] = true;
         return;
       }
+      case "unreadInbox": {
+        for (const id of op.ids) delete this.read[id];
+        return;
+      }
     }
   }
 
@@ -948,6 +977,7 @@ class BrowserNode {
         repo.visibility = doc.visibility;
         repo.description = doc.description;
         repo.defaultBranch = doc.defaultBranch;
+        repo.name = doc.name;
         // Siblings built on the old document can no longer be adopted.
         for (const other of repo.identity.revisions) {
           if (other.state === "active" && other !== rev) other.state = "rejected";
@@ -1027,8 +1057,22 @@ class BrowserNode {
     for (const run of this.world.ryph.runs) {
       if (run.deliveredAt === undefined && this.now - run.startedAt >= runDuration(run) * 1000) {
         this.do({ type: "ryphDeliver", run: run.id });
+        this.#announceDelivery(run);
       }
     }
+  }
+
+  #announceDelivery(run: RyphRun) {
+    const repo = this.world.repos[run.rid];
+    if (!repo) return;
+    const name = this.world.ryph.agents[run.agent]?.name ?? "Ryph";
+    const target = run.patch
+      ? `${this.repoPath(repo)}/patches/${run.patch}`
+      : `${this.repoPath(repo)}/${run.thread.kind === "issue" ? "issues" : "patches"}/${run.thread.id}`;
+    toast(run.patch ? `${name} opened a patch: ${run.thread.title}` : `${name} finished on ${run.thread.title}`, {
+      icon: "checkmark",
+      action: { label: "View", run: () => navigate(target) },
+    });
   }
 
   #deliver(run: RyphRun, at: number) {

@@ -117,7 +117,7 @@
     border: 1px solid var(--color-border-subtle);
     border-radius: var(--border-radius-sm);
     background: var(--color-surface-canvas);
-    box-shadow: 0 12px 32px rgb(0 0 0 / 0.12);
+    box-shadow: var(--elevation-low);
   }
   .head {
     display: flex;
@@ -274,7 +274,7 @@
               <button class="peer" onclick={() => (open[r.person] = !open[r.person])}>
                 <Avatar person={r.person} size="1rem" />
                 <span>{p.alias}</span>
-                {#if r.person === "self"}<span class="caption">(you)</span>{/if}
+                {#if r.person === "self"}<span class="you-chip">You</span>{/if}
                 {#if repo.delegates.includes(r.person)}<span class="delegate" title="Delegate"><Icon name="badge" /></span>{/if}
                 <span class="count">{branches.length}</span>
                 <Icon name={open[r.person] || filter ? "chevron-up" : "chevron-down"} />

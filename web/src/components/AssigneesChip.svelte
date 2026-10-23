@@ -59,7 +59,7 @@
             </span>
             <Avatar person={p} size="1.125rem" />
             {node.person(p).alias}
-            {#if p === "self"}<span class="caption">(you)</span>{/if}
+            {#if p === "self"}<span class="you-chip">You</span>{/if}
           </button>
         {/each}
       </div>

@@ -10,18 +10,37 @@
   import Empty from "@app/components/Empty.svelte";
   import Icon from "@app/components/Icon.svelte";
   import LabelChip from "@app/components/LabelChip.svelte";
+  import LabelFilter from "@app/components/LabelFilter.svelte";
   import SegmentedSwitch from "@app/components/SegmentedSwitch.svelte";
   import StateIcon from "@app/components/StateIcon.svelte";
+  import SideSheet from "@app/components/SideSheet.svelte";
+  import IssueView from "./Issue.svelte";
 
   interface Props {
     repo: Repo;
     filter: string;
+    peek?: string;
   }
 
-  const { repo, filter }: Props = $props();
+  const { repo, filter, peek }: Props = $props();
+
+  function listHref(id?: string) {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- built and read in one call, never reactive
+    const q = new URLSearchParams();
+    if (filter !== "open") q.set("state", filter);
+    if (id) q.set("peek", id);
+    const qs = q.toString();
+    return `${base}/issues${qs ? `?${qs}` : ""}`;
+  }
+
+  function openPeek(e: MouseEvent, id: string) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    navigate(listHref(id), { scroll: false });
+  }
 
   let query = $state("");
-  let label = $state<string | undefined>(undefined);
+  let picked = $state<string[]>([]);
 
   const base = $derived(node.repoPath(repo));
   const open = $derived(repo.issues.filter(i => i.state === "open"));
@@ -29,7 +48,7 @@
   const labels = $derived([...new Set(repo.issues.flatMap(i => i.labels))].sort());
   const shown = $derived(
     (filter === "closed" ? closed : filter === "all" ? repo.issues : open)
-      .filter(i => !label || i.labels.includes(label))
+      .filter(i => picked.length === 0 || i.labels.some(l => picked.includes(l)))
       .filter(
         i =>
           !query ||
@@ -56,9 +75,6 @@
     flex: 1;
     min-width: 12rem;
     max-width: 24rem;
-  }
-  select {
-    width: auto;
   }
   .row-item {
     display: flex;
@@ -109,6 +125,9 @@
   .assignees :global(.avatar + .avatar) {
     margin-left: -0.25rem;
   }
+  .row-item.peeked {
+    background: var(--color-surface-subtle);
+  }
 </style>
 
 <div class="bar">
@@ -121,10 +140,10 @@
     value={filter === "closed" || filter === "all" ? filter : "open"}
     onchange={v => navigate(`${base}/issues${v === "open" ? "" : `?state=${v}`}`)} />
   <input class="input search" bind:value={query} placeholder="Filter issues" />
-  <select class="select" bind:value={label}>
-    <option value={undefined}>All labels</option>
-    {#each labels as l (l)}<option value={l}>{l}</option>{/each}
-  </select>
+  <LabelFilter
+    labels={labels.map(l => ({ label: l, count: repo.issues.filter(i => i.labels.includes(l)).length }))}
+    value={picked}
+    onchange={ls => (picked = ls)} />
   <span style="margin-left: auto;"></span>
   <Button variant="secondary" onclick={() => navigate(`${base}/issues/new`)}>
     <Icon name="plus" /> New issue
@@ -133,7 +152,12 @@
 
 <div class="card">
   {#each shown as issue (issue.id)}
-    <a class="row-item" href={`${base}/issues/${issue.id}`}>
+    <a
+      class="row-item"
+      class:peeked={peek === issue.id}
+      href={`${base}/issues/${issue.id}`}
+      data-peek
+      onclick={e => openPeek(e, issue.id)}>
       <span class="state"><StateIcon kind="issue" state={issue.state} /></span>
       <div class="body">
         <div class="title">
@@ -159,8 +183,14 @@
       </div>
     </a>
   {:else}
-    <Empty icon="issue" title={query || label ? "No matching issues" : filter === "closed" ? "No closed issues" : "No open issues"}>
-      {#if !query && !label}Issues are how people report bugs and propose ideas.{/if}
+    <Empty icon="issue" title={query || picked.length ? "No matching issues" : filter === "closed" ? "No closed issues" : "No open issues"}>
+      {#if !query && !picked.length}Issues are how people report bugs and propose ideas.{/if}
     </Empty>
   {/each}
 </div>
+
+{#if peek}
+  <SideSheet expandHref={`${base}/issues/${peek}`} onClose={() => navigate(listHref(), { scroll: false })}>
+    <IssueView {repo} id={peek} />
+  </SideSheet>
+{/if}

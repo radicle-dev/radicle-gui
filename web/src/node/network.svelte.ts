@@ -28,6 +28,7 @@ const SEEDS: { label: string; transport: Transport; latency: number }[] = [
   { label: "ash.seeds.rad", transport: "WebTransport", latency: 38 },
   { label: "rowan.seeds.rad", transport: "WebTransport", latency: 61 },
   { label: "seed.tidal.rad", transport: "WebTransport", latency: 112 },
+  { label: "seed.meshwork.net", transport: "WebTransport", latency: 168 },
 ];
 
 const PEERS: { person: string; transport: Transport; latency: number }[] = [
@@ -35,6 +36,9 @@ const PEERS: { person: string; transport: Transport; latency: number }[] = [
   { person: "mira", transport: "WebRTC", latency: 47 },
   { person: "tomas", transport: "Relay", latency: 140 },
   { person: "yuki", transport: "WebRTC", latency: 180 },
+  { person: "zeynep", transport: "WebRTC", latency: 58 },
+  { person: "priya", transport: "WebRTC", latency: 121 },
+  { person: "felix", transport: "Relay", latency: 92 },
 ];
 
 export interface RepoRef {

@@ -3,6 +3,7 @@
 
   import { timeAgo } from "@app/lib/utils";
   import { node } from "@app/node/node.svelte";
+  import { inboxHref } from "@app/lib/inbox";
   import { revisionTitle } from "@app/node/repoIdentity";
 
   import Avatar from "./Avatar.svelte";
@@ -12,20 +13,15 @@
     item: InboxItem;
     unread?: boolean;
     showRepo?: boolean;
+    // Off in lists that only hold items needing you, where it would repeat.
+    showNeeds?: boolean;
   }
 
-  const { item, unread = false, showRepo = true }: Props = $props();
+  const { item, unread = false, showRepo = true, showNeeds = true }: Props = $props();
 
   const repo = $derived(item.rid ? node.world.repos[item.rid] : undefined);
   const org = $derived(item.org ? node.org(item.org) : undefined);
-  const href = $derived.by(() => {
-    if (repo && item.target) {
-      return `${node.repoPath(repo)}/${item.target.kind === "issue" ? "issues" : "patches"}/${item.target.id}`;
-    }
-    if (repo && item.kind === "identity") return `${node.repoPath(repo)}/identity`;
-    if (org) return `/${org.handle}?tab=approvals`;
-    return "/";
-  });
+  const href = $derived(inboxHref(item));
   const icon = $derived.by(() => {
     switch (item.kind) {
       case "issue.opened":
@@ -89,6 +85,11 @@
     color: var(--color-text-primary);
     font-weight: 600;
   }
+  /* The line is inline text so it can truncate; centre the avatar on it. */
+  .line :global(.avatar) {
+    vertical-align: middle;
+    margin: -0.125rem 0.125rem 0 0;
+  }
   .title {
     font: var(--txt-body-m-semibold);
   }
@@ -101,11 +102,29 @@
     white-space: nowrap;
   }
   .needs {
-    font: var(--txt-body-s-semibold);
-    color: var(--color-feedback-important-text);
+    display: inline-flex;
+    align-items: center;
+    height: 1.25rem;
+    padding: 0 0.4375rem;
+    border-radius: var(--border-radius-sm);
+    background: color-mix(in srgb, var(--color-surface-brand-primary) 12%, transparent);
+    font: var(--txt-body-s-medium);
+    color: var(--color-text-brand);
+    white-space: nowrap;
   }
   .unread {
     background: var(--color-surface-brand-primary);
+  }
+  @media (max-width: 600px) {
+    a {
+      flex-wrap: wrap;
+      row-gap: 0.375rem;
+    }
+    .meta {
+      order: 3;
+      flex-basis: 100%;
+      padding-left: 1.75rem;
+    }
   }
 </style>
 
@@ -132,7 +151,7 @@
     </div>
   </div>
   <div class="meta">
-    {#if item.needsYou}<span class="needs">Needs you</span>{/if}
+    {#if item.needsYou && showNeeds}<span class="needs">Needs you</span>{/if}
     {timeAgo(item.time)}
     {#if unread}<span class="dot unread"></span>{/if}
   </div>

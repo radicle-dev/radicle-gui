@@ -1,4 +1,5 @@
 import type { Snapshot } from "./diff";
+import { seedBoard } from "./board";
 import type {
   CobEvent,
   Comment,
@@ -458,6 +459,7 @@ export function buildWorld(
   const repos: Record<string, Repo> = {};
   for (const r of seeds.repos) {
     const repo = buildRepo(r, epoch);
+    repo.board = seedBoard(repo);
     repos[repo.rid] = repo;
   }
 

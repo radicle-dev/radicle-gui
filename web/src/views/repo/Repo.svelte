@@ -3,6 +3,7 @@
 
   import { copy } from "@app/lib/utils";
   import { node } from "@app/node/node.svelte";
+  import { setSeed } from "@app/lib/actions";
 
   import Avatar from "@app/components/Avatar.svelte";
   import Button from "@app/components/Button.svelte";
@@ -16,6 +17,7 @@
   import CommitView from "./Commit.svelte";
   import Commits from "./Commits.svelte";
   import IssueView from "./Issue.svelte";
+  import Board from "./Board.svelte";
   import Issues from "./Issues.svelte";
   import NewIssue from "./NewIssue.svelte";
   import PatchView from "./Patch.svelte";
@@ -23,6 +25,8 @@
   import Releases from "./Releases.svelte";
   import Identity from "./Identity.svelte";
   import Ryph from "./Ryph.svelte";
+  import RepoSettings from "./Settings.svelte";
+  import IdentityEdit from "@app/components/IdentityEdit.svelte";
 
   interface Props {
     owner: string;
@@ -69,6 +73,12 @@
             count: repo.patches.filter(p => p.state === "open").length,
           },
           {
+            label: "Board",
+            href: `${base}/board`,
+            icon: "dashboard" as const,
+            active: tab === "board",
+          },
+          {
             label: "Commits",
             href: `${base}/commits`,
             icon: "commit" as const,
@@ -88,13 +98,20 @@
             active: tab === "identity",
             count: node.pendingIdentity(repo).length || undefined,
           },
-          {
-            label: "Ryph",
-            href: `${base}/ryph`,
-            icon: "lightbulb" as const,
-            active: tab === "ryph",
-            count: ryph ? node.ryphRuns(repo).filter(r => !r.finished).length || undefined : undefined,
-          },
+          ...(ryph || tab === "ryph"
+            ? [
+                {
+                  label: "Ryph",
+                  href: `${base}/ryph`,
+                  icon: "lightbulb" as const,
+                  active: tab === "ryph",
+                  count: ryph ? node.ryphRuns(repo).filter(r => !r.finished).length || undefined : undefined,
+                },
+              ]
+            : []),
+          ...(node.isDelegate(repo)
+            ? [{ label: "Settings", href: `${base}/settings`, icon: "settings" as const, active: tab === "settings" }]
+            : []),
         ]
       : [],
   );
@@ -119,7 +136,7 @@
     flex-wrap: wrap;
   }
   .repo-avatar {
-    border-radius: var(--border-radius-md);
+    border-radius: var(--border-radius-sm);
     overflow: hidden;
     display: flex;
   }
@@ -149,7 +166,11 @@
     font: var(--txt-body-s-medium);
     border: 1px solid var(--color-border-mid);
     border-radius: var(--border-radius-full);
-    padding: 0.0625rem 0.5rem;
+    /* The same space on every side of the icons. */
+    padding: 0.1875rem 0.5rem 0.1875rem 0.1875rem;
+    /* Centres the badge on the name's x-height rather than its line box. */
+    position: relative;
+    top: 0.125rem;
     color: var(--color-text-tertiary);
     display: inline-flex;
     align-items: center;
@@ -163,7 +184,20 @@
   .desc {
     color: var(--color-text-secondary);
     font: var(--txt-body-m-regular);
-    margin: 0 0 1rem;
+    margin: 0;
+  }
+  .desc-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-height: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  .desc-edit {
+    visibility: hidden;
+  }
+  .desc-row:is(:hover, :focus-within) .desc-edit {
+    visibility: visible;
   }
   .clone {
     width: 26rem;
@@ -171,7 +205,7 @@
     background: var(--color-surface-canvas);
     border: 1px solid var(--color-border-mid);
     border-radius: var(--border-radius-md);
-    box-shadow: 0 12px 32px rgb(0 0 0 / 0.14);
+    box-shadow: var(--elevation-low);
     display: flex;
     flex-direction: column;
     gap: 0.875rem;
@@ -197,6 +231,12 @@
     border-left: 1px solid var(--color-border-mid);
     padding-left: 0.5rem;
     margin-left: 0.25rem;
+  }
+  @media (max-width: 600px) {
+    .actions {
+      margin-left: 0;
+      flex-wrap: wrap;
+    }
   }
 </style>
 
@@ -227,9 +267,10 @@
           <span class="sep">/</span>
           <a class="link" href={base}>{repo.name}</a>
         </h1>
-        <span class="vis">
+        {#snippet visibilityLabel()}
           {#if repo.visibility === "private"}<Icon name="lock" /> Private{:else}<Icon name="globe" /> Public{/if}
-        </span>
+        {/snippet}
+        <span class="vis">{@render visibilityLabel()}</span>
         <div class="actions">
           <Button
             variant={seeding ? "ghost" : "outline"}
@@ -237,7 +278,7 @@
             title={seeding
               ? "Your node stores this repository and serves it to peers"
               : "Store this repository on your node and help serve it"}
-            onclick={() => node.do({ type: "seed", rid: repo.rid, on: !seeding })}>
+            onclick={() => setSeed(repo, !seeding)}>
             <Icon name={seeding ? "seed-filled" : "seed"} />
             {seeding ? "Seeding" : "Seed"}
             <span class="seed-count">{repo.seedCount}</span>
@@ -254,7 +295,7 @@
                   <span class="label">With the Radicle CLI</span>
                   <div class="cmd">
                     <span>rad clone {repo.rid}</span>
-                    <Button variant="naked" styleHeight="1.5rem" onclick={() => copy(`rad clone ${repo.rid}`)}>
+                    <Button variant="naked" styleHeight="1.5rem" onclick={() => copy(`rad clone ${repo.rid}`, "clone command")}>
                       <Icon name="copy" />
                     </Button>
                   </div>
@@ -263,7 +304,7 @@
                   <span class="label">With git, from a seed node</span>
                   <div class="cmd">
                     <span>git clone {gitUrl}</span>
-                    <Button variant="naked" styleHeight="1.5rem" onclick={() => copy(`git clone ${gitUrl}`)}>
+                    <Button variant="naked" styleHeight="1.5rem" onclick={() => copy(`git clone ${gitUrl}`, "clone command")}>
                       <Icon name="copy" />
                     </Button>
                   </div>
@@ -276,7 +317,20 @@
           </Popover>
         </div>
       </div>
-      <p class="desc">{repo.description}</p>
+      <div class="desc-row">
+        <p class="desc">{repo.description}</p>
+        {#if node.isDelegate(repo)}
+          <span class="desc-edit">
+            <IdentityEdit {repo} kind="setDescription">
+              {#snippet trigger(toggle)}
+                <Button variant="naked" styleHeight="1.5rem" title="Edit description" ariaLabel="Edit description" onclick={toggle}>
+                  <Icon name="edit" />
+                </Button>
+              {/snippet}
+            </IdentityEdit>
+          </span>
+        {/if}
+      </div>
       <Tabs {tabs} />
     </div>
   </div>
@@ -289,21 +343,25 @@
     {:else if view.tab === "commit"}
       <CommitView {repo} sha={view.sha} />
     {:else if view.tab === "issues"}
-      <Issues {repo} filter={view.filter} />
+      <Issues {repo} filter={view.filter} peek={view.peek} />
     {:else if view.tab === "newIssue"}
       <NewIssue {repo} />
     {:else if view.tab === "issue"}
       <IssueView {repo} id={view.id} />
     {:else if view.tab === "patches"}
-      <Patches {repo} filter={view.filter} />
+      <Patches {repo} filter={view.filter} peek={view.peek} />
     {:else if view.tab === "patch"}
-      <PatchView {repo} id={view.id} view={view.view} />
+      <PatchView {repo} id={view.id} view={view.view} rev={view.rev} />
+    {:else if view.tab === "board"}
+      <Board {repo} issue={view.issue} patch={view.patch} />
     {:else if view.tab === "releases"}
       <Releases {repo} />
     {:else if view.tab === "ryph"}
       <Ryph {repo} />
     {:else if view.tab === "identity"}
       <Identity {repo} />
+    {:else if view.tab === "settings"}
+      <RepoSettings {repo} />
     {/if}
   </div>
 {/if}

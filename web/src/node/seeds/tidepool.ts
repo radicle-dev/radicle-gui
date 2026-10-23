@@ -1080,7 +1080,7 @@ wants a week. Defaults to the existing 72h.`,
         "README.md": [
           [
             "| How often each relay is polled |\n",
-            "| How often each relay is polled |\n| \`-retention\` | \`72h\` | How long readings stay queryable |\n",
+            "| How often each relay is polled |\n| `-retention` | `72h` | How long readings stay queryable |\n",
           ],
         ],
       },

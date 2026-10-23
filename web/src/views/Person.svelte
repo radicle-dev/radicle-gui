@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { activityOf, heatmap } from "@app/lib/activity";
+  import { dayKey } from "@app/lib/activity";
+  import { contributionsOf } from "@app/lib/contributions";
   import { navigate } from "@app/lib/router.svelte";
   import { copy, plural, shortNid } from "@app/lib/utils";
   import { ridFor } from "@app/node/hash";
   import { node } from "@app/node/node.svelte";
+  import { setFollow } from "@app/lib/actions";
 
   import ActivityList from "@app/components/ActivityList.svelte";
   import Avatar from "@app/components/Avatar.svelte";
@@ -11,20 +13,23 @@
   import Empty from "@app/components/Empty.svelte";
   import Heatmap from "@app/components/Heatmap.svelte";
   import Icon from "@app/components/Icon.svelte";
+  import Hint from "@app/components/Hint.svelte";
   import RepoCard from "@app/components/RepoCard.svelte";
   import Tabs from "@app/components/Tabs.svelte";
 
   interface Props {
     alias: string;
     tab: string;
+    // Narrows the activity tab to one day (YYYY-MM-DD).
+    day?: string;
   }
 
-  const { alias, tab }: Props = $props();
+  const { alias, tab, day }: Props = $props();
 
   const person = $derived(node.personByAlias(alias));
   const isSelf = $derived(person?.id === "self");
   const following = $derived(person ? node.following[person.id] : false);
-  const activity = $derived(person ? activityOf(person.id, node.repos, r => node.repoPath(r)) : []);
+  const activity = $derived(person ? contributionsOf(person.id) : []);
   const owned = $derived(person ? node.reposOf({ type: "person", id: person.id }) : []);
   const maintains = $derived(
     person ? node.repos.filter(r => r.delegates.includes(person.id) && !owned.includes(r)) : [],
@@ -123,8 +128,17 @@
   }
   @media (max-width: 860px) {
     .profile {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
+  }
+  .day-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .profile-action {
+    display: flex;
   }
 </style>
 
@@ -140,21 +154,23 @@
         <div>
           <h1>{person.name || person.alias}</h1>
           <div class="alias">
-            {person.alias}{#if person.pronouns} · {person.pronouns}{/if}
+            {person.alias}{#if person.pronouns}&nbsp;·&nbsp;{person.pronouns}{/if}
           </div>
         </div>
         {#if person.bio}<p class="bio">{person.bio}</p>{/if}
-        {#if isSelf}
-          <Button variant="ghost" onclick={() => navigate("/settings?section=profile")}>
-            <Icon name="edit" /> Edit profile
-          </Button>
-        {:else}
-          <Button
-            variant={following ? "ghost" : "secondary"}
-            onclick={() => node.do({ type: "follow", id: person.id, on: !following })}>
-            {following ? "Following" : "Follow"}
-          </Button>
-        {/if}
+        <div class="profile-action">
+          {#if isSelf}
+            <Button variant="ghost" onclick={() => navigate("/settings?section=profile")}>
+              <Icon name="edit" /> Edit profile
+            </Button>
+          {:else}
+            <Button
+              variant={following ? "ghost" : "secondary"}
+              onclick={() => setFollow(person.id, !following)}>
+              {following ? "Following" : "Follow"}
+            </Button>
+          {/if}
+        </div>
         <div class="facts">
           {#if person.location}<span class="row"><Icon name="globe" />{person.location}</span>{/if}
           {#if localTime}<span class="row"><Icon name="clock" />{localTime} local time</span>{/if}
@@ -165,7 +181,7 @@
         </div>
         <div class="did">
           <span class="ellipsis">did:key:{shortNid(person.nid)}</span>
-          <Button variant="naked" styleHeight="1.5rem" onclick={() => copy(person.did)}>
+          <Button variant="naked" styleHeight="1.5rem" onclick={() => copy(person.did, "DID")}>
             <Icon name="copy" />
           </Button>
         </div>
@@ -179,12 +195,14 @@
             </div>
           </div>
         {/if}
-        <div class="card actor">
-          <strong>Profile repository</strong>
-          This profile is itself a repository, signed by {person.alias}'s
-          {plural(person.keys, "key")}. It syncs like any other repo.
-          <span class="mono">{ridFor(`actor:${person.id}`)}</span>
-        </div>
+        <Hint id="profile-repository">
+          <div class="card actor">
+            <strong>Profile repository</strong>
+            This profile is itself a repository, signed by {person.alias}'s
+            {plural(person.keys, "key")}. It syncs like any other repo.
+            <span class="mono">{ridFor(`actor:${person.id}`)}</span>
+          </div>
+        </Hint>
       </div>
 
       <div>
@@ -210,10 +228,22 @@
             {/if}
           {/each}
         {:else if tab === "activity"}
-          <section><ActivityList items={activity} /></section>
+          {#if day}
+            <section>
+              <div class="day-head">
+                <h2 class="section-title">
+                  {new Date(`${day}T12:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                </h2>
+                <a class="link txt-body-s-regular" href={`${base}?tab=activity`}>Show all activity</a>
+              </div>
+              <ActivityList items={activity.filter(a => dayKey(a.time) === day)} />
+            </section>
+          {:else}
+            <section><ActivityList items={activity} /></section>
+          {/if}
         {:else}
           <section>
-            <Heatmap counts={heatmap(activity)} />
+            <Heatmap items={activity} dayHref={d => `${base}?tab=activity&day=${d}`} />
           </section>
           {#if owned.length + maintains.length > 0}
             <section>

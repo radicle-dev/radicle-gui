@@ -26,12 +26,14 @@
   <img
     style:width={styleWidth}
     style:height={styleWidth}
+    style:border-radius="var(--border-radius-sm)"
     src={dataUri}
     alt="Repository Avatar" />
 {:else}
   <div
     style:width={styleWidth}
     style:height={styleWidth}
+    style:border-radius="var(--border-radius-sm)"
     style:background-color="var(--color-surface-subtle)">
   </div>
 {/if}

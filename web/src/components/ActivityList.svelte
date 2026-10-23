@@ -58,7 +58,11 @@
     <div class="item">
       <span class="icon"><Icon name={icons[a.kind]} /></span>
       <div class="body">
-        <a class="link ellipsis" style="display: block;" href={a.href}>{a.title}</a>
+        {#if a.href}
+          <a class="link ellipsis" style="display: block;" href={a.href}>{a.title}</a>
+        {:else}
+          <span class="ellipsis" style="display: block;">{a.title}</span>
+        {/if}
         <div class="what">
           {a.detail ?? "committed"} in
           <a class="link" href={node.repoPath(a.repo)}>{node.ownerHandle(a.repo.owner)}/{a.repo.name}</a>

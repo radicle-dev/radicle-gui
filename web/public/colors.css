@@ -64,14 +64,12 @@
   --color-code-functions: var(--color-accent-emerald-700);
 
   /* Brand. */
-  --color-brand-bg: var(--color-accent-blue-600);
   --color-brand-hover: var(--color-accent-blue-500);
   --color-brand-text-light: var(--color-accent-blue-600);
   --color-brand-text-dark: var(--color-accent-blue-400);
   --color-text-on-brand: var(--color-neutrals-opaque-light-0);
 
-  --color-surface-brand-primary: var(--color-brand-bg);
-  --color-surface-brand-secondary: var(--color-brand-hover);
+  --color-surface-brand-primary: var(--color-brand-hover);
   --color-surface-brand-subtle: var(--color-accent-blue-100);
   --color-surface-brand-mid: var(--color-accent-blue-200);
   --color-border-brand: var(--color-brand-hover);

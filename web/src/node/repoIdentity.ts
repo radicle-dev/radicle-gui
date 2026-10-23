@@ -25,6 +25,9 @@ export function applyIdentityChange(doc: IdentityDoc, change: IdentityChange): I
     canonicalRefs: doc.canonicalRefs.map(r => ({ ...r })),
   };
   switch (change.type) {
+    case "setName":
+      next.name = change.name;
+      break;
     case "addDelegate":
       if (!next.delegates.includes(change.person)) next.delegates.push(change.person);
       break;
@@ -60,6 +63,8 @@ export function describeChange(
   alias: (p: PersonId) => string,
 ): string {
   switch (change.type) {
+    case "setName":
+      return `Renames the repository to ${change.name}`;
     case "addDelegate":
       return `Adds ${alias(change.person)} as a delegate`;
     case "removeDelegate":
@@ -192,7 +197,10 @@ export function revisionTitle(rev: IdentityRevision, alias: (p: PersonId) => str
   if (rev.title) return rev.title;
   const c = rev.changes[0];
   if (!c || c.type === "init") return "Initial identity";
+  if (rev.changes.length > 1) return "Update repository settings";
   switch (c.type) {
+    case "setName":
+      return `Rename to ${c.name}`;
     case "addDelegate":
       return `Add ${alias(c.person)} as a delegate`;
     case "removeDelegate":

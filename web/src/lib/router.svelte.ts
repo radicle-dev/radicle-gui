@@ -4,13 +4,13 @@
 export type Route =
   | { name: "home" }
   | { name: "welcome" }
-  | { name: "inbox" }
-  | { name: "explore"; q: string }
+  | { name: "inbox"; filter?: string }
+  | { name: "explore"; q: string; seed?: string }
   | { name: "node" }
   | { name: "settings"; section: string }
-  | { name: "newRepo" }
+  | { name: "newRepo"; owner?: string }
   | { name: "newOrg" }
-  | { name: "person"; alias: string; tab: string }
+  | { name: "person"; alias: string; tab: string; day?: string }
   | { name: "org"; handle: string; tab: string }
   | { name: "repo"; owner: string; repo: string; view: RepoView }
   | { name: "notFound" };
@@ -19,11 +19,12 @@ export type RepoView =
   | { tab: "code"; path: string; peer?: string }
   | { tab: "commits" }
   | { tab: "commit"; sha: string }
-  | { tab: "issues"; filter: string }
+  | { tab: "issues"; filter: string; peek?: string }
   | { tab: "newIssue" }
   | { tab: "issue"; id: string }
-  | { tab: "patches"; filter: string }
-  | { tab: "patch"; id: string; view: string }
+  | { tab: "patches"; filter: string; peek?: string }
+  | { tab: "patch"; id: string; view: string; rev?: number }
+  | { tab: "board"; issue?: string; patch?: string }
   | { tab: "releases" }
   | { tab: "ryph" }
   | { tab: "identity" }
@@ -43,20 +44,20 @@ function parse(url: URL): Route {
       case "welcome":
         return { name: "welcome" };
       case "inbox":
-        return { name: "inbox" };
+        return { name: "inbox", filter: q.get("filter") ?? undefined };
       case "explore":
-        return { name: "explore", q: q.get("q") ?? "" };
+        return { name: "explore", q: q.get("q") ?? "", seed: q.get("seed") ?? undefined };
       case "node":
         return { name: "node" };
       case "settings":
         return { name: "settings", section: q.get("section") ?? "profile" };
       case "new":
-        return { name: "newRepo" };
+        return { name: "newRepo", owner: q.get("owner") ?? undefined };
     }
   }
   if (a === "orgs" && b === "new") return { name: "newOrg" };
   if (a.startsWith("@") && parts.length === 1) {
-    return { name: "person", alias: a.slice(1), tab: q.get("tab") ?? "overview" };
+    return { name: "person", alias: a.slice(1), tab: q.get("tab") ?? "overview", day: q.get("day") ?? undefined };
   }
   if (parts.length === 1) {
     return { name: "org", handle: a, tab: q.get("tab") ?? "overview" };
@@ -64,6 +65,7 @@ function parse(url: URL): Route {
 
   const repo = (view: RepoView): Route => ({ name: "repo", owner: a, repo: b, view });
   const peer = q.get("peer") ?? undefined;
+  const peek = q.get("peek") ?? undefined;
   if (c === undefined) return repo({ tab: "code", path: "", peer });
   switch (c) {
     case "tree":
@@ -76,11 +78,18 @@ function parse(url: URL): Route {
       if (d === "new") return repo({ tab: "newIssue" });
       return d
         ? repo({ tab: "issue", id: d })
-        : repo({ tab: "issues", filter: q.get("state") ?? "open" });
+        : repo({ tab: "issues", filter: q.get("state") ?? "open", peek });
     case "patches":
       return d
-        ? repo({ tab: "patch", id: d, view: q.get("view") ?? "conversation" })
-        : repo({ tab: "patches", filter: q.get("state") ?? "open" });
+        ? repo({
+            tab: "patch",
+            id: d,
+            view: q.get("view") ?? "conversation",
+            rev: Number(q.get("rev")) || undefined,
+          })
+        : repo({ tab: "patches", filter: q.get("state") ?? "open", peek });
+    case "board":
+      return repo({ tab: "board", issue: q.get("issue") ?? undefined, patch: q.get("patch") ?? undefined });
     case "releases":
       return repo({ tab: "releases" });
     case "ryph":
@@ -96,6 +105,9 @@ function parse(url: URL): Route {
 class Router {
   route = $state<Route>({ name: "home" });
   path = $state("/");
+  hash = $state("");
+  // Counts navigations, so the same link followed twice still reacts.
+  visits = $state(0);
 
   constructor() {
     if (typeof window === "undefined") return;
@@ -107,16 +119,19 @@ class Router {
   #sync() {
     const url = new URL(window.location.href);
     this.path = url.pathname + url.search;
+    this.hash = url.hash;
     this.route = parse(url);
   }
 
-  navigate(href: string, opts: { replace?: boolean } = {}) {
+  navigate(href: string, opts: { replace?: boolean; scroll?: boolean } = {}) {
     const url = new URL(href, window.location.origin);
-    if (url.pathname + url.search === this.path && !opts.replace) return;
-    if (opts.replace) window.history.replaceState({}, "", url);
+    const same = url.pathname + url.search === this.path && url.hash === this.hash;
+    if (same && !opts.replace && !url.hash) return;
+    if (opts.replace || same) window.history.replaceState({}, "", url);
     else window.history.pushState({}, "", url);
     this.#sync();
-    if (!url.hash) window.scrollTo(0, 0);
+    this.visits++;
+    if (!url.hash && opts.scroll !== false) window.scrollTo(0, 0);
   }
 
   #intercept(e: MouseEvent) {
@@ -132,5 +147,5 @@ class Router {
 }
 
 export const router = new Router();
-export const navigate = (href: string, opts?: { replace?: boolean }) =>
+export const navigate = (href: string, opts?: { replace?: boolean; scroll?: boolean }) =>
   router.navigate(href, opts);

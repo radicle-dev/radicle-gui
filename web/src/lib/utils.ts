@@ -1,3 +1,5 @@
+import { toast } from "./toast.svelte";
+
 export function unreachable(value: never): never {
   throw new Error(`Unreachable: ${String(value)}`);
 }
@@ -80,6 +82,7 @@ export function languageOf(path: string): string {
   return map[ext] ?? "";
 }
 
-export function copy(text: string) {
+export function copy(text: string, label?: string) {
   void navigator.clipboard?.writeText(text);
+  if (label) toast(`Copied ${label}`, { icon: "copy" });
 }
