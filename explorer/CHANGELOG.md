@@ -1,5 +1,13 @@
 # Changelog
 
+## radicle-httpd + radicle-search 0.30.0
+
+- **`tar.zst` archive downloads**: `/raw/{rid}/archive/{ref}.tar.zst` joins the tar, tar.gz and zip formats; it needs the `zstd` binary in `PATH`
+- **Archive ref errors**: Unknown refs now return 404 and malformed ones 400, instead of 500
+- **Runtime log format**: `RADICLE_HTTPD_LOG_FORMAT` selects `text` (default) or `json` logs at startup, with the access log emitted as structured fields in JSON; this replaces the `logfmt` build feature
+- **Batched search reindexing**: radicle-search ignores seed events and reindexes each touched repo once per batch (`RADICLE_SEARCH_BATCH_SECS`, default 30s), so a flapping peer no longer pins meilisearch at 100% CPU
+- Updated `rustls-webpki` and `webpki-roots` to clear advisories reported by `cargo audit`
+
 ## radicle-httpd + radicle-search 0.29.0
 
 - **Complete commit lists for merge-commit diffs**: The diff endpoint no longer stops the walk early when the head merges the target branch in, which reduced such patches to a single commit

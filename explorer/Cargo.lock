@@ -2756,7 +2756,7 @@ dependencies = [
 
 [[package]]
 name = "radicle-httpd"
-version = "0.29.0"
+version = "0.30.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2833,7 +2833,7 @@ dependencies = [
 
 [[package]]
 name = "radicle-search"
-version = "0.29.0"
+version = "0.30.0"
 dependencies = [
  "anyhow",
  "chrono",
