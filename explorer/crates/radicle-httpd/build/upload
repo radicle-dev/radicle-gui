@@ -54,11 +54,6 @@ main() {
     fi
   done
 
-  if [ "$tagged" = true ]; then
-    echo "Pushing tag releases/httpd/$version.."
-    git push rad "refs/tags/releases/httpd/$version"
-  fi
-
   echo "Done."
 }
 

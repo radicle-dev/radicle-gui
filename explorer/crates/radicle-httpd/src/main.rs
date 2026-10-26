@@ -10,7 +10,7 @@ use radicle_httpd as httpd;
 pub const VERSION: Version = Version {
     name: "radicle-httpd",
     commit: env!("GIT_HEAD"),
-    version: env!("RADICLE_VERSION"),
+    version: env!("RADICLE_HTTPD_VERSION"),
     timestamp: env!("SOURCE_DATE_EPOCH"),
 };
 
@@ -44,7 +44,11 @@ async fn main() -> anyhow::Result<()> {
     // SAFETY: The logger is only initialized once.
     httpd::logger::init().unwrap();
     tracing::info!("starting http daemon..");
-    tracing::info!("version {} ({})", env!("RADICLE_VERSION"), env!("GIT_HEAD"));
+    tracing::info!(
+        "version {} ({})",
+        env!("RADICLE_HTTPD_VERSION"),
+        env!("GIT_HEAD")
+    );
 
     let options = parse_options()?;
 

@@ -1,0 +1,48 @@
+#!/bin/sh
+# shellcheck disable=SC2016
+set -e
+
+if [ $# -ne 1 ]; then
+  echo "Usage: $0 <version-number>"
+  exit 1
+fi
+
+version="$1"
+
+cd "$(dirname "$0")/../../.."
+
+if ! git diff --quiet HEAD; then
+  echo "fatal: the working copy has changes, commit or discard them first" >&2
+  exit 1
+fi
+
+# Run an awk program over a file in place, and keep the file's mode.
+# `sed -i` differs between macOS and Linux.
+edit() {
+  if ! awk "$@" > "$file.tmp"; then
+    rm -f "$file.tmp"
+    echo "fatal: could not update $file" >&2
+    exit 1
+  fi
+  cat "$file.tmp" > "$file"
+  rm "$file.tmp"
+}
+
+# Rename the first `## Unreleased` and add an empty one above it.
+release_section() {
+  edit -v heading="## $1" '
+    !done && $0 == "## Unreleased" { print; print ""; print heading; done = 1; next }
+    { print }
+    END { if (!done) { print "fatal: no ## Unreleased heading" > "/dev/stderr"; exit 1 } }
+  ' "$file"
+}
+
+file=CHANGELOG.md
+release_section "radicle-httpd + radicle-search $version"
+
+file=docs/api-changes.md
+release_section "$version"
+
+git diff --stat
+echo
+echo "Check the diff, add the API changes to CHANGELOG.md, then commit."

@@ -61,7 +61,7 @@ main() {
       --build-arg SOURCE_DATE_EPOCH \
       --build-arg TZ \
       --build-arg LC_ALL \
-      --build-arg RADICLE_VERSION=$version \
+      --build-arg RADICLE_HTTPD_VERSION=$version \
       --build-arg GIT_HEAD=$rev \
       --arch $ARCH --tag $image -f "$(dirname "$0")/Dockerfile" "$context"
 
@@ -75,7 +75,7 @@ main() {
       --build-arg TZ \
       --build-arg LC_ALL \
       --build-arg GIT_HEAD=$rev \
-      --build-arg RADICLE_VERSION=$version \
+      --build-arg RADICLE_HTTPD_VERSION=$version \
       --arch $ARCH --tag $image -f "$(dirname "$0")/Dockerfile" "$context"
 
     echo "Creating container (radicle-build-container).."
