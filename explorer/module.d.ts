@@ -6,7 +6,6 @@ declare module "*.md" {
 
 declare const buildTimeConfig: {
   nodes: {
-    requiredApiVersion: string;
     fallbackPublicExplorer: string;
     defaultHttpdPort: number;
     defaultLocalHttpdPort: number;

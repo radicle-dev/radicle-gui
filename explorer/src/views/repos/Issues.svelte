@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { BaseUrl, Issue, IssueState, Repo } from "@http-client";
+  import type { RepoNode } from "./router";
 
   import { HttpdClient } from "@http-client";
   import { ISSUES_PER_PAGE } from "./router";
@@ -21,8 +22,7 @@
   export let repo: Repo;
   export let repoId: string;
   export let status: IssueState["status"];
-  export let nodeId: string;
-  export let nodeAvatarUrl: string | undefined;
+  export let node: RepoNode;
 
   let loading = false;
   let page = 0;
@@ -109,7 +109,7 @@
   }
 </style>
 
-<Layout {nodeId} {nodeAvatarUrl} {baseUrl} {repo} {repoId} activeTab="issues">
+<Layout {node} {baseUrl} {repo} {repoId} activeTab="issues">
   <svelte:fragment slot="breadcrumb">
     <Separator />
     <Link

@@ -5,6 +5,7 @@ import config from "@app/lib/config";
 import { HttpdClient } from "@http-client";
 import { ResponseError, ResponseParseError } from "@http-client/lib/fetcher";
 import { handleError } from "@app/views/nodes/error";
+import { nodeVersion } from "@app/lib/nodeVersion";
 import { unreachableError } from "@app/views/repos/error";
 import { determineSeed } from "./SeedSelector";
 
@@ -26,6 +27,7 @@ export interface NodesLoadedRoute {
     baseUrl: BaseUrl;
     stats: NodeStats;
     node: Node;
+    version: string | undefined;
   };
 }
 
@@ -53,7 +55,11 @@ export async function loadNodeRoute(
   const api = new HttpdClient(baseUrl);
 
   try {
-    const [node, stats] = await Promise.all([api.getNode(), api.getStats()]);
+    const [node, stats, version] = await Promise.all([
+      api.getNode(),
+      api.getStats(),
+      nodeVersion(baseUrl).catch(() => undefined),
+    ]);
 
     return {
       resource: "nodes",
@@ -61,6 +67,7 @@ export async function loadNodeRoute(
         baseUrl,
         node,
         stats,
+        version,
       },
     };
   } catch (error) {

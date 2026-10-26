@@ -39,6 +39,9 @@ export const radicleArtifactRelease = (
 
 export const useLocalHttpd = process.env.USE_LOCAL_HTTPD === "true";
 
+export const releaseCountsOnlyLocal =
+  "release counts per scope only exist in the local httpd build";
+
 // Assert that binaries are installed and are the correct version.
 export async function assertBinariesInstalled(
   binary: string,

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { BaseUrl, Issue, Repo } from "@http-client";
+  import type { RepoNode } from "./router";
 
   import capitalize from "lodash/capitalize";
   import uniqBy from "lodash/uniqBy";
@@ -28,8 +29,7 @@
   export let repo: Repo;
   export let repoId: string;
   export let rawPath: (commit?: string) => string;
-  export let nodeId: string;
-  export let nodeAvatarUrl: string | undefined;
+  export let node: RepoNode;
 
   $: uniqueEmbeds = uniqBy(
     issue.discussion.flatMap(comment => comment.embeds),
@@ -126,8 +126,7 @@
 
 <Layout
   {baseUrl}
-  {nodeId}
-  {nodeAvatarUrl}
+  {node}
   {repo}
   {repoId}
   activeTab="issues"

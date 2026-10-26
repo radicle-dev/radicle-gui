@@ -4,6 +4,7 @@
   import { tick } from "svelte";
 
   import dompurify from "dompurify";
+  import { isOutdated } from "@http-client/lib/compat";
   import { markdown, sanitizeConfig } from "@app/lib/markdown";
 
   import Command from "@app/components/Command.svelte";
@@ -20,10 +21,12 @@
   import Seeding from "./Seeding.svelte";
   import UserAgent from "./UserAgent.svelte";
   import NodeAddress from "./NodeAddress.svelte";
+  import OutdatedWarning from "./OutdatedWarning.svelte";
 
   export let baseUrl: BaseUrl;
   export let stats: NodeStats;
   export let node: Node;
+  export let version: string | undefined = undefined;
 
   let descriptionContent: HTMLDivElement | undefined = undefined;
   let descriptionExpanded = false;
@@ -257,6 +260,9 @@
             </div>
           {/if}
         </div>
+        {#if version !== undefined && isOutdated(version)}
+          <OutdatedWarning {version} />
+        {/if}
       </div>
 
       <div class="footer">

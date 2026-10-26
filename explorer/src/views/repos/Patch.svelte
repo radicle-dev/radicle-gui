@@ -68,7 +68,7 @@
 
 <script lang="ts">
   import type { BaseUrl } from "@http-client";
-  import type { PatchView } from "./router";
+  import type { PatchView, RepoNode } from "./router";
   import type { Route } from "@app/lib/router";
   import type { ComponentProps } from "svelte";
 
@@ -107,8 +107,7 @@
   export let repo: Repo;
   export let repoId: string;
   export let view: PatchView;
-  export let nodeId: string;
-  export let nodeAvatarUrl: string | undefined;
+  export let node: RepoNode;
 
   const patchStatusLabel: Record<Patch["state"]["status"], string> = {
     draft: "Draft Patches",
@@ -345,8 +344,7 @@
   {baseUrl}
   {repo}
   {repoId}
-  {nodeId}
-  {nodeAvatarUrl}
+  {node}
   activeTab="patches"
   stylePaddingBottom="0">
   <svelte:fragment slot="breadcrumb">

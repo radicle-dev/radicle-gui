@@ -1,7 +1,6 @@
 {
   "nodes": {
     "fallbackPublicExplorer": "FALLBACK_PUBLIC_EXPLORER",
-    "requiredApiVersion": "REQUIRED_API_VERSION",
     "defaultHttpdPort": "DEFAULT_HTTPD_PORT",
     "defaultLocalHttpdPort": "DEFAULT_LOCAL_HTTPD_PORT",
     "defaultHttpdScheme": "DEFAULT_HTTPD_SCHEME"

@@ -131,6 +131,8 @@ const infoSchema = z.object({
   node: nodeSchema,
   httpd: z.object({
     searchAvailable: z.boolean(),
+    // Absent on older httpd, see `releasesSupported`.
+    releases: z.boolean().optional(),
   }),
 });
 
@@ -151,7 +153,6 @@ const nodeInfoSchema = z.object({
   message: z.string(),
   service: z.string(),
   version: z.string(),
-  apiVersion: z.string(),
   nid: z.string(),
   path: z.string(),
   links: z.array(

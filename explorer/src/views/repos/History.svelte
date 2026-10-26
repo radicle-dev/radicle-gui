@@ -6,7 +6,7 @@
     SeedingPolicy,
     Tree,
   } from "@http-client";
-  import type { RepoRoute } from "./router";
+  import type { RepoNode, RepoRoute } from "./router";
 
   import config from "@app/lib/config";
   import { HttpdClient } from "@http-client";
@@ -40,8 +40,7 @@
   export let repoId: string;
   export let revision: string | undefined;
   export let tree: Tree;
-  export let nodeId: string;
-  export let nodeAvatarUrl: string | undefined;
+  export let node: RepoNode;
 
   // The revision carries the encoded branch name after an in-app navigation,
   // and this refname reaches the user as part of the clone popover's archive
@@ -112,7 +111,7 @@
   }
 </style>
 
-<Layout {nodeId} {nodeAvatarUrl} {baseUrl} {repo} {repoId} activeTab="source">
+<Layout {node} {baseUrl} {repo} {repoId} activeTab="source">
   <svelte:fragment slot="breadcrumb">
     <Separator />
     <Link

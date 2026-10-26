@@ -1,4 +1,4 @@
-import { test, cobRid, cobUrl, expect } from "@tests/support/fixtures.js";
+import { test, cobUrl, expect } from "@tests/support/fixtures.js";
 import {
   createContributor,
   createRepo,
@@ -6,6 +6,10 @@ import {
   registerArtifact,
   syncFrom,
 } from "@tests/support/repo.js";
+import {
+  releaseCountsOnlyLocal,
+  useLocalHttpd,
+} from "@tests/support/support.js";
 
 test.describe(() => {
   // Release fixtures need several rad-artifact commands, which takes longer
@@ -29,6 +33,7 @@ test.describe(() => {
   });
 
   test("filter releases by author", async ({ page, peer, peerManager }) => {
+    test.skip(!useLocalHttpd, releaseCountsOnlyLocal);
     const name = "release-authors";
     const { rid, repoFolder } = await createRepo(peer, { name });
     await registerArtifact(peer, repoFolder, { name: "delegate-binary" });
@@ -76,6 +81,7 @@ test.describe(() => {
     peer,
     peerManager,
   }) => {
+    test.skip(!useLocalHttpd, releaseCountsOnlyLocal);
     const name = "release-others-only";
     const { rid, repoFolder } = await createRepo(peer, { name });
 
@@ -107,6 +113,7 @@ test.describe(() => {
   });
 
   test("keep a way back from empty others", async ({ page, peer }) => {
+    test.skip(!useLocalHttpd, releaseCountsOnlyLocal);
     const { rid, repoFolder } = await createRepo(peer, {
       name: "no-others-releases",
     });
@@ -125,6 +132,7 @@ test.describe(() => {
   });
 
   test("hide fully redacted releases", async ({ page, peer }) => {
+    test.skip(!useLocalHttpd, releaseCountsOnlyLocal);
     const { rid, repoFolder } = await createRepo(peer, {
       name: "redacted-release",
     });
@@ -151,12 +159,15 @@ test.describe(() => {
   });
 });
 
-test("releases are unavailable on older nodes", async ({ page }) => {
-  // Older nodes don't report a release count.
-  await page.route(`**/api/v1/repos/${cobRid}`, async route => {
+test("releases are unavailable on nodes without release support", async ({
+  page,
+}) => {
+  // Report a build without release support, as httpd does without the
+  // artifacts feature. The flag wins over any release count.
+  await page.route("**/api/v1/info", async route => {
     const response = await route.fetch();
     const json = await response.json();
-    delete json.payloads["xyz.radicle.project"].meta.releases;
+    json.httpd.releases = false;
     await route.fulfill({ response, json });
   });
 
@@ -167,4 +178,8 @@ test("releases are unavailable on older nodes", async ({ page }) => {
   await expect(
     page.getByText("Releases are not available on this node"),
   ).toBeVisible();
+
+  // The header and seed picker also fetch /info, so a request can still be in
+  // the route when the test ends.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });

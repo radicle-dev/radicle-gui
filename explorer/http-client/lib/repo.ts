@@ -147,7 +147,7 @@ export const repoSchema = object({
     ...repo,
     cobs: repo.cobs,
     // The unredacted delegate releases, which the releases tab opens on.
-    // Absent when the node cannot serve releases.
+    // Absent when the node cannot count them, see `releasesSupported`.
     releaseCount: repo.cobs.releases?.delegate,
   };
 });
@@ -431,10 +431,9 @@ export class Client {
       );
       return commits;
     } catch (error) {
-      // Compat: httpd < 0.27.0 doesn't serve the commit-count endpoint, so fall
+      // Compat: older httpd doesn't serve the commit-count endpoint, so fall
       // back to the tree stats endpoint, which also returns the commit count.
-      // Outside the support window; remove once the e2e tests stop running
-      // against httpd 0.26.0.
+      // Client: remove when explorer drops httpd 0.26.
       if (error instanceof ResponseError && error.status === 404) {
         const stats = await this.getTreeStatsBySha(rid, sha, options);
         return stats.commits;
@@ -541,10 +540,9 @@ export class Client {
         diffStatsSchema,
       );
     } catch (error) {
-      // Compat: httpd < 0.27.0 doesn't serve the diff-stats endpoint, so fall
-      // back to the full diff, which also carries the stats. Outside the
-      // support window; remove once the e2e tests stop running against httpd
-      // 0.26.0.
+      // Compat: older httpd doesn't serve the diff-stats endpoint, so fall
+      // back to the full diff, which also carries the stats. Client: remove
+      // when explorer drops httpd 0.26.
       if (error instanceof ResponseError && error.status === 404) {
         const { diff } = await this.getDiff(
           rid,

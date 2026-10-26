@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { BaseUrl, PeerRefs, Repo, SeedingPolicy } from "@http-client";
+  import type { RepoNode } from "./router";
 
   import { getPeers } from "./Source/Header.svelte";
   import { defaultBranchName } from "@app/lib/utils";
@@ -14,8 +15,7 @@
   export let repoId: string;
   export let seedingPolicy: SeedingPolicy;
   export let peer: string | undefined = undefined;
-  export let nodeId: string;
-  export let nodeAvatarUrl: string | undefined;
+  export let node: RepoNode;
 
   let peers: PeerRefs[] | undefined = undefined;
 
@@ -55,7 +55,7 @@
   commit, or a peer who hasn't pushed it has nothing to open at. Keep the shell
   so the issue and patch tabs stay reachable, and offer the peer branch
   selector. -->
-<Layout {baseUrl} {repo} {repoId} {nodeId} {nodeAvatarUrl} activeTab="source">
+<Layout {baseUrl} {repo} {repoId} {node} activeTab="source">
   <RepoNameHeader {repo} {repoId} {baseUrl} {seedingPolicy} slot="header" />
 
   <div class="subheader" slot="subheader">
