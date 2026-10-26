@@ -31,7 +31,7 @@ use tracing::Span;
 use radicle::identity::RepoId;
 use radicle::Profile;
 
-use crate::api::RADICLE_VERSION;
+use crate::api::RADICLE_HTTPD_VERSION;
 use crate::tracing_extra::{log_response, tracing_middleware, RequestId, TracingInfo};
 
 mod api;
@@ -188,7 +188,7 @@ fn router(options: Options, profile: Arc<Profile>, ctx: api::Context) -> anyhow:
 async fn root_index_handler() -> impl IntoResponse {
     let response = serde_json::json!({
         "welcome": "Welcome to the radicle-httpd JSON API, this service doesn't serve the Radicle Explorer web client.",
-        "version": format!("{}-{}", RADICLE_VERSION, env!("GIT_HEAD")),
+        "version": format!("{}-{}", RADICLE_HTTPD_VERSION, env!("GIT_HEAD")),
         "path": "/",
         "links": [
             {

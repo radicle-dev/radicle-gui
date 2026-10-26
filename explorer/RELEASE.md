@@ -32,97 +32,91 @@ for which releases explorer supports.
 - Git signing configured via SSH:
   ```sh
   git config set gpg.format ssh
-  git config set user.signingKey "key::$(rad self --ssh-key)"
+  git config set user.signingKey "$(rad self --ssh-key)"
   ```
 - Working `podman` setup (see [Podman Setup](#podman-setup) below)
 - Required tools: `podman`, `rad`, `sha256sum`
 
-## Prepare Release
+## Prepare
 
-1. Create release branch:
+Normal patches add their highlights to `## Unreleased` in
+[`CHANGELOG.md`](CHANGELOG.md). Note in each entry whether the change belongs to
+`radicle-httpd` or `radicle-search`.
 
-   ```sh
-   git checkout -b release/httpd/<version>
-   ```
+## Release
 
-2. Generate changelog:
-
-   ```sh
-   crates/radicle-httpd/build/changelog <version> >> CHANGELOG.md
-   ```
-
-3. Edit changelog and remove irrelevant entries. Note in each entry whether a
-   change belongs to `radicle-httpd` or `radicle-search`.
-
-4. Fill in the `## API changes` section from
-   [`docs/api-changes.md`](docs/api-changes.md). If the release bumps the major,
-   write the target date to drop the previous major in that file, three months
-   from today.
-
-5. Commit release:
+1. Update `master`:
 
    ```sh
-   git commit -m "Release <version>"
+   git switch master
+   git pull --ff-only rad master
    ```
 
-6. Push for review:
+2. Make the release commit. The script renames `## Unreleased` to the version in
+   `CHANGELOG.md` and [`docs/api-changes.md`](docs/api-changes.md), and adds a
+   new empty `## Unreleased` to each:
+
    ```sh
-   git push rad HEAD:refs/patches
+   crates/radicle-httpd/build/prepare <version>
    ```
 
-## Review & Merge
+   Check the diff. Then add the API changes from `docs/api-changes.md` to the
+   new section in `CHANGELOG.md`. If the release bumps the major, set the target
+   date to drop the previous major in `## Support` of `docs/api-changes.md`,
+   three months from today. Then commit:
 
-1. Wait for delegate approvals
-2. Merge patch into `master`
+   ```sh
+   git commit -am "httpd: Release <version>"
+   ```
 
-## Tag Release
+3. Make and sign the tag. The script checks the signing key:
 
-Create and sign the release tag (one tag covers both binaries):
+   ```sh
+   crates/radicle-httpd/build/tag <version>
+   ```
 
-```sh
-crates/radicle-httpd/build/tag <version>
-```
+4. Push the commit and the tag. Push only this tag, not `--tags`. The push
+   reports that the canonical reference is updated:
 
-Publish the tag to Radicle. Push only this tag: every tag under `releases/` that
-a delegate pushes becomes canonical, so `--tags` would also publish any stray
-local ones.
+   ```sh
+   git push rad master refs/tags/releases/httpd/<version>
+   rad sync --announce
+   ```
 
-```sh
-git push rad refs/tags/releases/httpd/<version>
-rad sync
-```
+## Build and upload
 
-## Build Artifacts
+Do these steps after the tag is canonical.
 
-Run the reproducible build (Linux x86_64 or macOS). A single run compiles the
-workspace and packages **both** binaries — one archive per binary per target:
+1. Check out the tag. The build reads the version from it with `git describe`:
 
-```sh
-crates/radicle-httpd/build/build
-```
+   ```sh
+   git switch --detach releases/httpd/<version>
+   ```
 
-This writes to `crates/radicle-httpd/build/artifacts/`:
+2. Run the reproducible build (Linux x86_64 or macOS). A single run compiles the
+   workspace and packages **both** binaries, one archive per binary per target:
 
-- `radicle-httpd-<version>-<target>.tar.xz` (binary + man page)
-- `radicle-search-<version>-<target>.tar.xz` (binary)
+   ```sh
+   crates/radicle-httpd/build/build
+   ```
 
-each with a `.sig` and `.sha256` alongside.
+   This writes to `crates/radicle-httpd/build/artifacts/`:
+   - `radicle-httpd-<version>-<target>.tar.xz` (binary + man page)
+   - `radicle-search-<version>-<target>.tar.xz` (binary)
 
-> **Note:** A tagged commit is required; versioning uses `git describe`.
+   each with a `.sig` and `.sha256` alongside.
 
-## Upload Artifacts
+3. Upload. This publishes each binary into its own sibling folder on
+   [files.radicle.dev][files] and creates the version-less and `latest` symlinks
+   for both:
 
-The upload publishes each binary into its own sibling folder on
-[files.radicle.dev][files] and creates the version-less and `latest` symlinks
-for both:
+   ```sh
+   SSH_LOGIN=<username> crates/radicle-httpd/build/upload
+   ```
 
-```sh
-SSH_LOGIN=<username> crates/radicle-httpd/build/upload
-```
+   > **Warning:** Uploading immediately publishes the release.
 
-> **Warning:** Uploading immediately publishes the release.
-
-## Announce Release
+## Announce
 
 1. Mark the previous release as resolved in Zulip `#Announcements`
 
@@ -147,7 +141,7 @@ SSH_LOGIN=<username> crates/radicle-httpd/build/upload
 
    ## Changelog
 
-   <copy output from crates/radicle-httpd/build/changelog>
+   <copy the <version> section from CHANGELOG.md>
 
    ## Checksums
 

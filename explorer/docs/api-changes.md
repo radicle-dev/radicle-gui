@@ -3,10 +3,12 @@
 Breaking changes to the httpd API that are between expand and contract.
 [ADR 0001](adr/0001-expand-and-contract-api-changes.md) has the rules.
 
-- When a change expands, add a section under its release, newest first, and add
-  its removals to the table.
-- When a release bumps the major, set the target date in `## Support`. Its
-  `## API changes` notes come from its sections and from the server removals.
+- When a change expands, add a section under `## Unreleased`, and add its
+  removals to the table.
+- When a release ships, build/prepare renames `## Unreleased` to its version.
+  When the release bumps the major, add a target date to drop the previous major
+  in `## Support`. Its `## API changes` notes come from its sections and from
+  the server removals.
 - When code is removed, delete its row. When a change has no rows left, delete
   its section.
 
@@ -28,7 +30,7 @@ Explorer supports httpd 0.28.0 and newer, set by `minimumSupportedVersion` in
 | A major release           | Server | Repo facts      | Legacy `meta` and `head` in `crates/radicle-httpd/src/api.rs`                                                                                          |
 | A major release           | Server | Release scope   | `allAuthors` in `crates/radicle-httpd/src/api/query.rs`                                                                                                |
 
-## Next release
+## Unreleased
 
 ### API at `/api`
 

@@ -9,7 +9,7 @@ COPY . .
 ARG TZ
 ARG LC_ALL
 ARG SOURCE_DATE_EPOCH
-ARG RADICLE_VERSION
+ARG RADICLE_HTTPD_VERSION
 ARG GIT_HEAD
 
 # Copy cargo configuration we're going to use to specify compiler options.
@@ -21,8 +21,8 @@ RUN apk update && apk add --no-cache git musl-dev xz asciidoctor zig
 RUN asciidoctor --doctype manpage --backend manpage --destination-dir . \
     --source-dir crates/radicle-httpd crates/radicle-httpd/*.1.adoc && \
     find . -maxdepth 1 -type f -name '*.1' -exec sed -i '/^.\\\"/d' '{}' \;
-RUN echo "{ \"name\": \"radicle-httpd\", \"version\": \"${RADICLE_VERSION}\", \"commit\": \"${GIT_HEAD}\", \"timestamp\": \"${SOURCE_DATE_EPOCH}\" }" > /src/radicle-httpd.json
-RUN echo "{ \"name\": \"radicle-search\", \"version\": \"${RADICLE_VERSION}\", \"commit\": \"${GIT_HEAD}\", \"timestamp\": \"${SOURCE_DATE_EPOCH}\" }" > /src/radicle-search.json
+RUN echo "{ \"name\": \"radicle-httpd\", \"version\": \"${RADICLE_HTTPD_VERSION}\", \"commit\": \"${GIT_HEAD}\", \"timestamp\": \"${SOURCE_DATE_EPOCH}\" }" > /src/radicle-httpd.json
+RUN echo "{ \"name\": \"radicle-search\", \"version\": \"${RADICLE_HTTPD_VERSION}\", \"commit\": \"${GIT_HEAD}\", \"timestamp\": \"${SOURCE_DATE_EPOCH}\" }" > /src/radicle-search.json
 # Add cargo targets.
 RUN rustup target add \
     x86_64-unknown-linux-musl \
@@ -55,7 +55,7 @@ RUN cargo zigbuild --locked --release \
 # save some space.
 FROM alpine:3.21 as packager
 
-ARG RADICLE_VERSION
+ARG RADICLE_HTTPD_VERSION
 ARG SOURCE_DATE_EPOCH
 
 COPY --from=builder \
@@ -66,34 +66,34 @@ COPY --from=builder \
 # radicle-httpd: binary plus man page, one directory per target.
 COPY --from=builder \
     /src/target/x86_64-unknown-linux-musl/release/radicle-httpd \
-    /builds/radicle-httpd-${RADICLE_VERSION}-x86_64-unknown-linux-musl/bin/
+    /builds/radicle-httpd-${RADICLE_HTTPD_VERSION}-x86_64-unknown-linux-musl/bin/
 COPY --from=builder \
     /src/target/aarch64-unknown-linux-musl/release/radicle-httpd \
-    /builds/radicle-httpd-${RADICLE_VERSION}-aarch64-unknown-linux-musl/bin/
+    /builds/radicle-httpd-${RADICLE_HTTPD_VERSION}-aarch64-unknown-linux-musl/bin/
 COPY --from=builder \
     /src/target/aarch64-apple-darwin/release/radicle-httpd \
-    /builds/radicle-httpd-${RADICLE_VERSION}-aarch64-apple-darwin/bin/
+    /builds/radicle-httpd-${RADICLE_HTTPD_VERSION}-aarch64-apple-darwin/bin/
 COPY --from=builder \
     /src/target/x86_64-apple-darwin/release/radicle-httpd \
-    /builds/radicle-httpd-${RADICLE_VERSION}-x86_64-apple-darwin/bin/
-COPY --from=builder /src/*.1 /builds/radicle-httpd-${RADICLE_VERSION}-x86_64-unknown-linux-musl/man/man1/
-COPY --from=builder /src/*.1 /builds/radicle-httpd-${RADICLE_VERSION}-aarch64-unknown-linux-musl/man/man1/
-COPY --from=builder /src/*.1 /builds/radicle-httpd-${RADICLE_VERSION}-aarch64-apple-darwin/man/man1/
-COPY --from=builder /src/*.1 /builds/radicle-httpd-${RADICLE_VERSION}-x86_64-apple-darwin/man/man1/
+    /builds/radicle-httpd-${RADICLE_HTTPD_VERSION}-x86_64-apple-darwin/bin/
+COPY --from=builder /src/*.1 /builds/radicle-httpd-${RADICLE_HTTPD_VERSION}-x86_64-unknown-linux-musl/man/man1/
+COPY --from=builder /src/*.1 /builds/radicle-httpd-${RADICLE_HTTPD_VERSION}-aarch64-unknown-linux-musl/man/man1/
+COPY --from=builder /src/*.1 /builds/radicle-httpd-${RADICLE_HTTPD_VERSION}-aarch64-apple-darwin/man/man1/
+COPY --from=builder /src/*.1 /builds/radicle-httpd-${RADICLE_HTTPD_VERSION}-x86_64-apple-darwin/man/man1/
 
 # radicle-search: binary only, one directory per target, as a sibling archive.
 COPY --from=builder \
     /src/target/x86_64-unknown-linux-musl/release/radicle-search \
-    /builds/radicle-search-${RADICLE_VERSION}-x86_64-unknown-linux-musl/bin/
+    /builds/radicle-search-${RADICLE_HTTPD_VERSION}-x86_64-unknown-linux-musl/bin/
 COPY --from=builder \
     /src/target/aarch64-unknown-linux-musl/release/radicle-search \
-    /builds/radicle-search-${RADICLE_VERSION}-aarch64-unknown-linux-musl/bin/
+    /builds/radicle-search-${RADICLE_HTTPD_VERSION}-aarch64-unknown-linux-musl/bin/
 COPY --from=builder \
     /src/target/aarch64-apple-darwin/release/radicle-search \
-    /builds/radicle-search-${RADICLE_VERSION}-aarch64-apple-darwin/bin/
+    /builds/radicle-search-${RADICLE_HTTPD_VERSION}-aarch64-apple-darwin/bin/
 COPY --from=builder \
     /src/target/x86_64-apple-darwin/release/radicle-search \
-    /builds/radicle-search-${RADICLE_VERSION}-x86_64-apple-darwin/bin/
+    /builds/radicle-search-${RADICLE_HTTPD_VERSION}-x86_64-apple-darwin/bin/
 
 # Create and compress reproducible archives. Every top-level release directory
 # (radicle-httpd-* and radicle-search-*) becomes its own `.tar.xz`; the loose

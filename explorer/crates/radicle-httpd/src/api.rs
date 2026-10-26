@@ -27,7 +27,7 @@ use crate::api::error::Error;
 use crate::cache::Cache;
 use crate::Options;
 
-pub const RADICLE_VERSION: &str = env!("RADICLE_VERSION");
+pub const RADICLE_HTTPD_VERSION: &str = env!("RADICLE_HTTPD_VERSION");
 
 /// Prefix of a qualified branch reference.
 const REFS_HEADS: &str = "refs/heads/";

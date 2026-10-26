@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap_or("unknown".into())
     });
 
-    let version = if let Ok(version) = env::var("RADICLE_VERSION") {
+    let version = if let Ok(version) = env::var("RADICLE_HTTPD_VERSION") {
         version
     } else {
         "pre-release".to_owned()
@@ -46,7 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap_or(0.to_string())
     });
 
-    println!("cargo::rustc-env=RADICLE_VERSION={version}");
+    println!("cargo::rustc-env=RADICLE_HTTPD_VERSION={version}");
     println!("cargo::rustc-env=SOURCE_DATE_EPOCH={commit_time}");
     println!("cargo::rustc-env=GIT_HEAD={hash}");
 

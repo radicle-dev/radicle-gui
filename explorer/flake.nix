@@ -139,7 +139,7 @@
 
             env =
               {
-                RADICLE_VERSION = "nix-" + (self.shortRev or self.dirtyShortRev or "unknown");
+                RADICLE_HTTPD_VERSION = "nix-" + (self.shortRev or self.dirtyShortRev or "unknown");
               }
               // (
                 if self ? rev || self ? dirtyRev

@@ -10,7 +10,7 @@ use axum::routing::get;
 use axum::Router;
 use serde_json::json;
 
-use crate::api::{Context, RADICLE_VERSION};
+use crate::api::{Context, RADICLE_HTTPD_VERSION};
 
 pub fn router(ctx: Context) -> Router {
     let root_router = Router::new()
@@ -30,7 +30,7 @@ async fn root_handler(State(ctx): State<Context>) -> impl IntoResponse {
     let response = json!({
         "message": "Welcome!",
         "service": "radicle-httpd",
-        "version": format!("{}-{}", RADICLE_VERSION, env!("GIT_HEAD")),
+        "version": format!("{}-{}", RADICLE_HTTPD_VERSION, env!("GIT_HEAD")),
         "nid": ctx.profile.public_key,
         "path": "/api",
         "links": [
