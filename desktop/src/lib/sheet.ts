@@ -8,10 +8,12 @@ import type { Thread } from "@bindings/cob/thread/Thread";
 import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
 import { get, writable } from "svelte/store";
+import { z } from "zod";
 
 import { invoke } from "@app/lib/invoke";
 import type { Route } from "@app/lib/router";
 import { activeRouteStore, push } from "@app/lib/router";
+import useLocalStorage from "@app/lib/useLocalStorage.svelte";
 import { isMac } from "@app/lib/utils";
 
 export interface IssueSheetData {
@@ -40,10 +42,18 @@ export const sheetChanges = writable(0);
 
 let request = 0;
 
-// Holding the platform modifier while clicking skips the sheet and goes
-// straight to the full page.
+// What a plain click on an issue or patch opens. Holding the platform
+// modifier while clicking opens the other one.
+export const clickOpens = useLocalStorage(
+  "clickOpens",
+  z.union([z.literal("sheet"), z.literal("page")]),
+  "sheet",
+  !window.localStorage,
+);
+
 export function wantsFullPage(event: MouseEvent) {
-  return isMac() ? event.metaKey : event.ctrlKey;
+  const modifier = isMac() ? event.metaKey : event.ctrlKey;
+  return modifier !== (clickOpens.value === "page");
 }
 
 export function sheetId(data: SheetData): string {

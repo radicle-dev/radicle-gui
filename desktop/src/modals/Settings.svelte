@@ -6,8 +6,9 @@
   import { diffOptions } from "@app/lib/diffOptions.svelte";
   import { hints } from "@app/lib/hints";
   import { invoke } from "@app/lib/invoke";
+  import { clickOpens } from "@app/lib/sheet";
   import { updateChecker } from "@app/lib/updateChecker.svelte";
-  import { pluralize } from "@app/lib/utils";
+  import { modifierKey, pluralize } from "@app/lib/utils";
 
   import AnnounceSwitch from "@app/components/AnnounceSwitch.svelte";
   import BadgeCounterSwitch from "@app/components/BadgeCounterSwitch.svelte";
@@ -56,6 +57,10 @@
     },
     { value: "char", label: "Char", title: "Highlight character changes" },
     { value: "none", label: "None", title: "Show line-level changes only" },
+  ];
+  const clickOpensOptions: Option<"sheet" | "page">[] = [
+    { value: "sheet", label: "Side sheet" },
+    { value: "page", label: "Full page" },
   ];
   const wordWrapOptions: Option<"on" | "off">[] = [
     { value: "on", label: "On" },
@@ -153,6 +158,18 @@
         </span>
       </div>
       <RepoListSwitch />
+    </div>
+    <div class="row">
+      <div class="row-label">
+        <span class="row-title">Open issues and patches</span>
+        <span class="row-description">
+          Where a click opens them. Hold {modifierKey()} to open the other
+        </span>
+      </div>
+      <SegmentedSwitch
+        options={clickOpensOptions}
+        value={clickOpens.value}
+        onchange={value => (clickOpens.value = value)} />
     </div>
     <div class="row">
       <div class="row-label">
