@@ -26,15 +26,21 @@ WORKDIR /work
 # Install Chromium plus its apt-level runtime dependencies, pinned to the
 # Playwright version in package-lock.json so the baked browser matches the
 # @playwright/test that npm ci installs into the volume at runtime. Copying
-# only the lockfiles keeps this layer cached across source changes.
+# only the npm manifests keeps this layer cached across source changes. The
+# build context is the repository root, which holds the npm workspace: npm ci
+# checks the lockfile against every workspace's package.json, even when it
+# installs only explorer.
 # --ignore-scripts: this layer only warms the browser cache, so dependency
 # install scripts are not necessary.
-COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts \
+COPY package.json package-lock.json .npmrc ./
+COPY shared/ui/package.json shared/ui/
+COPY explorer/package.json explorer/
+COPY desktop/package.json desktop/
+RUN npm ci -w explorer --ignore-scripts \
     && npx playwright install --with-deps chromium \
-    && rm -rf node_modules
+    && rm -rf node_modules explorer/node_modules
 
-ENTRYPOINT ["/work/scripts/docker-e2e-entrypoint.sh"]
+ENTRYPOINT ["/work/explorer/scripts/docker-e2e-entrypoint.sh"]
 
 # --- local stage: adds Rust so the entrypoint can build radicle-httpd ---
 FROM base AS local

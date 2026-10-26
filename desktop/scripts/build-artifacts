@@ -16,6 +16,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# The npm workspace that holds desktop and the shared UI code.
+REPO_DIR="$(cd "$PROJECT_DIR/.." && pwd)"
 
 # ---- Flags ----
 
@@ -65,8 +67,9 @@ ensure_image() {
 VERSION="$(jq -r '.version' "$PROJECT_DIR/crates/radicle-tauri/tauri.conf.json")"
 RELEASE_SHA="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
 SHORT_SHA="$(git -C "$PROJECT_DIR" rev-parse --short=8 HEAD)"
-# The Linux containers only mount desktop/, which has no .git of its own, so
-# build.rs can't ask git for the commit. Pass it in the way build.rs would get it.
+# git in the Linux containers may refuse the bind-mounted checkout, which the
+# container's root doesn't own, so build.rs can't rely on asking it for the
+# commit. Pass it in the way build.rs would get it.
 GIT_HEAD="$(git -C "$PROJECT_DIR" rev-parse --short HEAD)"
 RELEASE_DIR="$PROJECT_DIR/releases/v$VERSION"
 
@@ -93,8 +96,10 @@ fi
 if [[ "$CLEAN" == true ]]; then
   step "Cleaning build artifacts"
   rm -rf "$PROJECT_DIR/target-release"
-  rm -rf "$PROJECT_DIR/node_modules"
-  podman volume rm radicle-desktop-linux-target radicle-desktop-linux-nm radicle-desktop-linux-cargo 2>/dev/null || true
+  rm -rf "$REPO_DIR/node_modules" "$REPO_DIR"/{explorer,desktop,shared/ui}/node_modules
+  podman volume rm radicle-desktop-linux-target radicle-desktop-linux-cargo \
+    radicle-desktop-linux-nm radicle-desktop-linux-nm-explorer \
+    radicle-desktop-linux-nm-desktop radicle-desktop-linux-nm-shared 2>/dev/null || true
   podman image rm radicle-desktop-release-builder 2>/dev/null || true
   echo "    Cleaned"
 fi
@@ -103,8 +108,9 @@ fi
 
 if [[ "$BUILD_DMG" == true ]]; then
   step "Building macOS aarch64 DMG"
+  cd "$REPO_DIR"
+  npm install -w desktop
   cd "$PROJECT_DIR"
-  npm install
   CARGO_TARGET_DIR="$PROJECT_DIR/target-release" \
     npm exec -- tauri build --bundles dmg
   cp "target-release/release/bundle/dmg/Radicle_${VERSION}_aarch64.dmg" \
@@ -122,24 +128,32 @@ fi
 #   After a Rust toolchain bump or dependency change that confuses incremental
 #   compilation: podman volume rm radicle-desktop-linux-target radicle-desktop-linux-cargo
 #   After a major npm dependency change: podman volume rm radicle-desktop-linux-nm
+#   radicle-desktop-linux-nm-explorer radicle-desktop-linux-nm-desktop
+#   radicle-desktop-linux-nm-shared
+#
+# Every workspace package's node_modules is a volume, so that npm inside the
+# container never writes Linux builds into the host's checkout.
 
 if [[ "$BUILD_DEB" == true ]]; then
   step "Building Linux amd64 deb"
   ensure_image "radicle-desktop-release-builder" "Dockerfile.release" "linux/arm64"
 
   podman run --rm \
-    -v "$PROJECT_DIR:/workspace:z" \
-    -v radicle-desktop-linux-target:/workspace/target:z \
+    -v "$REPO_DIR:/workspace:z" \
+    -v radicle-desktop-linux-target:/workspace/desktop/target:z \
     -v radicle-desktop-linux-nm:/workspace/node_modules:z \
+    -v radicle-desktop-linux-nm-explorer:/workspace/explorer/node_modules:z \
+    -v radicle-desktop-linux-nm-desktop:/workspace/desktop/node_modules:z \
+    -v radicle-desktop-linux-nm-shared:/workspace/shared/ui/node_modules:z \
     -v radicle-desktop-linux-cargo:/root/.cargo/registry:z \
     -v "$RELEASE_DIR:/output:z" \
-    -w /workspace \
+    -w /workspace/desktop \
     -e CI=true \
     -e GIT_HEAD="$GIT_HEAD" \
     radicle-desktop-release-builder \
     bash -c "
       set -euo pipefail
-      npm ci
+      (cd /workspace && npm ci -w desktop)
       npm exec -- tauri build --target x86_64-unknown-linux-gnu --bundles deb
       cp \"target/x86_64-unknown-linux-gnu/release/bundle/deb/radicle-desktop_${VERSION}_amd64.deb\" /output/
     "
@@ -162,16 +176,19 @@ if [[ "$BUILD_APPIMAGE" == true ]]; then
 
   podman run --rm \
     --privileged \
-    -v "$PROJECT_DIR:/workspace:z" \
-    -v radicle-desktop-linux-target:/workspace/target:z \
+    -v "$REPO_DIR:/workspace:z" \
+    -v radicle-desktop-linux-target:/workspace/desktop/target:z \
     -v radicle-desktop-linux-nm:/workspace/node_modules:z \
+    -v radicle-desktop-linux-nm-explorer:/workspace/explorer/node_modules:z \
+    -v radicle-desktop-linux-nm-desktop:/workspace/desktop/node_modules:z \
+    -v radicle-desktop-linux-nm-shared:/workspace/shared/ui/node_modules:z \
     -v radicle-desktop-linux-cargo:/root/.cargo/registry:z \
     -v "$RELEASE_DIR:/output:z" \
-    -w /workspace \
+    -w /workspace/desktop \
     -e CI=true \
     -e GIT_HEAD="$GIT_HEAD" \
     radicle-desktop-release-builder \
-    bash /workspace/scripts/appimage-build
+    bash /workspace/desktop/scripts/appimage-build
 
   # Strip the version so the filename matches what the website serves
   # (the DMG above is renamed the same way).
