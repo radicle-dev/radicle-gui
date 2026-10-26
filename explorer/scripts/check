@@ -9,4 +9,4 @@ npx svelte-check --tsconfig tsconfig.json --config ./vite.config.ts --fail-on-wa
 # Buildkite cache path is always a directory, never a file.
 mkdir -p .lintcache
 npx eslint --cache --cache-location .lintcache/eslint --cache-strategy content --max-warnings 0 .
-npx prettier "**/*.@(ts|js|svelte|json|css|html|yml)" --ignore-path .gitignore --ignore-path .prettierignore --check --cache --cache-location .lintcache/prettier
+npx prettier . --check --cache --cache-location .lintcache/prettier

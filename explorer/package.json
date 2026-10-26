@@ -10,7 +10,7 @@
     "check": "scripts/check",
     "check:ci": "scripts/check-ci",
     "check:radicle-httpd": "cargo clippy --all --tests && cargo fmt --all --check",
-    "format": "npx prettier '**/*.@(ts|js|svelte|json|css|html|yml)' --write",
+    "format": "npx prettier . --write",
     "test:unit": "TZ='UTC' vitest run",
     "test:e2e": "NODE_CONFIG_ENV='test' TZ='UTC' playwright test",
     "test:e2e:local": "scripts/compile-local-httpd && USE_LOCAL_HTTPD=true NODE_CONFIG_ENV='test' TZ='UTC' playwright test",
