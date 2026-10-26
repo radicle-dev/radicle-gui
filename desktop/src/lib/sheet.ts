@@ -12,6 +12,7 @@ import { get, writable } from "svelte/store";
 import { invoke } from "@app/lib/invoke";
 import type { Route } from "@app/lib/router";
 import { activeRouteStore, push } from "@app/lib/router";
+import { isMac } from "@app/lib/utils";
 
 export interface IssueSheetData {
   kind: "issue";
@@ -38,6 +39,12 @@ export const sheet = writable<SheetData | undefined>(undefined);
 export const sheetChanges = writable(0);
 
 let request = 0;
+
+// Holding the platform modifier while clicking skips the sheet and goes
+// straight to the full page.
+export function wantsFullPage(event: MouseEvent) {
+  return isMac() ? event.metaKey : event.ctrlKey;
+}
 
 export function sheetId(data: SheetData): string {
   return data.kind === "issue" ? data.issue.id : data.patch.id;
@@ -131,9 +138,10 @@ const SHEET_PAGES = ["repo.patch", "repo.issues"];
 
 // On a patch page or the issue list, and inside the sheet itself, a link to an
 // issue opens it in the sheet. Everywhere else it navigates.
-export function followIssueLink(route: Route) {
+export function followIssueLink(route: Route, event: MouseEvent) {
   if (
     route.resource === "repo.issue" &&
+    !wantsFullPage(event) &&
     (get(sheet) !== undefined ||
       SHEET_PAGES.includes(get(activeRouteStore).resource))
   ) {

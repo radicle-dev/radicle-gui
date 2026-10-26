@@ -1,10 +1,12 @@
 <script lang="ts">
+  import type { PatchStatus } from "@app/views/repo/router";
   import type { Patch } from "@bindings/cob/patch/Patch";
 
   import { draftReviewStorage } from "@app/lib/draftReviewStorage";
   import { cachedConfig, cachedDiffStats } from "@app/lib/invoke";
   import { entriesFromReviewers } from "@app/lib/reviewSummary";
-  import { openPatchSheet, sheet } from "@app/lib/sheet";
+  import { push } from "@app/lib/router";
+  import { openPatchSheet, sheet, wantsFullPage } from "@app/lib/sheet";
   import {
     absoluteTimestamp,
     authorForNodeId,
@@ -25,9 +27,10 @@
     focussed?: boolean;
     patch: Patch;
     rid: string;
+    status: PatchStatus | undefined;
   }
 
-  const { focussed, patch, rid }: Props = $props();
+  const { focussed, patch, rid, status }: Props = $props();
 
   // Drafts belong to an identity, so the marker has to know who is signed in.
   // Until the config arrives the marker stays off rather than showing someone
@@ -100,8 +103,18 @@
     style:align-items="flex-start"
     style:clip-path={focussed ? "none" : undefined}
     style:padding={focussed ? "1rem" : "1.25rem"}
-    onclick={() => {
-      void openPatchSheet(rid, patch.id);
+    onclick={event => {
+      if (wantsFullPage(event)) {
+        void push({
+          resource: "repo.patch",
+          rid,
+          patch: patch.id,
+          status,
+          reviewId: undefined,
+        });
+      } else {
+        void openPatchSheet(rid, patch.id);
+      }
     }}>
     <div class="global-flex" style:align-items="flex-start">
       <div

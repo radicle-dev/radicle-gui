@@ -70,7 +70,7 @@
   function handleClick(event: MouseEvent) {
     if (!inApp || !route) return;
     event.preventDefault();
-    followIssueLink(route);
+    followIssueLink(route, event);
   }
 
   let menu: MenuPosition | undefined = $state(undefined);

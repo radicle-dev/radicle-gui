@@ -326,7 +326,8 @@
               <PatchTeaser
                 focussed={searchResults.length === 1 && searchInput !== ""}
                 {patch}
-                rid={repo.rid} />
+                rid={repo.rid}
+                {status} />
             </div>
           {/snippet}
         </VirtualList>

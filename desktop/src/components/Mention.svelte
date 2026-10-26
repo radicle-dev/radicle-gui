@@ -215,7 +215,7 @@
       return;
     }
 
-    followIssueLink(route);
+    followIssueLink(route, event);
   }
 
   function scrollToTop(from: HTMLElement) {

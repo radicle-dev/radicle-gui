@@ -299,7 +299,8 @@
               <IssueTeaser
                 focussed={searchResults.length === 1 && searchInput !== ""}
                 {issue}
-                rid={repo.rid} />
+                rid={repo.rid}
+                {status} />
             </div>
           {/snippet}
         </VirtualList>

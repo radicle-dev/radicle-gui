@@ -1,7 +1,9 @@
 <script lang="ts">
+  import type { IssueStatus } from "@app/views/repo/router";
   import type { Issue } from "@bindings/cob/issue/Issue";
 
-  import { openIssueSheet, sheet } from "@app/lib/sheet";
+  import { push } from "@app/lib/router";
+  import { openIssueSheet, sheet, wantsFullPage } from "@app/lib/sheet";
   import {
     absoluteTimestamp,
     authorForNodeId,
@@ -20,9 +22,10 @@
     focussed?: boolean;
     issue: Issue;
     rid: string;
+    status: IssueStatus;
   }
 
-  const { focussed, issue, rid }: Props = $props();
+  const { focussed, issue, rid, status }: Props = $props();
 </script>
 
 <style>
@@ -70,8 +73,12 @@
     style:align-items="flex-start"
     style:clip-path={focussed ? "none" : undefined}
     style:padding={focussed ? "1rem" : "20px"}
-    onclick={() => {
-      void openIssueSheet(rid, issue.id);
+    onclick={event => {
+      if (wantsFullPage(event)) {
+        void push({ resource: "repo.issue", rid, issue: issue.id, status });
+      } else {
+        void openIssueSheet(rid, issue.id);
+      }
     }}>
     <div class="global-flex" style:align-items="flex-start">
       <div
