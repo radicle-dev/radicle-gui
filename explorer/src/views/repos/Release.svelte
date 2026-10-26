@@ -6,6 +6,7 @@
     ReleaseScope,
     Repo,
   } from "@http-client";
+  import type { RepoNode } from "./router";
 
   import * as utils from "@app/lib/utils";
   import {
@@ -34,8 +35,7 @@
   export let repo: Repo;
   export let repoId: string;
   export let scope: ReleaseScope | undefined = undefined;
-  export let nodeId: string;
-  export let nodeAvatarUrl: string | undefined;
+  export let node: RepoNode;
 
   const SIZE_KEY = "sizeBytes";
 
@@ -363,7 +363,7 @@
   }
 </style>
 
-<Layout {baseUrl} {nodeId} {nodeAvatarUrl} {repo} {repoId} activeTab="releases">
+<Layout {baseUrl} {node} {repo} {repoId} activeTab="releases">
   <svelte:fragment slot="breadcrumb">
     <Separator />
     <Link
@@ -571,10 +571,13 @@
               {#if artifact.attestations.length > 0}
                 <span class="attested">
                   attested by
-                  {#each delegatesFirst(artifact.attestations, n => n.id, delegateIds) as node, i (i)}
+                  {#each delegatesFirst(artifact.attestations, n => n.id, delegateIds) as attestor, i (i)}
                     <span class="attestor">
-                      <NodeId {baseUrl} nodeId={node.id} alias={node.alias} />
-                      {#if delegateIds.has(node.id)}
+                      <NodeId
+                        {baseUrl}
+                        nodeId={attestor.id}
+                        alias={attestor.alias} />
+                      {#if delegateIds.has(attestor.id)}
                         <DelegateBadge />
                       {/if}{#if i < artifact.attestations.length - 1},{/if}
                     </span>

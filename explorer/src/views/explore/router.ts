@@ -4,7 +4,7 @@ import type { ErrorRoute, NotFoundRoute } from "@app/lib/router/definitions";
 import isEqual from "lodash/isEqual";
 import { get } from "svelte/store";
 
-import { HttpdClient, ResponseError } from "@http-client";
+import { HttpdClient } from "@http-client";
 import {
   clearSeedFailure,
   failedSeeds,
@@ -117,24 +117,10 @@ export async function loadExploreRoute(): Promise<
 > {
   const attempt = await tryWithFailover(async (seed, signal) => {
     const api = new HttpdClient(seed);
-    // Prefer /info — it tells us whether the seed has a search backend
-    // configured. Only fall back to /node on a 404/405 (older httpd that
-    // doesn't ship /info yet). Any other failure — network error, abort,
-    // 5xx — rethrows so the caller can mark the seed failed and try the
-    // next one, instead of silently masking outages as "no search".
-    try {
-      const info = await api.getInfo({ abort: signal });
-      return { searchAvailable: info.httpd.searchAvailable };
-    } catch (error) {
-      if (
-        error instanceof ResponseError &&
-        (error.status === 404 || error.status === 405)
-      ) {
-        await api.getNode({ abort: signal });
-        return { searchAvailable: false };
-      }
-      throw error;
-    }
+    // A failure rethrows, so the caller can mark the seed failed and try the
+    // next one, instead of masking an outage as "no search".
+    const info = await api.getInfo({ abort: signal });
+    return { searchAvailable: info.httpd.searchAvailable };
   });
 
   if (!attempt) {
@@ -163,21 +149,8 @@ export async function loadExploreReposRoute(
   const attempt = await tryWithFailover(async (seed, signal) => {
     const api = new HttpdClient(seed);
     const stats = await api.getStats({ abort: signal });
-    // Prefer /info to learn whether the seed has a search backend.
-    // Only swallow 404/405 (older httpd without /info); any other
-    // failure rethrows so the seed gets marked failed.
-    try {
-      const info = await api.getInfo({ abort: signal });
-      return { stats, searchAvailable: info.httpd.searchAvailable };
-    } catch (error) {
-      if (
-        error instanceof ResponseError &&
-        (error.status === 404 || error.status === 405)
-      ) {
-        return { stats, searchAvailable: false };
-      }
-      throw error;
-    }
+    const info = await api.getInfo({ abort: signal });
+    return { stats, searchAvailable: info.httpd.searchAvailable };
   });
 
   if (!attempt) {

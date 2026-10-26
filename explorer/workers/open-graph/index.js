@@ -100,6 +100,9 @@ function parseRoute(pathname) {
   return { type: "repo", host, rid };
 }
 
+// Compat: older httpd serves the API only at `/api/v1`, newer httpd serves
+// it at both `/api` and `/api/v1`. Client: switch to `/api` when explorer
+// drops httpd 0.30.
 function apiBase(host) {
   const local = host.startsWith("localhost") || host.startsWith("127.");
   return `${local ? "http" : "https"}://${host}/api/v1`;

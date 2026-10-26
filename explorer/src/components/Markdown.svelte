@@ -30,7 +30,6 @@
   import ErrorModal from "@app/modals/ErrorModal.svelte";
   import { activeUnloadedRouteStore } from "@app/lib/router";
   import { highlight } from "@app/lib/syntax";
-  import { mimes } from "@app/lib/file";
   import {
     isUrl,
     twemoji,
@@ -135,13 +134,6 @@
       if (anchorHref && isCommit(anchorHref)) {
         // eslint-disable-next-line svelte/prefer-svelte-reactivity
         const url = new URL(rawPath);
-        // deprecated with httpd 0.18.1
-        // For older httpd versions we still pass the mime type.
-        // On newer radicle-httpd instances we try to infer the file type on httpd.
-        const fileExtension = e.innerText.split(".").pop();
-        if (fileExtension && fileExtension in mimes) {
-          url.search = `?mime=${mimes[fileExtension]}`;
-        }
         url.pathname = canonicalize(`blobs/${anchorHref}`, url.pathname);
         e.setAttribute("href", url.toString());
 

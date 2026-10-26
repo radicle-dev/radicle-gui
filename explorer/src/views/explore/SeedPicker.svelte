@@ -5,7 +5,7 @@
   import { get } from "svelte/store";
 
   import config from "@app/lib/config";
-  import { HttpdClient, ResponseError } from "@http-client";
+  import { HttpdClient } from "@http-client";
   import {
     activeUnloadedRouteStore,
     push,
@@ -13,6 +13,12 @@
     withBaseUrl,
   } from "@app/lib/router";
   import { isLocal, isOnion } from "@app/lib/utils";
+  import {
+    isOutdated,
+    minimumSupportedVersion,
+    releaseNumber,
+  } from "@http-client/lib/compat";
+  import { nodeVersion } from "@app/lib/nodeVersion";
   import {
     addBookmark,
     bookmarkedSeeds,
@@ -43,6 +49,15 @@
   export let variant: "header" | "breadcrumb" | "panel" = "header";
 
   const VALIDATION_TIMEOUT_MS = 10000;
+
+  // The httpd version of the seed serving the current page, if explorer no
+  // longer supports it. Only the node picker names that seed.
+  $: outdatedVersion =
+    mode === "node"
+      ? nodeVersion(baseUrl)
+          .then(version => (isOutdated(version) ? version : undefined))
+          .catch(() => undefined)
+      : Promise.resolve(undefined);
 
   // The seed currently in use isn't necessarily bookmarked or a default: it
   // can be reached through a shared link or through failover. List it anyway,
@@ -85,26 +100,14 @@
   }
 
   // Probe a seed to decide if it's reachable. Mirrors the reachability
-  // check in `tryWithFailover`: prefer `/info`, only swallow 404/405 (older
-  // httpd) and try `/node` instead. Any other error → not reachable.
+  // check in `tryWithFailover`: any error → not reachable.
   async function probeSeed(seed: BaseUrl): Promise<boolean> {
     const api = new HttpdClient(seed);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT_MS);
     try {
-      try {
-        await api.getInfo({ abort: controller.signal });
-        return true;
-      } catch (error) {
-        if (
-          error instanceof ResponseError &&
-          (error.status === 404 || error.status === 405)
-        ) {
-          await api.getNode({ abort: controller.signal });
-          return true;
-        }
-        throw error;
-      }
+      await api.getInfo({ abort: controller.signal });
+      return true;
     } catch (e) {
       console.warn(`Probe for seed ${seed.hostname} failed:`, e);
       return false;
@@ -336,6 +339,17 @@
     aria-expanded={expanded}>
     <slot name="icon"><Icon name="seed" /></slot>
     <div class="hostname txt-overflow">{baseUrl.hostname}</div>
+    {#await outdatedVersion then version}
+      {#if version !== undefined}
+        <span
+          class="failed-icon"
+          title="This node runs radicle-httpd {releaseNumber(
+            version,
+          )}, but explorer needs {minimumSupportedVersion} or newer. Upgrade radicle-httpd to the latest release.">
+          <Icon name="warning" />
+        </span>
+      {/if}
+    {/await}
     {#if variant !== "breadcrumb"}
       <Icon name={expanded ? "chevron-up" : "chevron-down"} />
     {/if}

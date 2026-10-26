@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ActiveTab } from "./Header.svelte";
   import type { BaseUrl, Repo } from "@http-client";
+  import type { RepoNode } from "./router";
 
   import { onMount } from "svelte";
 
@@ -23,8 +24,7 @@
   export let repo: Repo;
   export let repoId: string;
   export let stylePaddingBottom: string = "2.5rem";
-  export let nodeId: string;
-  export let nodeAvatarUrl: string | undefined;
+  export let node: RepoNode;
 
   $: route = $activeRouteStore;
   $: project = repo.payloads["xyz.radicle.project"];
@@ -195,8 +195,8 @@
                   title="Switch the node serving this page">
                   <svelte:fragment slot="icon">
                     <NodeAvatar
-                      {nodeId}
-                      avatarUrl={nodeAvatarUrl}
+                      nodeId={node.id}
+                      avatarUrl={node.avatarUrl}
                       styleWidth="1rem"
                       size={16} />
                   </svelte:fragment>
@@ -238,7 +238,7 @@
   </div>
 
   <div class="tab-bar">
-    <RepoHeader {activeTab} {baseUrl} {repo} {repoId}>
+    <RepoHeader {activeTab} {baseUrl} {repo} {repoId} {node}>
       <svelte:fragment slot="actions">
         <slot name="actions" />
       </svelte:fragment>
@@ -306,7 +306,7 @@
         </Link>
       </div>
 
-      {#if repo.releaseCount !== undefined}
+      {#if node.releases}
         <div style:width="100%">
           <Link
             title="Releases"

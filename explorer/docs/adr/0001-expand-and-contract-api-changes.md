@@ -57,13 +57,8 @@ supported httpd release into one shape. Version-specific code lives in
 method that calls that endpoint.
 
 **Name the side and the version in every removal.** httpd and the client remove
-their compatibility code at different times:
-
-- httpd stops sending the old fields in a major release after the expand.
-- The client keeps its fallback until explorer drops the last httpd release
-  without the new fields.
-
-So each removal comment says which side it is on, and when it can go:
+their compatibility code at different times, so each compat comment says what
+the other side does, which side it is on, and when it can go:
 
 ```rust
 // Compat: older clients ... Server: remove in a major release.
@@ -78,9 +73,16 @@ with its expand release, the consumers that read it, and its pending removals. A
 release fills its `## API changes` notes from this list.
 
 **Feature detection, not version checks.** The client learns what a seed
-supports from its responses: a field that is present, or an endpoint that
-answers. It never branches on the httpd version, and uses that version only to
-warn about an unsupported node.
+supports from the seed itself. It never branches on the httpd version, and uses
+that version only to warn about an unsupported node. The signal depends on the
+feature:
+
+- A feature that every build has: a field that is present, or an endpoint that
+  answers.
+- A feature that a build or the config can turn off, such as search or releases:
+  a flag in `/info`. A missing field is not this signal, because a field is also
+  missing when httpd fails to compute it. The client must not hide a feature
+  because of such a failure.
 
 **No version but httpd's.** httpd does not report `apiVersion`, and serves the
 API at `/api`, with no version in the path. When a path moves, the client cannot

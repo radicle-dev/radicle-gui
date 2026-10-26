@@ -99,7 +99,7 @@
       const info = await new HttpdClient(seed).getInfo();
       searchAvailableCache[key] = info.httpd.searchAvailable;
     } catch {
-      // Older nodes without /info (or an unreachable seed) have no search.
+      // An unreachable seed has no search.
       searchAvailableCache[key] = false;
     }
     if (seedKey($searchSeed) === key) {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { BaseUrl, Commit, Repo } from "@http-client";
+  import type { RepoNode } from "./router";
 
   import {
     archiveDownloadSupported,
@@ -24,8 +25,7 @@
   export let commit: Commit;
   export let repo: Repo;
   export let repoId: string;
-  export let nodeId: string;
-  export let nodeAvatarUrl: string | undefined;
+  export let node: RepoNode;
 
   let downloading = false;
 
@@ -75,7 +75,7 @@
   }
 </style>
 
-<Layout {nodeId} {nodeAvatarUrl} {baseUrl} {repo} {repoId}>
+<Layout {node} {baseUrl} {repo} {repoId}>
   <svelte:fragment slot="breadcrumb">
     <Separator />
     <Link

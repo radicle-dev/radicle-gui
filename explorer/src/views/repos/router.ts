@@ -13,7 +13,6 @@ import type {
   DiffBlob,
   Issue,
   IssueState,
-  Node,
   Patch,
   PatchState,
   PeerRefs,
@@ -32,6 +31,7 @@ import * as Syntax from "@app/lib/syntax";
 import config from "@app/lib/config";
 import { HttpdClient } from "@http-client";
 import { ResponseError, ResponseParseError } from "@http-client/lib/fetcher";
+import { releasesSupported } from "@http-client/lib/compat";
 import { cached } from "@app/lib/cache";
 import { handleError, unreachableError } from "@app/views/repos/error";
 import {
@@ -200,8 +200,7 @@ export type RepoLoadedRoute =
         path: string;
         rawPath: (commit?: string) => string;
         blobResult: BlobResult;
-        nodeId: string;
-        nodeAvatarUrl: string | undefined;
+        node: RepoNode;
       };
     }
   | {
@@ -216,8 +215,7 @@ export type RepoLoadedRoute =
         revision: string | undefined;
         tree: Tree;
         commitHeaders: CommitHeader[];
-        nodeId: string;
-        nodeAvatarUrl: string | undefined;
+        node: RepoNode;
       };
     }
   | {
@@ -228,8 +226,7 @@ export type RepoLoadedRoute =
         repo: Repo;
         repoId: string;
         peer: string | undefined;
-        nodeId: string;
-        nodeAvatarUrl: string | undefined;
+        node: RepoNode;
       };
     }
   | {
@@ -239,8 +236,7 @@ export type RepoLoadedRoute =
         repo: Repo;
         repoId: string;
         commit: Commit;
-        nodeId: string;
-        nodeAvatarUrl: string | undefined;
+        node: RepoNode;
       };
     }
   | {
@@ -251,8 +247,7 @@ export type RepoLoadedRoute =
         repoId: string;
         rawPath: (commit?: string) => string;
         issue: Issue;
-        nodeId: string;
-        nodeAvatarUrl: string | undefined;
+        node: RepoNode;
       };
     }
   | {
@@ -263,8 +258,7 @@ export type RepoLoadedRoute =
         repoId: string;
         issues: Issue[];
         status: IssueState["status"];
-        nodeId: string;
-        nodeAvatarUrl: string | undefined;
+        node: RepoNode;
       };
     }
   | {
@@ -275,8 +269,7 @@ export type RepoLoadedRoute =
         repoId: string;
         patches: Patch[];
         status: PatchState["status"];
-        nodeId: string;
-        nodeAvatarUrl: string | undefined;
+        node: RepoNode;
       };
     }
   | {
@@ -289,8 +282,7 @@ export type RepoLoadedRoute =
         patch: Patch;
         stats: Diff["stats"];
         view: PatchView;
-        nodeId: string;
-        nodeAvatarUrl: string | undefined;
+        node: RepoNode;
       };
     }
   | {
@@ -303,8 +295,7 @@ export type RepoLoadedRoute =
         lastPageFull: boolean;
         scope: ReleaseScope;
         showFilters: boolean;
-        nodeId: string;
-        nodeAvatarUrl: string | undefined;
+        node: RepoNode;
       };
     }
   | {
@@ -315,8 +306,7 @@ export type RepoLoadedRoute =
         repoId: string;
         release: Release;
         scope?: ReleaseScope;
-        nodeId: string;
-        nodeAvatarUrl: string | undefined;
+        node: RepoNode;
       };
     };
 
@@ -397,7 +387,7 @@ export async function loadRepoRoute(
       const [repo, commit, node] = await Promise.all([
         api.repo.getByRid(route.repo),
         api.repo.getCommitBySha(route.repo, route.commit),
-        api.getNode(),
+        getRepoNode(api),
       ]);
 
       return {
@@ -407,8 +397,7 @@ export async function loadRepoRoute(
           repoId: route.repo,
           repo,
           commit,
-          nodeId: node.id,
-          nodeAvatarUrl: node.avatarUrl,
+          node: resolveRepoNode(node, repo),
         },
       };
     } else if (route.resource === "repo.issue") {
@@ -453,7 +442,7 @@ async function loadPatchesView(
       page: 0,
       perPage: PATCHES_PER_PAGE,
     }),
-    api.getNode(),
+    getRepoNode(api),
   ]);
 
   return {
@@ -464,8 +453,7 @@ async function loadPatchesView(
       patches,
       status,
       repo,
-      nodeId: node.id,
-      nodeAvatarUrl: node.avatarUrl,
+      node: resolveRepoNode(node, repo),
     },
   };
 }
@@ -483,7 +471,7 @@ async function loadIssuesView(
       page: 0,
       perPage: ISSUES_PER_PAGE,
     }),
-    api.getNode(),
+    getRepoNode(api),
   ]);
 
   return {
@@ -494,8 +482,7 @@ async function loadIssuesView(
       issues,
       status,
       repo,
-      nodeId: node.id,
-      nodeAvatarUrl: node.avatarUrl,
+      node: resolveRepoNode(node, repo),
     },
   };
 }
@@ -507,7 +494,7 @@ function sourceUnavailable(
   route: { node: BaseUrl; repo: string; peer?: string },
   repo: Repo,
   seedingPolicy: SeedingPolicy,
-  node: { id: string; avatarUrl?: string | undefined },
+  node: RepoNodeInfo,
 ): RepoLoadedRoute {
   return {
     resource: "repo.sourceUnavailable",
@@ -517,14 +504,35 @@ function sourceUnavailable(
       repo,
       seedingPolicy,
       peer: route.peer,
-      nodeId: node.id,
-      nodeAvatarUrl: node.avatarUrl,
+      node: resolveRepoNode(node, repo),
     },
   };
 }
 
-// A missing release count means the node cannot serve releases: it predates
-// the release API or was built without release support.
+// The node a repo view shows, and the features it serves.
+export type RepoNode = {
+  id: string;
+  avatarUrl: string | undefined;
+  releases: boolean;
+};
+
+// The node as `/info` reports it. A feature is undefined on httpd without its
+// flag.
+type RepoNodeInfo = Omit<RepoNode, "releases"> & {
+  releases: boolean | undefined;
+};
+
+// `/info` carries the node and its release support in one request.
+async function getRepoNode(api: HttpdClient): Promise<RepoNodeInfo> {
+  const { node, httpd } = await api.getInfo();
+  return { id: node.id, avatarUrl: node.avatarUrl, releases: httpd.releases };
+}
+
+function resolveRepoNode(node: RepoNodeInfo, repo: Repo): RepoNode {
+  return { ...node, releases: releasesSupported(node.releases, repo) };
+}
+
+// The node predates the release API or was built without release support.
 function releasesNotSupported(node: BaseUrl): NotFoundRoute {
   return {
     resource: "notFound",
@@ -550,9 +558,10 @@ async function loadReleasesView(
   // shows only when asked for.
   const scope = route.scope ?? "trusted";
 
-  // Fetch the page alongside the repo. The repo then tells whether a failed
-  // fetch is a node without releases or a real error.
+  // Fetch the page alongside the repo and the node. They then tell whether a
+  // failed fetch is a node without releases or a real error.
   const repoPromise = api.repo.getByRid(route.repo);
+  const nodePromise = getRepoNode(api);
   const [repo, pageResult, showFilters, node] = await Promise.all([
     repoPromise,
     api.repo
@@ -568,16 +577,15 @@ async function loadReleasesView(
     // Others is one click away whenever it holds releases, and Delegates is
     // one click back from it.
     scope === "untrusted" ||
-      repoPromise.then(
-        repo =>
-          repo.releaseCount !== undefined &&
+      Promise.all([repoPromise, nodePromise]).then(
+        ([repo, node]) =>
+          releasesSupported(node.releases, repo) &&
           api.repo.hasOtherReleases(repo, RELEASES_PER_PAGE),
       ),
-    api.getNode(),
+    nodePromise,
   ]);
 
-  // A missing release count means the node cannot serve releases.
-  if (repo.releaseCount === undefined) {
+  if (!releasesSupported(node.releases, repo)) {
     return releasesNotSupported(route.node);
   }
   if ("error" in pageResult) {
@@ -595,8 +603,7 @@ async function loadReleasesView(
       scope,
       showFilters,
       repo,
-      nodeId: node.id,
-      nodeAvatarUrl: node.avatarUrl,
+      node: resolveRepoNode(node, repo),
     },
   };
 }
@@ -612,10 +619,10 @@ async function loadReleaseView(
       release => ({ release }),
       (error: unknown) => ({ error }),
     ),
-    api.getNode(),
+    getRepoNode(api),
   ]);
 
-  if (repo.releaseCount === undefined) {
+  if (!releasesSupported(node.releases, repo)) {
     return releasesNotSupported(route.node);
   }
   if ("error" in releaseResult) {
@@ -630,8 +637,7 @@ async function loadReleaseView(
       repo,
       release: releaseResult.release,
       scope: route.scope,
-      nodeId: node.id,
-      nodeAvatarUrl: node.avatarUrl,
+      node: resolveRepoNode(node, repo),
     },
   };
 }
@@ -648,7 +654,7 @@ async function loadTreeView(
 
   let repoPromise: Promise<Repo>;
   let seedingPolicyPromise: Promise<SeedingPolicy>;
-  let nodePromise: Promise<Pick<Node, "id" | "avatarUrl">>;
+  let nodePromise: Promise<RepoNodeInfo>;
   if (
     (previousLoaded.resource === "repo.source" ||
       previousLoaded.resource === "repo.history") &&
@@ -660,14 +666,11 @@ async function loadTreeView(
   ) {
     repoPromise = Promise.resolve(previousLoaded.params.repo);
     seedingPolicyPromise = Promise.resolve(previousLoaded.params.seedingPolicy);
-    nodePromise = Promise.resolve({
-      id: previousLoaded.params.nodeId,
-      avatarUrl: previousLoaded.params.nodeAvatarUrl,
-    });
+    nodePromise = Promise.resolve(previousLoaded.params.node);
   } else {
     repoPromise = api.repo.getByRid(route.repo);
     seedingPolicyPromise = api.getPolicyByRid(route.repo);
-    nodePromise = api.getNode();
+    nodePromise = getRepoNode(api);
   }
 
   const [repo, seedingPolicy, node] = await Promise.all([
@@ -724,8 +727,7 @@ async function loadTreeView(
       tree,
       path,
       blobResult,
-      nodeId: node.id,
-      nodeAvatarUrl: node.avatarUrl,
+      node: resolveRepoNode(node, repo),
     },
   };
 }
@@ -787,7 +789,7 @@ async function loadHistoryView(
 
   let repoPromise: Promise<Repo>;
   let seedingPolicyPromise: Promise<SeedingPolicy>;
-  let nodePromise: Promise<Pick<Node, "id" | "avatarUrl">>;
+  let nodePromise: Promise<RepoNodeInfo>;
   if (
     (previousLoaded.resource === "repo.source" ||
       previousLoaded.resource === "repo.history") &&
@@ -799,14 +801,11 @@ async function loadHistoryView(
   ) {
     repoPromise = Promise.resolve(previousLoaded.params.repo);
     seedingPolicyPromise = Promise.resolve(previousLoaded.params.seedingPolicy);
-    nodePromise = Promise.resolve({
-      id: previousLoaded.params.nodeId,
-      avatarUrl: previousLoaded.params.nodeAvatarUrl,
-    });
+    nodePromise = Promise.resolve(previousLoaded.params.node);
   } else {
     repoPromise = api.repo.getByRid(route.repo);
     seedingPolicyPromise = api.getPolicyByRid(route.repo);
-    nodePromise = api.getNode();
+    nodePromise = getRepoNode(api);
   }
 
   const [repo, seedingPolicy, node] = await Promise.all([
@@ -869,8 +868,7 @@ async function loadHistoryView(
       revision: route.revision,
       tree,
       commitHeaders,
-      nodeId: node.id,
-      nodeAvatarUrl: node.avatarUrl,
+      node: resolveRepoNode(node, repo),
     },
   };
 }
@@ -885,7 +883,7 @@ async function loadIssueView(route: RepoIssueRoute): Promise<RepoLoadedRoute> {
   const [repo, issue, node] = await Promise.all([
     api.repo.getByRid(route.repo),
     api.repo.getIssueById(route.repo, route.issue),
-    api.getNode(),
+    getRepoNode(api),
   ]);
   return {
     resource: "repo.issue",
@@ -895,8 +893,7 @@ async function loadIssueView(route: RepoIssueRoute): Promise<RepoLoadedRoute> {
       repo,
       rawPath,
       issue,
-      nodeId: node.id,
-      nodeAvatarUrl: node.avatarUrl,
+      node: resolveRepoNode(node, repo),
     },
   };
 }
@@ -913,7 +910,7 @@ async function loadPatchView(
 
   let repoPromise: Promise<Repo>;
   let patchPromise: Promise<Patch>;
-  let nodePromise: Promise<Pick<Node, "id" | "avatarUrl">>;
+  let nodePromise: Promise<RepoNodeInfo>;
 
   if (
     previousLoaded.resource === "repo.patch" &&
@@ -925,16 +922,13 @@ async function loadPatchView(
   ) {
     repoPromise = Promise.resolve(previousLoaded.params.repo);
     patchPromise = Promise.resolve(previousLoaded.params.patch);
-    nodePromise = Promise.resolve({
-      id: previousLoaded.params.nodeId,
-      avatarUrl: previousLoaded.params.nodeAvatarUrl,
-    });
+    nodePromise = Promise.resolve(previousLoaded.params.node);
   } else {
     repoPromise = api.repo.getByRid(route.repo);
     patchPromise = api.repo.getPatchById(route.repo, route.patch);
-    nodePromise = api.getNode();
+    nodePromise = getRepoNode(api);
   }
-  const [repo, patch, { id: nodeId, avatarUrl }] = await Promise.all([
+  const [repo, patch, node] = await Promise.all([
     repoPromise,
     patchPromise,
     nodePromise,
@@ -1008,8 +1002,7 @@ async function loadPatchView(
       patch,
       stats,
       view,
-      nodeId,
-      nodeAvatarUrl: avatarUrl,
+      node: resolveRepoNode(node, repo),
     },
   };
 }

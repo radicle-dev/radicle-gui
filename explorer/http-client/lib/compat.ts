@@ -1,5 +1,6 @@
-// Shims that let this client read older httpd releases, so the app only ever
-// sees one shape. See docs/adr/0001 and docs/api-changes.md.
+// The minimum supported httpd version, and shims that let this client read
+// older httpd releases, so the app only ever sees one shape. See docs/adr/0001
+// and docs/api-changes.md.
 //
 // Each shim has a "Compat:" comment that says what older httpd does and the
 // last httpd release that needs it: "Client: remove when explorer drops httpd
@@ -12,6 +13,35 @@ import type { Author } from "./shared.js";
 import type { z } from "zod";
 
 import { number, object, record, string } from "zod";
+
+// The minimum httpd version that explorer supports. Explorer compares only
+// the major, and before 1.0, `0.y` counts as the major. See docs/adr/0001.
+export const minimumSupportedVersion = "0.28.0";
+
+// The release number of an httpd `version`, such as `0.31.0` for
+// `0.31.0-<commit>`. Undefined for builds without one, such as
+// `pre-release-<commit>` or `nix-<commit>`.
+export function releaseNumber(version: string): string | undefined {
+  return version.match(/^\d+\.\d+\.\d+/)?.[0];
+}
+
+// Whether the major of an httpd `version` is older than the major of
+// `minimum`. False for builds without a release number.
+export function isOutdated(
+  version: string,
+  minimum: string = minimumSupportedVersion,
+): boolean {
+  const release = releaseNumber(version);
+  if (release === undefined) {
+    return false;
+  }
+  const [major, minor] = release.split(".").map(Number);
+  const [minimumMajor, minimumMinor] = minimum.split(".").map(Number);
+  if (major !== minimumMajor) {
+    return major < minimumMajor;
+  }
+  return major === 0 && minor < minimumMinor;
+}
 
 // Compat: older httpd reports the issue and patch counts and the default
 // branch tip inside the project payload, and the release count as a single
@@ -125,6 +155,17 @@ export function legacyReleasesQuery(
   scope: ReleaseScope | undefined,
 ): Record<string, boolean> {
   return scope === "untrusted" ? { allAuthors: true } : {};
+}
+
+// Whether a node serves releases. Compat: older httpd has no `releases` flag
+// in `/info`. It sends a release count unless it was built without release
+// support, so a count means support. Client: remove when explorer drops httpd
+// 0.30.
+export function releasesSupported(
+  flag: boolean | undefined,
+  repo: { releaseCount?: number },
+): boolean {
+  return flag ?? repo.releaseCount !== undefined;
 }
 
 // Compat: older httpd answers the untrusted scope with every author, so

@@ -2,9 +2,12 @@ import type { Release } from "@http-client";
 
 import { describe, expect, test } from "vitest";
 import {
+  isOutdated,
   legacyHasOtherReleases,
   legacyReleasesQuery,
   legacyScopeReleases,
+  releaseNumber,
+  releasesSupported,
 } from "@http-client/lib/compat";
 import { repoSchema } from "@http-client/lib/repo";
 
@@ -312,5 +315,54 @@ describe("legacyHasOtherReleases", () => {
   test("assumes others when the fetch fails", async () => {
     const page = () => Promise.reject(new Error("offline"));
     expect(await legacyHasOtherReleases(page, [delegate], 10)).toBe(true);
+  });
+});
+
+describe("releaseNumber", () => {
+  test("reads the release number of a release build", () => {
+    expect(releaseNumber("0.31.0-abc123")).toBe("0.31.0");
+    expect(releaseNumber("1.2.3")).toBe("1.2.3");
+  });
+
+  test("has none for builds without one", () => {
+    expect(releaseNumber("pre-release-abc123")).toBeUndefined();
+    expect(releaseNumber("nix-abc123-abc123")).toBeUndefined();
+  });
+});
+
+describe("isOutdated", () => {
+  test("compares 0.y as the major before 1.0", () => {
+    expect(isOutdated("0.27.0", "0.28.0")).toBe(true);
+    expect(isOutdated("0.28.0-unknown", "0.28.0")).toBe(false);
+    expect(isOutdated("0.31.2", "0.28.0")).toBe(false);
+    expect(isOutdated("1.2.0", "0.28.0")).toBe(false);
+  });
+
+  test("compares the major from 1.0 on", () => {
+    expect(isOutdated("0.40.0", "1.0.0")).toBe(true);
+    expect(isOutdated("1.9.0", "2.0.0")).toBe(true);
+    expect(isOutdated("2.0.0", "2.0.0")).toBe(false);
+    expect(isOutdated("2.5.1-abc123", "2.0.0")).toBe(false);
+    expect(isOutdated("2.0.0", "2.3.0")).toBe(false);
+    expect(isOutdated("1.9.0", "2.3.0")).toBe(true);
+  });
+
+  test("does not warn on builds without a release number", () => {
+    expect(isOutdated("pre-release-abc123", "2.0.0")).toBe(false);
+    expect(isOutdated("nix-abc123-abc123", "2.0.0")).toBe(false);
+  });
+});
+
+describe("releasesSupported", () => {
+  test("follows the node's flag, with or without a count", () => {
+    expect(releasesSupported(true, { releaseCount: undefined })).toBe(true);
+    expect(releasesSupported(false, { releaseCount: 2 })).toBe(false);
+  });
+
+  test("reads a count as support on older nodes", () => {
+    expect(releasesSupported(undefined, { releaseCount: 0 })).toBe(true);
+    expect(releasesSupported(undefined, { releaseCount: undefined })).toBe(
+      false,
+    );
   });
 });

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { BaseUrl, Repo, SeedingPolicy, Tree } from "@http-client";
-  import type { BlobResult, RepoRoute } from "./router";
+  import type { BlobResult, RepoNode, RepoRoute } from "./router";
 
   import { HttpdClient } from "@http-client";
 
@@ -33,8 +33,7 @@
   export let revision: string | undefined;
   export let seedingPolicy: SeedingPolicy;
   export let tree: Tree;
-  export let nodeId: string;
-  export let nodeAvatarUrl: string | undefined;
+  export let node: RepoNode;
 
   let mobileFileTree = false;
 
@@ -130,8 +129,7 @@
 
 <Layout
   {baseUrl}
-  {nodeId}
-  {nodeAvatarUrl}
+  {node}
   {repo}
   {repoId}
   activeTab="source"

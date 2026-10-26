@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { BaseUrl, Patch, PatchState, Repo } from "@http-client";
+  import type { RepoNode } from "./router";
 
   import { HttpdClient } from "@http-client";
 
@@ -22,8 +23,7 @@
   export let repo: Repo;
   export let repoId: string;
   export let status: PatchState["status"];
-  export let nodeId: string;
-  export let nodeAvatarUrl: string | undefined;
+  export let node: RepoNode;
 
   let loading = false;
   let page = 0;
@@ -113,7 +113,7 @@
   }
 </style>
 
-<Layout {nodeId} {nodeAvatarUrl} {baseUrl} {repo} {repoId} activeTab="patches">
+<Layout {node} {baseUrl} {repo} {repoId} activeTab="patches">
   <svelte:fragment slot="breadcrumb">
     <Separator />
     <Link

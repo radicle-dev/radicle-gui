@@ -22,6 +22,9 @@ struct HttpdInfo {
     /// Reflects only configuration — `true` does not guarantee the
     /// backend is currently reachable.
     search_available: bool,
+    /// Whether this httpd was built with release support. A repo can still
+    /// lack release counts, when this httpd fails to count them.
+    releases: bool,
 }
 
 #[derive(Serialize)]
@@ -39,6 +42,7 @@ async fn info_handler(State(ctx): State<Context>) -> impl IntoResponse {
     let node = node::build_response(&ctx).await?;
     let httpd = HttpdInfo {
         search_available: ctx.search().is_some(),
+        releases: cfg!(feature = "artifacts"),
     };
     Ok::<_, Error>(cached_response(Info { node, httpd }, 600))
 }
@@ -65,6 +69,7 @@ mod routes {
         assert_eq!(response.status(), StatusCode::OK);
         let body: Value = response.json().await;
         assert_eq!(body["httpd"]["searchAvailable"], false);
+        assert_eq!(body["httpd"]["releases"], cfg!(feature = "artifacts"));
         assert!(body["node"].is_object());
     }
 }

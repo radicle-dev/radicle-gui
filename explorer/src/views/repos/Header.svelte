@@ -5,6 +5,7 @@
 
 <script lang="ts">
   import type { BaseUrl, Repo } from "@http-client";
+  import type { RepoNode } from "./router";
 
   import config from "@app/lib/config";
   import debounce from "lodash/debounce";
@@ -20,8 +21,9 @@
   export let activeTab: ActiveTab = undefined;
   export let repo: Repo;
   export let repoId: string;
+  export let node: RepoNode;
 
-  // Undefined on nodes that cannot serve releases.
+  // Undefined when the node cannot count the releases.
   $: releaseCount = repo.releaseCount;
 
   let shareIcon: "link" | "checkmark" = "link";
@@ -167,8 +169,7 @@
     </Button>
   </Link>
 
-  <!-- Only nodes that report a release count support the release API. -->
-  {#if releaseCount !== undefined}
+  {#if node.releases}
     <Link
       route={{
         resource: "repo.releases",
@@ -181,12 +182,14 @@
         <Icon name="parcel" />
         <div class="title-counter">
           Releases
-          <span
-            class="counter"
-            class:hover={hover && activeTab !== "releases"}
-            class:selected={activeTab === "releases"}>
-            {releaseCount}
-          </span>
+          {#if releaseCount !== undefined}
+            <span
+              class="counter"
+              class:hover={hover && activeTab !== "releases"}
+              class:selected={activeTab === "releases"}>
+              {releaseCount}
+            </span>
+          {/if}
         </div>
       </Button>
     </Link>
