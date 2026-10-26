@@ -1,6 +1,6 @@
 x-e2e-common: &e2e-common
   init: true
-  working_dir: /work
+  working_dir: /work/explorer
   environment:
     PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
 
@@ -9,35 +9,53 @@ services:
   e2e:
     <<: *e2e-common
     build:
-      context: .
-      dockerfile: Dockerfile.e2e
+      # The repository root, which holds the npm workspace.
+      context: ..
+      dockerfile: explorer/Dockerfile.e2e
       target: base
     volumes:
-      # Repo bind-mounted so code edits, test artifacts, and the
-      # binary/fixture cache (tests/tmp) are shared with the host.
-      - .:/work
-      # Container-private node_modules: keeps the host's untouched and
-      # avoids a glibc mismatch with host-built native modules.
+      # Repo bind-mounted so code edits and test artifacts are shared with the
+      # host.
+      - ..:/work
+      # Container-private node_modules for every workspace package: keeps the
+      # host's untouched and avoids a glibc mismatch with host-built native
+      # modules. npm hoists most packages to the root and nests the rest under
+      # the package that needs them.
       - e2e-node-modules:/work/node_modules
+      - e2e-explorer-node-modules:/work/explorer/node_modules
+      - e2e-desktop-node-modules:/work/desktop/node_modules
+      - e2e-shared-node-modules:/work/shared/ui/node_modules
+      # Container-private binaries and fixtures: the host's binaries may be
+      # built for another OS, and Radicle storage has to live on the
+      # container's own filesystem rather than a bind mount from a macOS host.
+      - e2e-tmp:/work/explorer/tests/tmp
 
   # Compiles radicle-httpd from source and runs the suite against it.
   # Used via `scripts/test-e2e-docker --local` when testing backend changes.
   e2e-local:
     <<: *e2e-common
     build:
-      context: .
-      dockerfile: Dockerfile.e2e
+      context: ..
+      dockerfile: explorer/Dockerfile.e2e
       target: local
     volumes:
-      - .:/work
+      - ..:/work
       - e2e-node-modules:/work/node_modules
+      - e2e-explorer-node-modules:/work/explorer/node_modules
+      - e2e-desktop-node-modules:/work/desktop/node_modules
+      - e2e-shared-node-modules:/work/shared/ui/node_modules
+      - e2e-tmp:/work/explorer/tests/tmp
       # Container-private cargo crate cache and workspace build dir, so the
       # Rust build is incremental across runs and never mixes with the
       # host's (different glibc/rustc) target artifacts.
       - e2e-cargo-registry:/usr/local/cargo/registry
-      - e2e-httpd-target:/work/target
+      - e2e-httpd-target:/work/explorer/target
 
 volumes:
   e2e-node-modules:
+  e2e-explorer-node-modules:
+  e2e-desktop-node-modules:
+  e2e-shared-node-modules:
+  e2e-tmp:
   e2e-cargo-registry:
   e2e-httpd-target:

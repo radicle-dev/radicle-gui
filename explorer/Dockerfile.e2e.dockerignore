@@ -1,0 +1,9 @@
+# The build context is the repository root, and the image only copies the npm
+# manifests: the repository itself is bind-mounted at runtime.
+*
+!package.json
+!package-lock.json
+!.npmrc
+!shared/ui/package.json
+!explorer/package.json
+!desktop/package.json

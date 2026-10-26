@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Entrypoint for the e2e Docker container. Installs npm deps into the
-# container-private node_modules volume (only when package-lock.json changes),
+# container-private node_modules volumes (only when the workspace's
+# package-lock.json changes),
 # ensures the Radicle test binaries are present, then runs Playwright. Any
 # arguments are forwarded to the test command.
 #
@@ -8,7 +9,7 @@
 # source and tests the frontend against it) instead of test:e2e.
 set -euo pipefail
 
-cd /work
+cd /work/explorer
 
 # The container runs as root, so anything it writes into the bind-mounted repo
 # would otherwise be root-owned on the host. Hand those paths back to the
@@ -23,11 +24,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-LOCK_HASH=$(md5sum package-lock.json | cut -d' ' -f1)
-STAMP=node_modules/.lockhash
+LOCK_HASH=$(md5sum ../package-lock.json | cut -d' ' -f1)
+STAMP=../node_modules/.lockhash
 if [ ! -f "$STAMP" ] || [ "$(cat "$STAMP")" != "$LOCK_HASH" ]; then
   echo "📦 Installing npm dependencies..."
-  npm ci
+  (cd .. && npm ci -w explorer)
   echo "$LOCK_HASH" >"$STAMP"
 else
   echo "📦 npm dependencies up to date."
