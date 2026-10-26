@@ -39,15 +39,18 @@ sudo apt install radicle
 
 ### Pacman (Arch Linux)
 
-Install [`radicle`](https://archlinux.org/packages/extra/x86_64/radicle/) via pacman.
+Install [`radicle`](https://archlinux.org/packages/extra/x86_64/radicle/) via
+pacman.
 
 ### Nix
 
-Install `radicle-node` from [Nixpkgs](https://search.nixos.org/packages?query=radicle-node).
+Install `radicle-node` from
+[Nixpkgs](https://search.nixos.org/packages?query=radicle-node).
 
 ## Reproducible binaries
 
-Radicle publishes reproducible builds for Linux and macOS. Each release includes binaries, SHA256 checksums, and SSH signatures.
+Radicle publishes reproducible builds for Linux and macOS. Each release includes
+binaries, SHA256 checksums, and SSH signatures.
 
 ### Radicle
 
@@ -59,12 +62,12 @@ curl -O -L https://files.radicle.dev/releases/latest/radicle-$TARGET.tar.xz
 
 Replace `$TARGET` with one of:
 
-| Platform | Target |
-|----------|--------|
-| Linux x86_64 | `x86_64-unknown-linux-musl` |
-| Linux ARM64 | `aarch64-unknown-linux-musl` |
-| macOS x86_64 | `x86_64-apple-darwin` |
-| macOS ARM64 | `aarch64-apple-darwin` |
+| Platform     | Target                       |
+| ------------ | ---------------------------- |
+| Linux x86_64 | `x86_64-unknown-linux-musl`  |
+| Linux ARM64  | `aarch64-unknown-linux-musl` |
+| macOS x86_64 | `x86_64-apple-darwin`        |
+| macOS ARM64  | `aarch64-apple-darwin`       |
 
 ### Radicle HTTP daemon
 
@@ -82,11 +85,13 @@ Extract the archive to `~/.radicle/`:
 tar -xf radicle-$TARGET.tar.xz -C ~/.radicle/
 ```
 
-This places binaries in `~/.radicle/bin` and man pages in `~/.radicle/man`. Make sure `~/.radicle/bin` is in your `PATH`.
+This places binaries in `~/.radicle/bin` and man pages in `~/.radicle/man`. Make
+sure `~/.radicle/bin` is in your `PATH`.
 
 ## Verification
 
-Each archive is accompanied by a `.sig` (SSH signature) and `.sha256` (checksum) file.
+Each archive is accompanied by a `.sig` (SSH signature) and `.sha256` (checksum)
+file.
 
 ### Signature verification
 
@@ -98,13 +103,13 @@ ssh-keygen -Y check-novalidate -n file -s ARCHIVE.tar.xz.sig < ARCHIVE.tar.xz
 
 The following team members sign releases:
 
-| Name | Public key |
-|------|-----------|
+| Name                  | Public key                                                                         |
+| --------------------- | ---------------------------------------------------------------------------------- |
 | cloudhead@radicle.xyz | `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL460KIEccS4881p7PPpiiQBsxF+H5tgC6De6crw9rbU` |
-| erik@radicle.xyz | `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBrJyJTwj/xG7F7qY0HDFXbb8A+xNNH8eILQ8hlvKW7/` |
-| fintan@radicle.xyz | `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEFsaRqAJ1r6bBFwlcWzJKN7DdjItQDumCNc0wqw6Dvk` |
-| lorenz@radicle.xyz | `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFhK7CqgIIbSthoNn8ea32krOnMzC807Z+PpBkR2YOVj` |
-| rudolfs@osins.org | `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPueml1FxzjvwbD7vRZfwoaoyuxLy0L+WLBwSNiVoJe5` |
+| erik@radicle.xyz      | `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBrJyJTwj/xG7F7qY0HDFXbb8A+xNNH8eILQ8hlvKW7/` |
+| fintan@radicle.xyz    | `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEFsaRqAJ1r6bBFwlcWzJKN7DdjItQDumCNc0wqw6Dvk` |
+| lorenz@radicle.xyz    | `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFhK7CqgIIbSthoNn8ea32krOnMzC807Z+PpBkR2YOVj` |
+| rudolfs@osins.org     | `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPueml1FxzjvwbD7vRZfwoaoyuxLy0L+WLBwSNiVoJe5` |
 
 ### Checksum verification
 

@@ -122,7 +122,9 @@ test("math", async ({ page }) => {
     waitUntil: "networkidle",
   });
   await expect(page.getByText("The Cauchy-Schwarz Inequality")).toBeVisible();
-  await expect(page.locator(".katex-display .katex-html").first()).toBeVisible();
+  await expect(
+    page.locator(".katex-display .katex-html").first(),
+  ).toBeVisible();
   await expect(page).toHaveScreenshot({ fullPage: true });
 });
 
