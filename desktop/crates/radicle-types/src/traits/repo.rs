@@ -102,6 +102,57 @@ fn resolve_revision(
     }
 }
 
+/// Returns a hash of the `base..head` diff. It covers each file's status, paths
+/// and modes, and the lines the diff adds and removes. It leaves out line
+/// numbers and context, so a rebase onto a base that edited nearby lines keeps
+/// the hash. A whitespace change gives a new hash. The same line added elsewhere
+/// in the same file keeps the hash. A binary file counts by its contents. The diff
+/// is the one the Changes panel shows, without context. Git's own patch-id is not
+/// used, because it ignores whitespace.
+fn compute_diff_hash(
+    repo: &git::raw::Repository,
+    base: git::Oid,
+    head: git::Oid,
+) -> Result<git::raw::Oid, Error> {
+    let diff = tree_diff(repo, Some(base), head, 0, false)?;
+    let mut bytes = Vec::new();
+    // Each field is written after its length, so two different diffs never give
+    // the same bytes. The NULs in the mode bytes already separate most fields;
+    // the lengths make it hold for any path or line.
+    let mut field = |data: &[u8]| {
+        bytes.extend_from_slice(&(data.len() as u64).to_le_bytes());
+        bytes.extend_from_slice(data);
+    };
+    diff.print(git2::DiffFormat::Patch, |delta, _, line| {
+        match line.origin() {
+            'F' => {
+                field(format!("{:?}", delta.status()).as_bytes());
+                for file in [delta.old_file(), delta.new_file()] {
+                    field(file.path_bytes().unwrap_or_default());
+                    field(&i32::from(file.mode()).to_le_bytes());
+                }
+            }
+            '+' | '-' => {
+                field(&[line.origin() as u8]);
+                field(line.content());
+            }
+            // A binary file has no lines, so its contents count instead: the old
+            // ones for a deletion, whose new side is empty.
+            'B' => {
+                let file = if delta.status() == git2::Delta::Deleted {
+                    delta.old_file()
+                } else {
+                    delta.new_file()
+                };
+                field(file.id().as_bytes());
+            }
+            _ => {}
+        }
+        true
+    })?;
+    Ok(git2::Oid::hash_object(git2::ObjectType::Blob, &bytes)?)
+}
+
 /// Tally `git diff --numstat` between two commits into diff stats. Returns
 /// `None` if git is unavailable or its output can't be parsed, so the caller
 /// can fall back to the (slower) radicle-surf diff.
@@ -703,6 +754,21 @@ pub trait Repo: Profile {
         Ok::<_, Error>(diff::Stats::new(stats))
     }
 
+    /// Returns the diff hash of a revision. Equal hashes mean the same files and
+    /// changed lines, whatever the bases. Opens the repository on each call.
+    fn diff_hash(
+        &self,
+        rid: identity::RepoId,
+        base: git::Oid,
+        head: git::Oid,
+    ) -> Result<String, Error> {
+        let profile = self.profile();
+        let repo_path = storage::git::paths::repository(&profile.storage, &rid);
+        let repo = git::raw::Repository::open(&repo_path)?;
+
+        Ok(compute_diff_hash(&repo, base, head)?.to_string())
+    }
+
     fn repo_info(
         &self,
         repo: &storage::git::Repository,
@@ -1223,6 +1289,8 @@ mod test {
     use radicle::storage::{ReadRepository, ReadStorage};
     use radicle::test::fixtures;
 
+    use radicle::git::raw as git2;
+
     use crate::traits::repo::Repo;
     use crate::{AppState, test};
 
@@ -1482,5 +1550,295 @@ mod test {
                 .repo_commit(rid, Some(head.into()), None, None)
                 .is_ok()
         );
+    }
+
+    fn new_repo() -> (tempfile::TempDir, git2::Repository) {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(tmp.path()).unwrap();
+        (tmp, repo)
+    }
+
+    fn hash(repo: &git2::Repository, base: git2::Oid, head: git2::Oid) -> git2::Oid {
+        super::compute_diff_hash(repo, base.into(), head.into()).unwrap()
+    }
+
+    fn commit(
+        repo: &git2::Repository,
+        parent: Option<git2::Oid>,
+        files: &[(&str, &str)],
+        message: &str,
+    ) -> git2::Oid {
+        let files: Vec<_> = files.iter().map(|(n, c)| (*n, *c, 0o100644)).collect();
+        commit_with_modes(repo, parent, &files, message)
+    }
+
+    fn commit_with_modes(
+        repo: &git2::Repository,
+        parent: Option<git2::Oid>,
+        files: &[(&str, &str, i32)],
+        message: &str,
+    ) -> git2::Oid {
+        let mut builder = repo.treebuilder(None).unwrap();
+        for (name, content, mode) in files {
+            let blob = repo.blob(content.as_bytes()).unwrap();
+            builder.insert(name, blob, *mode).unwrap();
+        }
+        let tree = repo.find_tree(builder.write().unwrap()).unwrap();
+        let sig = git2::Signature::now("test", "test@example.invalid").unwrap();
+        let parents: Vec<git2::Commit> = parent
+            .into_iter()
+            .map(|p| repo.find_commit(p).unwrap())
+            .collect();
+        let parents: Vec<&git2::Commit> = parents.iter().collect();
+        repo.commit(None, &sig, &sig, message, &tree, &parents)
+            .unwrap()
+    }
+
+    const ORIGINAL: &str = "line 1\nline 2\nline 3\nline 4\nline 5\n";
+
+    #[test]
+    fn different_binary_contents_give_different_hashes() {
+        let (_tmp, repo) = new_repo();
+        let m1 = commit(&repo, None, &[("img", "\u{0}old")], "m1");
+        let a1 = commit(&repo, Some(m1), &[("img", "\u{0}one")], "a1");
+        let a2 = commit(&repo, Some(m1), &[("img", "\u{0}two")], "a2");
+
+        assert_ne!(hash(&repo, m1, a1), hash(&repo, m1, a2));
+    }
+
+    #[test]
+    fn a_whitespace_only_change_gives_a_different_hash() {
+        let (_tmp, repo) = new_repo();
+        let m1 = commit(&repo, None, &[("a.txt", ORIGINAL)], "m1");
+        let a1 = commit(
+            &repo,
+            Some(m1),
+            &[("a.txt", "line 1\nline 2\nthree\nline 4\nline 5\n")],
+            "a1",
+        );
+        let a1_indented = commit(
+            &repo,
+            Some(m1),
+            &[("a.txt", "line 1\nline 2\n  three\nline 4\nline 5\n")],
+            "a1",
+        );
+
+        assert_ne!(hash(&repo, m1, a1), hash(&repo, m1, a1_indented));
+    }
+
+    #[test]
+    fn same_change_on_a_new_base_with_an_adjacent_edit_has_the_same_hash() {
+        let (_tmp, repo) = new_repo();
+        let m1 = commit(&repo, None, &[("a.txt", ORIGINAL)], "m1");
+        let a1 = commit(
+            &repo,
+            Some(m1),
+            &[("a.txt", "line 1\nline 2\nthree\nline 4\nline 5\n")],
+            "a1",
+        );
+        let m2 = commit(
+            &repo,
+            Some(m1),
+            &[("a.txt", "line 1\ntwo\nline 3\nline 4\nline 5\n")],
+            "m2",
+        );
+        let a1_rebased = commit(
+            &repo,
+            Some(m2),
+            &[("a.txt", "line 1\ntwo\nthree\nline 4\nline 5\n")],
+            "a1",
+        );
+
+        assert_eq!(hash(&repo, m1, a1), hash(&repo, m2, a1_rebased));
+    }
+
+    #[test]
+    fn a_content_change_gives_a_different_hash() {
+        let (_tmp, repo) = new_repo();
+        let m1 = commit(&repo, None, &[("a.txt", ORIGINAL)], "m1");
+        let a1 = commit(
+            &repo,
+            Some(m1),
+            &[("a.txt", "line 1\nline 2\nthree\nline 4\nline 5\n")],
+            "a1",
+        );
+        let edited = commit(
+            &repo,
+            Some(m1),
+            &[("a.txt", "line 1\nline 2\nTHREE\nline 4\nline 5\n")],
+            "a1",
+        );
+
+        assert_ne!(hash(&repo, m1, a1), hash(&repo, m1, edited));
+    }
+
+    // A path and the line before it must not join into the bytes of another diff.
+    #[test]
+    fn paths_and_lines_that_concatenate_alike_give_different_hashes() {
+        let (_tmp, repo) = new_repo();
+        let m1 = commit(
+            &repo,
+            None,
+            &[("a", "q"), ("yz", "k\n"), ("z", "k\n")],
+            "m1",
+        );
+        let a1 = commit(
+            &repo,
+            Some(m1),
+            &[("a", "x"), ("yz", "K\n"), ("z", "k\n")],
+            "a1",
+        );
+        let a2 = commit(
+            &repo,
+            Some(m1),
+            &[("a", "xy"), ("yz", "k\n"), ("z", "K\n")],
+            "a1",
+        );
+
+        assert_ne!(hash(&repo, m1, a1), hash(&repo, m1, a2));
+    }
+
+    #[test]
+    fn opposite_mode_changes_give_different_hashes() {
+        let (_tmp, repo) = new_repo();
+        let plain = commit_with_modes(&repo, None, &[("run", "x\n", 0o100644)], "m1");
+        let exec = commit_with_modes(&repo, None, &[("run", "x\n", 0o100755)], "m1");
+
+        assert_ne!(hash(&repo, plain, exec), hash(&repo, exec, plain));
+    }
+
+    #[test]
+    fn the_same_edit_from_another_old_mode_gives_a_different_hash() {
+        let (_tmp, repo) = new_repo();
+        let plain = commit_with_modes(&repo, None, &[("run", "x\n", 0o100644)], "m1");
+        let exec = commit_with_modes(&repo, None, &[("run", "x\n", 0o100755)], "m2");
+        let from_plain = commit_with_modes(&repo, Some(plain), &[("run", "y\n", 0o100755)], "a1");
+        let from_exec = commit_with_modes(&repo, Some(exec), &[("run", "y\n", 0o100755)], "a1");
+
+        assert_ne!(hash(&repo, plain, from_plain), hash(&repo, exec, from_exec));
+    }
+
+    #[test]
+    fn an_edit_with_a_mode_change_differs_from_the_edit_alone() {
+        let (_tmp, repo) = new_repo();
+        let m1 = commit(&repo, None, &[("run", "x\n")], "m1");
+        let edit = commit(&repo, Some(m1), &[("run", "y\n")], "a1");
+        let edit_exec = commit_with_modes(&repo, Some(m1), &[("run", "y\n", 0o100755)], "a1");
+
+        assert_ne!(hash(&repo, m1, edit), hash(&repo, m1, edit_exec));
+    }
+
+    #[test]
+    fn adding_and_deleting_the_same_empty_file_give_different_hashes() {
+        let (_tmp, repo) = new_repo();
+        let without = commit(&repo, None, &[("keep", "x\n")], "m1");
+        let with = commit(&repo, None, &[("keep", "x\n"), ("empty", "")], "m1");
+
+        assert_ne!(hash(&repo, without, with), hash(&repo, with, without));
+    }
+
+    #[test]
+    fn a_rename_differs_from_no_change() {
+        let (_tmp, repo) = new_repo();
+        let m1 = commit(&repo, None, &[("a.txt", ORIGINAL)], "m1");
+        let renamed = commit(&repo, Some(m1), &[("b.txt", ORIGINAL)], "a1");
+
+        assert_ne!(hash(&repo, m1, m1), hash(&repo, m1, renamed));
+    }
+
+    #[test]
+    fn line_endings_and_a_final_newline_give_different_hashes() {
+        let (_tmp, repo) = new_repo();
+        let m1 = commit(&repo, None, &[("a.txt", "")], "m1");
+        let hashes: Vec<_> = ["x\n", "x\r\n", "x"]
+            .iter()
+            .map(|content| {
+                let head = commit(&repo, Some(m1), &[("a.txt", content)], "a1");
+                hash(&repo, m1, head)
+            })
+            .collect();
+
+        assert_ne!(hashes[0], hashes[1]);
+        assert_ne!(hashes[0], hashes[2]);
+        assert_ne!(hashes[1], hashes[2]);
+    }
+
+    #[test]
+    fn deleting_different_binary_contents_gives_different_hashes() {
+        let (_tmp, repo) = new_repo();
+        let one = commit(&repo, None, &[("img", "\u{0}one"), ("keep", "x\n")], "m1");
+        let two = commit(&repo, None, &[("img", "\u{0}two"), ("keep", "x\n")], "m2");
+        let one_deleted = commit(&repo, Some(one), &[("keep", "x\n")], "a1");
+        let two_deleted = commit(&repo, Some(two), &[("keep", "x\n")], "a1");
+
+        assert_ne!(hash(&repo, one, one_deleted), hash(&repo, two, two_deleted));
+    }
+
+    #[test]
+    fn the_same_binary_contents_on_a_new_base_have_the_same_hash() {
+        let (_tmp, repo) = new_repo();
+        let m1 = commit(&repo, None, &[("img", "\u{0}old")], "m1");
+        let m2 = commit(&repo, Some(m1), &[("img", "\u{0}older")], "m2");
+        let a1 = commit(&repo, Some(m1), &[("img", "\u{0}new")], "a1");
+        let a1_rebased = commit(&repo, Some(m2), &[("img", "\u{0}new")], "a1");
+
+        assert_eq!(hash(&repo, m1, a1), hash(&repo, m2, a1_rebased));
+    }
+
+    #[test]
+    fn the_same_edit_in_another_file_gives_a_different_hash() {
+        let (_tmp, repo) = new_repo();
+        let m1 = commit(
+            &repo,
+            None,
+            &[("a.txt", ORIGINAL), ("b.txt", ORIGINAL)],
+            "m1",
+        );
+        let edit = "line 1\nline 2\nthree\nline 4\nline 5\n";
+        let in_a = commit(
+            &repo,
+            Some(m1),
+            &[("a.txt", edit), ("b.txt", ORIGINAL)],
+            "a1",
+        );
+        let in_b = commit(
+            &repo,
+            Some(m1),
+            &[("a.txt", ORIGINAL), ("b.txt", edit)],
+            "a1",
+        );
+
+        assert_ne!(hash(&repo, m1, in_a), hash(&repo, m1, in_b));
+    }
+
+    #[test]
+    fn adding_and_removing_the_same_line_give_different_hashes() {
+        let (_tmp, repo) = new_repo();
+        let without = commit(&repo, None, &[("a.txt", "keep\n")], "m1");
+        let with = commit(&repo, None, &[("a.txt", "keep\nx\n")], "m1");
+
+        assert_ne!(hash(&repo, without, with), hash(&repo, with, without));
+    }
+
+    // Leaving context out has a cost: the same line added elsewhere in the file
+    // gives the same hash.
+    #[test]
+    fn an_identical_hunk_moved_within_the_file_keeps_the_hash() {
+        let (_tmp, repo) = new_repo();
+        let m1 = commit(&repo, None, &[("a.txt", ORIGINAL)], "m1");
+        let after_line_1 = commit(
+            &repo,
+            Some(m1),
+            &[("a.txt", "line 1\nnew\nline 2\nline 3\nline 4\nline 5\n")],
+            "a1",
+        );
+        let after_line_4 = commit(
+            &repo,
+            Some(m1),
+            &[("a.txt", "line 1\nline 2\nline 3\nline 4\nnew\nline 5\n")],
+            "a1",
+        );
+
+        assert_eq!(hash(&repo, m1, after_line_1), hash(&repo, m1, after_line_4));
     }
 }

@@ -120,6 +120,7 @@ pub fn run() {
             profile::config,
             profile::search_aliases,
             repo::clean,
+            repo::diff_hash,
             repo::diff_stats,
             repo::list_commits,
             repo::list_canonical_tags,

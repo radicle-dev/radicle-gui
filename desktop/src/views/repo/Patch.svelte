@@ -13,7 +13,6 @@
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
   import countBy from "lodash/countBy";
-  import mapValues from "lodash/mapValues";
   import { SvelteSet } from "svelte/reactivity";
 
   import { commentSourcesOf } from "@app/lib/commentSources";
@@ -21,6 +20,7 @@
   import { draftReviewStorage } from "@app/lib/draftReviewStorage";
   import { nodeRunning } from "@app/lib/events";
   import {
+    cachedDiffHash,
     cachedDiffStats,
     cachedGetDiff,
     cachedGetDiffText,
@@ -30,12 +30,12 @@
   import { setPatchActivitySource } from "@app/lib/patchActivityContext";
   import { patchContributions } from "@app/lib/patchContributions";
   import type { ReviewEntry } from "@app/lib/reviewSummary";
-  import { revisionTitle } from "@app/lib/revisionDescription";
   import {
-    newCommitsByRevision,
-    orderRevisions,
-    revisionNumbers,
-  } from "@app/lib/revisionList";
+    revisionChanges,
+    revisionChangeTooltip,
+  } from "@app/lib/revisionChanges";
+  import { revisionTitle } from "@app/lib/revisionDescription";
+  import { orderRevisions, revisionNumbers } from "@app/lib/revisionList";
   import { revisionListSettings } from "@app/lib/revisionListSettings";
   import * as roles from "@app/lib/roles";
   import * as router from "@app/lib/router";
@@ -234,7 +234,8 @@
   let commentPosition = $state({ index: -1, total: 0 });
 
   let commentSourcesExpanded = $state(false);
-  let commitCountsByRevisionId: Record<string, number> = $state({});
+  let commitsByRevisionId: Record<string, Commit[] | undefined> = $state({});
+  let diffHashByRevisionId: Record<string, string | undefined> = $state({});
   let statsByRevisionId: Record<string, Stats> = $state({});
   let columnMenuOpen = $state(false);
   let columnMenuEl: HTMLElement | undefined = $state();
@@ -364,24 +365,44 @@
     },
   });
 
+  const changesByRevisionId = $derived(
+    revisionChanges(
+      orderedRevisions,
+      id => commitsByRevisionId[id],
+      id => diffHashByRevisionId[id],
+    ),
+  );
   $effect(() => {
     const ridLocal = repo.rid;
-    const ordered = orderedRevisions;
     void Promise.all(
-      ordered.map(async (rev): Promise<[string, Commit[]]> => {
-        try {
-          const commits = await cachedListCommits(ridLocal, rev.base, rev.head);
-          return [rev.id, commits];
-        } catch {
-          return [rev.id, []];
-        }
-      }),
+      orderedRevisions.map(
+        async (rev): Promise<[string, Commit[] | undefined]> => [
+          rev.id,
+          await cachedListCommits(ridLocal, rev.base, rev.head).catch(
+            () => undefined,
+          ),
+        ],
+      ),
     ).then(entries => {
-      const commits = Object.fromEntries(entries);
-      commitCountsByRevisionId = mapValues(
-        newCommitsByRevision(ordered, id => commits[id] ?? []),
-        added => added.length,
-      );
+      commitsByRevisionId = Object.fromEntries(entries);
+    });
+  });
+  // A diff hash walks a revision's whole diff and only adds a sentence to the
+  // tooltips, so they are fetched once the picker opens.
+  $effect(() => {
+    if (!revisionPickerExpanded) return;
+    const ridLocal = repo.rid;
+    void Promise.all(
+      orderedRevisions.map(
+        async (rev): Promise<[string, string | undefined]> => [
+          rev.id,
+          await cachedDiffHash(ridLocal, rev.base, rev.head).catch(
+            () => undefined,
+          ),
+        ],
+      ),
+    ).then(entries => {
+      diffHashByRevisionId = Object.fromEntries(entries);
     });
   });
   // Per-revision diff stats for the dropdown: one request each, so they are
@@ -1294,7 +1315,7 @@
                     <DropdownList items={dropdownRevisions}>
                       {#snippet item(rev)}
                         {@const title = revisionTitle(rev)}
-                        {@const commitCount = commitCountsByRevisionId[rev.id]}
+                        {@const change = changesByRevisionId[rev.id]}
                         <DropdownListItem
                           selected={rev.id === selectedRevision.id}
                           styleGap="0.5rem"
@@ -1327,10 +1348,14 @@
                           <!-- Rendered even while the count is still
                                loading so the column keeps its width
                                and the rows stay aligned. -->
-                          <span class="revision-commits-meta">
-                            {#if commitCount !== undefined}
+                          <span
+                            class="revision-commits-meta"
+                            title={change
+                              ? revisionChangeTooltip(change)
+                              : undefined}>
+                            {#if change}
                               <Icon name="commit" />
-                              {commitCount}
+                              {change.totalCommits}
                             {/if}
                           </span>
                           {#if listSettings.showStats}

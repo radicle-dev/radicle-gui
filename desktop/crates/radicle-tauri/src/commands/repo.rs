@@ -114,6 +114,16 @@ pub async fn diff_stats(
 }
 
 #[tauri::command]
+pub async fn diff_hash(
+    ctx: tauri::State<'_, AppState>,
+    rid: RepoId,
+    base: git::Oid,
+    head: git::Oid,
+) -> Result<String, Error> {
+    blocking(ctx, move |ctx| ctx.diff_hash(rid, base, head)).await
+}
+
+#[tauri::command]
 pub async fn list_commits(
     ctx: tauri::State<'_, AppState>,
     rid: RepoId,

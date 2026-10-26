@@ -198,6 +198,7 @@ pub fn router(shared: Shared) -> Router {
         .route("/version", post(version_handler))
         .route("/git_info", post(git_info_handler))
         .route("/diff_stats", post(diff_stats_handler))
+        .route("/diff_hash", post(diff_hash_handler))
         .route(
             "/activity_by_issue",
             post(activity_issue_handler::<radicle::issue::Action, issue::Action>),
@@ -507,6 +508,15 @@ async fn diff_stats_handler(
     let info = ctx.diff_stats(rid, base, head)?;
 
     Ok::<_, Error>(Json(info))
+}
+
+async fn diff_hash_handler(
+    Ctx(ctx): Ctx,
+    Json(DiffStatsBody { rid, base, head }): Json<DiffStatsBody>,
+) -> impl IntoResponse {
+    let hash = ctx.diff_hash(rid, base, head)?;
+
+    Ok::<_, Error>(Json(hash))
 }
 
 #[derive(Serialize, Deserialize)]
