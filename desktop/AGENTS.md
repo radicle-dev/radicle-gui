@@ -1,18 +1,19 @@
 # radicle-desktop
 
 Tauri desktop app for Radicle. Svelte 5 frontend communicates with a Rust
-backend via Tauri IPC commands. TypeScript types are generated from Rust
-structs using ts-rs (`crates/radicle-types/`).
+backend via Tauri IPC commands. TypeScript types are generated from Rust structs
+using ts-rs (`crates/radicle-types/`).
 
 The app lives in `desktop/` of the radicle-gui monorepo. It is its own npm
 package and Cargo workspace: run every command here from `desktop/`, and all
-paths in this file are relative to it. Conventions shared with explorer
-are in the root `AGENTS.md`.
+paths in this file are relative to it. Conventions shared with explorer are in
+the root `AGENTS.md`.
 
 ## Svelte syntax and aliases
 
 - Svelte 5 with runes syntax (`$state`, `$derived`, `$props`, `$effect`)
-- Path aliases: `@app` (src), `@bindings` (crates/radicle-types/bindings), `@tests`
+- Path aliases: `@app` (src), `@bindings` (crates/radicle-types/bindings),
+  `@tests`
 
 ## Commands
 
@@ -41,9 +42,9 @@ npm run test:unit
 ```
 
 DOMPurify does not sanitize under happy-dom (the unit-test environment):
-`<script>` and `onerror=` pass through, and `setConfig` allowlists are
-ignored. Don't assert sanitization in `tests/unit/`; verify it in the real
-app or in an E2E test.
+`<script>` and `onerror=` pass through, and `setConfig` allowlists are ignored.
+Don't assert sanitization in `tests/unit/`; verify it in the real app or in an
+E2E test.
 
 ### E2E tests
 
@@ -55,29 +56,28 @@ npm run test:e2e -- tests/e2e/<file>.spec.ts
 Run `./scripts/install-binaries` once after cloning and whenever the Radicle
 binaries are updated.
 
-Peer keys have no passphrase, so the app authenticates without an
-ssh-agent. Tests that need a running node use the `peer` fixture; tests that
-need an ssh-agent use the `sshAuthSock` fixture and create a peer with a
-`passphrase`. When a fixture depends on one peer seeing another's changes,
-wait for the node event with `waitForEvent` instead of sleeping.
-Reload pages with `reload(page)` from `@tests/support/fixtures.js`, not
-`page.reload()`, and navigate a page that already shows the app with
-`goto(page, url)`: the app polls the backend, and the harness would otherwise
-fail the test on the request the navigation cancels.
+Peer keys have no passphrase, so the app authenticates without an ssh-agent.
+Tests that need a running node use the `peer` fixture; tests that need an
+ssh-agent use the `sshAuthSock` fixture and create a peer with a `passphrase`.
+When a fixture depends on one peer seeing another's changes, wait for the node
+event with `waitForEvent` instead of sleeping. Reload pages with `reload(page)`
+from `@tests/support/fixtures.js`, not `page.reload()`, and navigate a page that
+already shows the app with `goto(page, url)`: the app polls the backend, and the
+harness would otherwise fail the test on the request the navigation cancels.
 
 Tests run against a production build in `tests/tmp/build`, served by
-`vite preview`; the build takes a few seconds at startup. Set
-`E2E_DEV_SERVER=1` to run against the Vite dev server instead, e.g. for hot
-reload while writing tests.
+`vite preview`; the build takes a few seconds at startup. Set `E2E_DEV_SERVER=1`
+to run against the Vite dev server instead, e.g. for hot reload while writing
+tests.
 
-Each run writes `tests/artifacts/results.json` (Playwright's JSON report)
-and per-test logs in `tests/artifacts/<test>/`. Read those to see what
-failed in a run someone else started.
+Each run writes `tests/artifacts/results.json` (Playwright's JSON report) and
+per-test logs in `tests/artifacts/<test>/`. Read those to see what failed in a
+run someone else started.
 
-`SKIP_FIXTURE_CREATION=true` skips fixture creation for faster iteration.
-Only use it when you are solely editing `.spec.ts` files and fixtures
-already exist from a previous full run. Any change to app code, the Rust
-backend, or test fixtures requires a full run.
+`SKIP_FIXTURE_CREATION=true` skips fixture creation for faster iteration. Only
+use it when you are solely editing `.spec.ts` files and fixtures already exist
+from a previous full run. Any change to app code, the Rust backend, or test
+fixtures requires a full run.
 
 ```sh
 SKIP_FIXTURE_CREATION=true npm run test:e2e
@@ -104,21 +104,22 @@ Adding or changing a Tauri command touches these layers in order:
 
 1. `crates/radicle-types/src/` — add/update Rust types with `#[derive(TS)]` and
    `#[ts(export)]`, run `npm run generate-types` to update `@bindings`
-2. `crates/radicle-types/src/traits/` — add the method to the relevant port trait;
-   default implementation goes here, not in the command handler
+2. `crates/radicle-types/src/traits/` — add the method to the relevant port
+   trait; default implementation goes here, not in the command handler
 3. `crates/radicle-tauri/src/commands/` — add the `#[tauri::command]` handler
    (thin wrapper: `ctx.method()`), register in `crates/radicle-tauri/src/lib.rs`
-4. `crates/test-http-api/src/` — mirror the same route so E2E tests keep working;
-   `cargo test -p test-http-api --test parity` fails until you do. A command
-   that can't work over HTTP goes in `TAURI_ONLY` in
+4. `crates/test-http-api/src/` — mirror the same route so E2E tests keep
+   working; `cargo test -p test-http-api --test parity` fails until you do. A
+   command that can't work over HTTP goes in `TAURI_ONLY` in
    `crates/test-http-api/tests/parity.rs`, with the reason
-5. `src/` — call via `invoke<T>("command_name", args)`, import types from `@bindings`
+5. `src/` — call via `invoke<T>("command_name", args)`, import types from
+   `@bindings`
 
 ### Tests for a feature
 
 When adding tests for a feature, go through `docs/testing-checklist.md` and
-report which items are covered and which don't apply. The testing strategy is
-in `docs/adr/0001-testing-strategy.md`.
+report which items are covered and which don't apply. The testing strategy is in
+`docs/adr/0001-testing-strategy.md`.
 
 ### Pre-push checklist
 
@@ -138,10 +139,10 @@ Three crates in a hexagonal architecture; the reasoning is in
 - `test-http-api` — HTTP driver for E2E tests and `npm run start:http`;
   `Context` implements the same ports
 
-Ports have full default implementations, so a driver only implements
-`Profile`. Paginated list views (issues, patches, notifications) go through
-a domain `Service` backed by the SQLite adapter instead of the ports; new
-lists over large data sets should do the same.
+Ports have full default implementations, so a driver only implements `Profile`.
+Paginated list views (issues, patches, notifications) go through a domain
+`Service` backed by the SQLite adapter instead of the ports; new lists over
+large data sets should do the same.
 
 ## Code conventions
 
@@ -153,7 +154,8 @@ lists over large data sets should do the same.
 
 - Import backend types from `@bindings/*` — these are generated by ts-rs, never
   hand-write interfaces that duplicate them
-- Call Tauri commands via `invoke<T>("command_name", { arg })` from `@app/lib/invoke`
+- Call Tauri commands via `invoke<T>("command_name", { arg })` from
+  `@app/lib/invoke`
 
 ### Rust backend
 

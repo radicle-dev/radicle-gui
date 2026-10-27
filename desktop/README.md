@@ -1,6 +1,7 @@
 # Radicle Desktop
 
-This desktop application lets you interact with [Radicle][rad], a peer-to-peer code collaboration and publishing stack.
+This desktop application lets you interact with [Radicle][rad], a peer-to-peer
+code collaboration and publishing stack.
 
 It lives in the `desktop/` folder of the radicle-gui repository, next to the
 Radicle web explorer. Run all commands below from `desktop/`.
@@ -44,8 +45,8 @@ npm run dev
 ```
 
 To log how long every backend command takes, for performance work, set
-`VITE_LOG_INVOKE_TIMINGS=true`. Each call then prints `[invoke] <command> <ms>ms`
-to the browser console (visible at debug level):
+`VITE_LOG_INVOKE_TIMINGS=true`. Each call then prints
+`[invoke] <command> <ms>ms` to the browser console (visible at debug level):
 
 ```
 VITE_LOG_INVOKE_TIMINGS=true npm run dev
@@ -82,7 +83,8 @@ with `scripts/release --list` and `scripts/release --help`. Releases are tagged
 
 ## Getting in touch
 
-To get in touch with the maintainers, sign up to our [official chat on Zulip][zul].
+To get in touch with the maintainers, sign up to our [official chat on
+Zulip][zul].
 
 ## License
 

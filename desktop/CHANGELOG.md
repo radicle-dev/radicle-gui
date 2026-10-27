@@ -4,8 +4,8 @@
 
 - Added Releases and Release views for browsing a repository's releases and
   their artifacts, with links, mentions, a warning on releases and artifacts
-  published by others, and the artifact node and rad-artifact CLI versions
-  in the status popover
+  published by others, and the artifact node and rad-artifact CLI versions in
+  the status popover
 - Added smart links and better mentions: `rad:` links now open in the app,
   Radicle entities in comments are linked, and mentions search node aliases
 - Added a repository identity document view
@@ -15,18 +15,18 @@
 - Markdown now renders Mermaid diagrams, GitHub style alerts and repository
   images in READMEs
 - Task list items in Markdown can now be checked and unchecked
-- AsciiDoc READMEs are now rendered in the source view, with cross
-  references linked to their source
+- AsciiDoc READMEs are now rendered in the source view, with cross references
+  linked to their source
 - Document links now stay inside the app
 - Merged patches are now sorted by merge time
 - The patch list now shows the latest revision's diffstat
 - You can seed a missing repository directly from mentions
 - Adding new repositories will immediately fetch them from the network
 - Issues can now be created with only a subject
-- The issue page now matches the patch page design, with the metadata
-  buttons in the action row
-- Collapsed sidebar items now show tooltips, and private repositories show
-  a lock on their avatar
+- The issue page now matches the patch page design, with the metadata buttons in
+  the action row
+- Collapsed sidebar items now show tooltips, and private repositories show a
+  lock on their avatar
 - Polished sidebar animations and spacing
 
 **Bug fixes**
@@ -50,23 +50,22 @@
 - [brandonoxendine](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkpwnLQxFBQXyMK3Es91s8A7Ew7G11BFFyng1dqZR8QhG3)
 - [efstajas](https://radicle.network/nodes/iris.radicle.network/users/z6MkqG3Pu18RWuZ8GrqGQ9s4yoi5rfhcLq9rpo1ZZX8en994)
 
-
 ### v0.16.0
 
 **Features**
 
-- Added a collapsible, resizable sidebar that remembers its width and
-  collapsed state across launches
-- Repositories that are only in local storage can now be shown alongside
-  seeded ones, controlled by a new setting
-- Private repositories are now marked with a lock and public ones with a
-  globe in the sidebar
-- Added "Stop seeding" to the sidebar context menu, with the option to
-  delete the repository files as well
-- Patches now show the branch they are opened against, in the patch list,
-  the patch page and the merge activity item
-- The author and committer popover now shows emails, lists co-authors, and
-  shows both the authored and committed time
+- Added a collapsible, resizable sidebar that remembers its width and collapsed
+  state across launches
+- Repositories that are only in local storage can now be shown alongside seeded
+  ones, controlled by a new setting
+- Private repositories are now marked with a lock and public ones with a globe
+  in the sidebar
+- Added "Stop seeding" to the sidebar context menu, with the option to delete
+  the repository files as well
+- Patches now show the branch they are opened against, in the patch list, the
+  patch page and the merge activity item
+- The author and committer popover now shows emails, lists co-authors, and shows
+  both the authored and committed time
 - The detected git binary is now shown in the settings
 - The Guide button in the sidebar can now be hidden
 - Added a Cmd+, shortcut to open Settings
@@ -75,22 +74,19 @@
 
 **Bug fixes**
 
-- Fixed patch diffs for revisions whose head is a merge commit dropping
-  most of their commits
-- Fixed a single duplicate path, such as a symlink replaced by a regular
-  file, emptying the whole Changes tab
-- Git and rad are now resolved outside the session PATH, fixing git not
-  being found when the app is launched from the desktop
-- Editing a patch title no longer resets its target branch to the default
-  branch
+- Fixed patch diffs for revisions whose head is a merge commit dropping most of
+  their commits
+- Fixed a single duplicate path, such as a symlink replaced by a regular file,
+  emptying the whole Changes tab
+- Git and rad are now resolved outside the session PATH, fixing git not being
+  found when the app is launched from the desktop
+- Editing a patch title no longer resets its target branch to the default branch
 - The patch description is no longer collapsed while it is being edited
 - Reacting or commenting no longer makes the view jump
 - Clicking a commit in a patch no longer shifts the layout
 - The window stays draggable while a modal is open
-- Save buttons are now disabled instead of hidden when there is nothing to
-  save
+- Save buttons are now disabled instead of hidden when there is nothing to save
 - Commit time is now used instead of author time consistently
-
 
 **Shout-out to our contributors 🙏✨**
 
@@ -98,17 +94,16 @@
 - [brandonoxendine](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkpwnLQxFBQXyMK3Es91s8A7Ew7G11BFFyng1dqZR8QhG3)
 - [upbeat-molar](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkmRaBHeJuJKQE21aRVSe2uW3j5T7gQQAEAY7UF4tr5jRn)
 
-
 ### v0.15.0
 
 **Features**
 
 - Reworked the patch page UX, review UI and activity timeline
 - Patch changes are now rendered with Pierre's diff viewer
-- Added a comment column to the review view: every line comment is listed
-  beside the files, and clicking one scrolls the diff to it
-- The review view's column can now switch between comments and a file tree,
-  show only the commented files, or be put away to give the diff full width
+- Added a comment column to the review view: every line comment is listed beside
+  the files, and clicking one scrolls the diff to it
+- The review view's column can now switch between comments and a file tree, show
+  only the commented files, or be put away to give the diff full width
 - Added a comment stepper to the Changes tab for walking a diff's comments
 - Diff settings now live in the settings modal, grouped with the code font,
   instead of a per-view popover
@@ -119,11 +114,9 @@
 - Timestamps now show their absolute value on hover
 - Added dismissible hints to textboxes
 
-
 **Shout-out to our contributors 🙏✨**
 
 - [brandonoxendine](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkpwnLQxFBQXyMK3Es91s8A7Ew7G11BFFyng1dqZR8QhG3)
-
 
 ### v0.14.0
 
@@ -135,10 +128,9 @@
 
 **Bug fixes**
 
-- Links now use your configured explorer and preferred seed instead of
-  hardcoded defaults
+- Links now use your configured explorer and preferred seed instead of hardcoded
+  defaults
 - Fixed console windows flashing when navigating repos on Windows
-
 
 **Shout-out to our contributors 🙏✨**
 
@@ -146,7 +138,6 @@
 - [ck](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkuLTraBcQJ1FNVPjN61vWXhMsTznTzr1Rmn1SfFmdhFkY)
 - [hlatimer266](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkkwiqeqFrjPNvSNuNACpynpwiuVHqF8YHwGLzCBSfNJzZ)
 - [justarandomgeek](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkwfrBy9mKTfcVELcV4wc6zfN379FPMnAqsxnwt4j2TdQ2)
-
 
 ### v0.13.0
 
@@ -156,7 +147,8 @@
 
 **Performance**
 
-- Virtualized the file tree, commit diff, and patch-review diff views for smoother scrolling on large repositories and diffs
+- Virtualized the file tree, commit diff, and patch-review diff views for
+  smoother scrolling on large repositories and diffs
 - Sped up opening files and computing diff stats in large repositories
 - Sped up commit counting using git's bitmap index
 - Improved issues list loading performance
@@ -166,8 +158,8 @@
 - Fixed patches list pagination loading everything at once instead of paging
 - Fixed the update checker reading a stale cached version file
 - Fixed the Linux launcher showing the wrong app name
-- List scroll position is now restored when navigating back and forth through history
-
+- List scroll position is now restored when navigating back and forth through
+  history
 
 ### v0.12.0
 
@@ -185,7 +177,6 @@
 - Fixed the Linux AppImage failing to launch on non-Debian distributions
 - Fixed duplicate CI job runs by deduplicating them by run ID
 
-
 ### v0.11.0
 
 **Features**
@@ -194,10 +185,12 @@
 - Added repo pinning to keep favorite repos at the top of the sidebar
 - Added a fuzzy filter to the notification inbox
 - Added a reload button to the sidebar
-- Added a custom in-app context menu for sidebar items and disabled the native browser menu app-wide
+- Added a custom in-app context menu for sidebar items and disabled the native
+  browser menu app-wide
 - Redesigned the CI job status popover and added it to the single-commit view
 - Reviews can now be started directly from a code comment on a revision diff
-- Issue and patch breadcrumbs now show status-specific labels and link back to the matching filter
+- Issue and patch breadcrumbs now show status-specific labels and link back to
+  the matching filter
 - The first revision description is now shown on the patch view
 - Replies are now indented into individual boxes for clearer threading
 - Reactions have been restyled and your own reactions are highlighted
@@ -227,7 +220,6 @@
 - Worked around alias lookups failing in some cases
 - Improved Windows compatibility (CLI detection and npm script hints)
 
-
 **Shout-out to our contributors 🙏✨**
 
 - [2color](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MktwkohCx8aHZ1QCjVZUiLmX92oPZFxRiFZkbq32Tk5Tkm)
@@ -239,7 +231,6 @@
 - [lorenz](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkkPvBfjP4bQmco5Dm7UGsX2ruDBieEHi8n9DVJWX5sTEz)
 - [yarikoptic](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkfCGiLM9j7AstSVNGhqtz9zkAhfb863etsbkRnXsipuRr)
 
-
 ### v0.10.0
 
 - Fixed app loading indicator
@@ -250,7 +241,6 @@
 **Shout-out to our contributors 🙏✨**
 
 - [lorenz](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkkPvBfjP4bQmco5Dm7UGsX2ruDBieEHi8n9DVJWX5sTEz)
-
 
 ### v0.9.0
 
@@ -268,7 +258,8 @@
 - Getting started guide shown to new users on first launch
 - Added a setting to disable the notification badge
 - Added a code font setting
-- Fixed reactions and edits incorrectly targeting the root comment instead of the intended reply
+- Fixed reactions and edits incorrectly targeting the root comment instead of
+  the intended reply
 - Restricted issue/patch state, labels, and assignees to delegates only
 
 **Shout-out to our contributors 🙏✨**
@@ -276,25 +267,25 @@
 - [brandonhaslegs](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkpwnLQxFBQXyMK3Es91s8A7Ew7G11BFFyng1dqZR8QhG3)
 - [julien](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkgvaRdahQZfnf7ccMHByeHtTYrMrM3MuSGYawF6ZL6DNj)
 
-
 ### v0.8.0
 
-- CI job run statuses are now shown for the default branch and in patch revision commit lists
+- CI job run statuses are now shown for the default branch and in patch revision
+  commit lists
 - Fixed an issue where commit listings reversed when switching between patches
 - Fixed a bug that prevented replying to review comments
 - Fixed app version check feature
 - Fixed incorrect IDs (e.g., patch revision, comments) being copied to clipboard
-- Improved accessibility and keyboard navigation in repository filters on the home view
+- Improved accessibility and keyboard navigation in repository filters on the
+  home view
 
 **Shout-out to our contributors 🙏✨**
 
 - [geigerzaehler](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6Mki9XNNHeVRnYS88U59iCBzKUp2xWM3f4zvA3cXuKJFvWF)
 
-
 ### v0.7.1
 
-- Fixed a bug in patch and notification lists caused by a library incompatibility
-
+- Fixed a bug in patch and notification lists caused by a library
+  incompatibility
 
 ### v0.7.0
 
@@ -307,12 +298,11 @@
 
 - [geigerzaehler](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6Mki9XNNHeVRnYS88U59iCBzKUp2xWM3f4zvA3cXuKJFvWF)
 
-
 ### v0.6.1
 
 - Fixed a bug where the app wouldn't onboard new users or locked identities
-- Fixed regression where the current version of the app wasn't including the commit it was built from
-
+- Fixed regression where the current version of the app wasn't including the
+  commit it was built from
 
 ### v0.6.0
 
@@ -326,7 +316,6 @@
 
 - [geigerzaehler](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6Mki9XNNHeVRnYS88U59iCBzKUp2xWM3f4zvA3cXuKJFvWF)
 
-
 ### v0.5.0
 
 - The app is now officially available via Arch packaging
@@ -337,8 +326,10 @@
 - Fullscreen error shown if COB schemas need upgrading
 - UI improvements: themed scrollbars that auto-hide and match the color scheme
 - Repos can now be seeded by RID directly from the app
-- Added warning and one-click recovery when COB cache is out of date, fixing mismatched patch/issue counters
-- Fixed regression where single patch view didn’t load additional items on scroll
+- Added warning and one-click recovery when COB cache is out of date, fixing
+  mismatched patch/issue counters
+- Fixed regression where single patch view didn’t load additional items on
+  scroll
 
 **Shout-out to our contributors 🙏✨**
 
@@ -347,17 +338,16 @@
 - [lorenz](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkkPvBfjP4bQmco5Dm7UGsX2ruDBieEHi8n9DVJWX5sTEz)
 - [tippfehlr](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MksSTAFPKk7eQju9aGzK64qpfiSnKQ1tJWv1rdzRd5bMHU)
 
-
 ### v0.4.1
 
 - Fixed a bug in the release pipeline to update the latest artifacts
 - Added WSL2 installation instructions to https://radworks.garden
 
-
 ### v0.4.0
 
 - Notification inbox is now accessible from any view without navigating away
-- App icon now shows a badge with the unread notification count and polls for updates
+- App icon now shows a badge with the unread notification count and polls for
+  updates
 - Added global breadcrumbs for easier navigation
 - Added quick copy actions for IDs and links to https://radicle.network
 - Syntax highlighting added for diffs in markdown code blocks (` ```diff `)
@@ -373,7 +363,6 @@
 - [tshepang](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkfPSKW7AgQqXSi8fgEJMduHpm9ABmsPYwPhMeF7PssonK)
 - [youthlic](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MktsSuE4bVYbuTtEPjmhrQWA7dMri7GUg9Qp9o8tRCsmhu)
 
-
 ### v0.3.0
 
 - New onboarding guide to help users get started faster
@@ -382,13 +371,13 @@
 - Settings now show version and commit hash for easier support
 - Fixed notification count and comment placement bugs
 
-
 ### v0.2.0
 
 - Added font size controls for enhanced readability and accessibility
-- Introduced contextual explainers in key areas to guide users and improve overall user experience
-- Enhanced contrast in both dark and light modes to improve legibility and visual clarity
-
+- Introduced contextual explainers in key areas to guide users and improve
+  overall user experience
+- Enhanced contrast in both dark and light modes to improve legibility and
+  visual clarity
 
 ### v0.1.0
 
