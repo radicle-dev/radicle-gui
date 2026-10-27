@@ -368,6 +368,39 @@ export function getBranchesFromRefs(
   return branches;
 }
 
+export function compareTagNames(a: string, b: string): number {
+  if (b.startsWith(`${a}-`)) return -1;
+  if (a.startsWith(`${b}-`)) return 1;
+  return b.localeCompare(a, undefined, { numeric: true });
+}
+
+export interface TagGroup<T> {
+  namespace: string;
+  tags: [string, T][];
+}
+
+export function groupTags<T>(
+  tags: [string, T][],
+  timestampOf: (tag: T) => number = () => 0,
+): TagGroup<T>[] {
+  const groups = new Map<string, { tags: [string, T][]; newest: number }>();
+  for (const tag of tags) {
+    const slash = tag[0].lastIndexOf("/");
+    const namespace = slash === -1 ? "" : tag[0].slice(0, slash);
+    const group = groups.get(namespace) ?? { tags: [], newest: 0 };
+    group.tags.push(tag);
+    group.newest = Math.max(group.newest, timestampOf(tag[1]));
+    groups.set(namespace, group);
+  }
+
+  return [...groups.entries()]
+    .sort(([nsA, a], [nsB, b]) => b.newest - a.newest || nsA.localeCompare(nsB))
+    .map(([namespace, group]) => ({
+      namespace,
+      tags: group.tags.sort(([a], [b]) => compareTagNames(a, b)),
+    }));
+}
+
 export function getTagsFromRefs(
   refs: Record<string, string>,
 ): Record<string, string> {

@@ -448,3 +448,68 @@ describe("fragmentId", () => {
     expect(utils.fragmentId(hash)).toEqual(expected);
   });
 });
+
+describe("compareTagNames", () => {
+  test("sorts version tags numerically, newest first", () => {
+    const tags = [
+      "v0.1.0",
+      "v0.10.0",
+      "v0.2.0",
+      "v1.0.0-rc.10",
+      "v1.0.0",
+      "v1.0.0-rc.2",
+      "v0.10.1",
+    ];
+    expect(tags.sort(utils.compareTagNames)).toEqual([
+      "v1.0.0",
+      "v1.0.0-rc.10",
+      "v1.0.0-rc.2",
+      "v0.10.1",
+      "v0.10.0",
+      "v0.2.0",
+      "v0.1.0",
+    ]);
+  });
+});
+
+describe("groupTags", () => {
+  test("keeps namespaces together, most recent first", () => {
+    const tags: [string, number][] = [
+      ["releases/0.29.0", 3],
+      ["releases/0.9.0", 1],
+      ["releases/desktop/0.16.0", 3],
+      ["releases/desktop/0.17.0", 4],
+      ["releases/httpd/0.29.0", 3],
+      ["releases/httpd/0.30.0", 5],
+    ];
+    expect(
+      utils
+        .groupTags(tags, timestamp => timestamp)
+        .map(group => ({
+          namespace: group.namespace,
+          tags: group.tags.map(([name]) => name),
+        })),
+    ).toEqual([
+      {
+        namespace: "releases/httpd",
+        tags: ["releases/httpd/0.30.0", "releases/httpd/0.29.0"],
+      },
+      {
+        namespace: "releases/desktop",
+        tags: ["releases/desktop/0.17.0", "releases/desktop/0.16.0"],
+      },
+      { namespace: "releases", tags: ["releases/0.29.0", "releases/0.9.0"] },
+    ]);
+  });
+
+  test("orders namespaces by name without timestamps", () => {
+    const tags: [string, undefined][] = [
+      ["v1.0.0", undefined],
+      ["releases/httpd/0.30.0", undefined],
+      ["releases/desktop/0.17.0", undefined],
+    ];
+    expect(
+      utils.groupTags(tags).flatMap(group => group.tags.map(([name]) => name)),
+    ).toEqual(["v1.0.0", "releases/desktop/0.17.0", "releases/httpd/0.30.0"]);
+  });
+});

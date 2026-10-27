@@ -7,6 +7,7 @@
     formatCommit,
     getBranchesFromRefs,
     getTagsFromRefs,
+    groupTags,
   } from "@app/lib/utils";
   import { replace } from "@app/lib/router";
 
@@ -32,8 +33,10 @@
 
   $: refs =
     type === "branches"
-      ? getBranchesFromRefs(peer.remote.refs)
-      : getTagsFromRefs(peer.remote.refs);
+      ? Object.entries(getBranchesFromRefs(peer.remote.refs))
+      : groupTags(Object.entries(getTagsFromRefs(peer.remote.refs))).flatMap(
+          group => group.tags,
+        );
 
   $: if (peer.selected) {
     expanded = true;
@@ -66,7 +69,7 @@
   </div>
 </div>
 {#if expanded}
-  {#each Object.entries(refs) as [name, head]}
+  {#each refs as [name, head]}
     <Link
       style={subgridStyle}
       route={{

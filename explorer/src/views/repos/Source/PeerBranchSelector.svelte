@@ -12,6 +12,7 @@
     getBranchesFromRefs,
     getTagsFromRefs,
     gravatarURL,
+    groupTags,
     safeDecodeURIComponent,
   } from "@app/lib/utils";
 
@@ -125,14 +126,10 @@
       (r.obj.peer === undefined ? 10 : 1) *
       (r.obj.peer?.alias ? 2 : 1),
   });
-  $: canonicalTags = Object.entries(canonicalTagsInfo).sort(
-    ([nameA, infoA], [nameB, infoB]) => {
-      const tsA = infoA.tagger?.timestamp ?? 0;
-      const tsB = infoB.tagger?.timestamp ?? 0;
-      if (tsA !== tsB) return tsB - tsA;
-      return nameB.localeCompare(nameA);
-    },
-  );
+  $: canonicalTags = groupTags(
+    Object.entries(canonicalTagsInfo),
+    info => info.tagger?.timestamp ?? 0,
+  ).flatMap(group => group.tags);
   $: canonicalBranches = Object.entries(canonicalBranchesMap).filter(
     ([branchName]) =>
       branchName !== repo.payloads["xyz.radicle.project"].data.defaultBranch,
