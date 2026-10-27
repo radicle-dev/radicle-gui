@@ -116,7 +116,22 @@
           and enable 'Notify on new versions' to receive notifications about new releases.
         </div>
 
-        {#if !radicleInstalled() && !$nodeRunning}
+        {#if radicleInstalled() === true && !$nodeRunning}
+          <div class="body">
+            <div class="global-flex" style:padding-bottom="1rem">
+              <Icon name="offline" />Your node is not running
+            </div>
+            <div style:padding-bottom="1rem">
+              Radicle is installed, but your node is stopped. Changes you make
+              are safe, but they won't be synced with the network until the node
+              is running.
+            </div>
+            <div style:padding-bottom="0.5rem">
+              To start your node, run this in your shell:
+            </div>
+            <Command styleWidth="fit-content" command="rad node start" />
+          </div>
+        {:else if radicleInstalled() === false && !$nodeRunning}
           <div class="body">
             <div class="global-flex" style:padding-bottom="1rem">
               <Icon name="warning" />Radicle CLI is not installed

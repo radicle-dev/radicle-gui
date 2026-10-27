@@ -3,7 +3,7 @@ import { invoke } from "@app/lib/invoke";
 
 let lock = false;
 
-let installed = $state(false);
+let installed = $state<boolean | undefined>(undefined);
 
 export const radicleInstalled = () => installed;
 
