@@ -1,13 +1,16 @@
 # radicle-gui
 
-Monorepo for Radicle's graphical interfaces. It holds two independent
-projects, each with its own npm package, Cargo workspace, toolchain files,
-checks and conventions:
+Monorepo for Radicle's graphical interfaces. It holds two projects, each with
+its own Cargo workspace, toolchain files, checks and conventions, and the UI
+code they share. One npm workspace at the root holds all three packages:
 
 - **Explorer** (`explorer/`): the Svelte web app for browsing Radicle
   repositories, its TypeScript HTTP client, and the `radicle-httpd` and
   `radicle-search` backends it talks to. See `explorer/AGENTS.md`.
 - **Desktop** (`desktop/`): the Tauri desktop app. See `desktop/AGENTS.md`.
+- **Shared UI** (`shared/ui/`): the `@radicle-gui/ui` package with Svelte
+  components, helpers, design tokens and fonts used by both apps. See
+  `shared/ui/AGENTS.md`.
 
 This file covers what applies to both. Each project's `AGENTS.md` is the
 source of truth for anything inside it.
@@ -18,20 +21,27 @@ source of truth for anything inside it.
 |---|---|
 | `explorer/` | Web app, HTTP client, `radicle-httpd` and `radicle-search` |
 | `desktop/` | Tauri app: Svelte frontend in `src/`, Rust in `crates/` |
+| `shared/ui/` | UI code shared by both apps |
+| `package.json`, `package-lock.json`, `.npmrc`, `.nvmrc` | The npm workspace, its lockfile and npm and Node settings |
 | `docs/adr/` | Decisions that affect the whole repository |
-| `.github/workflows/` | GitHub CI: `explorer-*.yml` for explorer, `desktop-*.yml` for desktop |
+| `.github/workflows/` | GitHub CI: `explorer-*.yml` for explorer, `desktop-*.yml` for desktop, `shared-ui.yml` for the shared UI |
 | `.buildkite/` | Radicle CI pipelines (explorer only) |
 | `.ryph/` | Dev machine image and setup for agents, see `.ryph/environment.md` |
 
 ## Working in this repo
 
-- Work out which project a change belongs to first, and run every command
-  from that project's directory. There are no root `npm` or `cargo`
-  commands.
+- Install npm dependencies at the root: `npm ci` for everything, or
+  `npm ci -w explorer` or `npm ci -w desktop` for one app. Run every other
+  command from the project's directory; there are no root `cargo` commands.
+- Work out which project a change belongs to first. Changes to `shared/ui`
+  affect both apps: check `shared/ui` and both apps.
 - A change that touches both projects is two changes: check each project
   with its own commands.
 - Explorer's components use legacy Svelte syntax (`$:`, stores,
-  `export let`), desktop's use Svelte 5 runes.
+  `export let`), desktop's and the shared ones use Svelte 5 runes.
+- Code in `shared/ui` must not import `@tauri-apps/*`, `@bindings`,
+  `@http-client` or anything else from one app. It takes plain props, and
+  each app adapts its own data to them.
 - Record a bigger architectural change as a new ADR, numbered after the last
   one and in the same format: in `docs/adr/` if it affects the whole
   repository, in the project's own `docs/adr/` otherwise.
@@ -46,7 +56,7 @@ source of truth for anything inside it.
   use proper English sentences
 - Ask before adding new dependencies: each one is a supply-chain risk, and
   installs are gated by `min-release-age` and `strict-allow-scripts`
-- Use npm, never `yarn` or `pnpm`: the lockfiles and `.npmrc` settings are
+- Use npm, never `yarn` or `pnpm`: the lockfile and `.npmrc` settings are
   npm's
 - Updates and audit fixes must respect each project's 7-day cooldown, see
   "Updating dependencies" below
@@ -66,8 +76,9 @@ source of truth for anything inside it.
 ## Updating dependencies
 
 Both projects only install releases that are at least 7 days old: npm through
-`min-release-age` in `.npmrc`, Cargo through `cooldown.toml` and
-`cargo-cooldown`. Run these from the project's directory:
+`min-release-age` in the root `.npmrc`, Cargo through `cooldown.toml` and
+`cargo-cooldown`. npm commands cover the whole workspace and change the root
+lockfile; run Cargo commands from the project's directory:
 
 ```sh
 npm audit                         # list advisories
@@ -77,11 +88,15 @@ cargo cooldown update -p <crate>  # update a crate within the cooldown
 ```
 
 - Never run plain `cargo update`: it ignores `cooldown.toml`
+- `katex` is pinned for the whole workspace by an override in the root
+  `package.json`, so mermaid and both apps use one version. Bump it there as
+  well as in the apps, or the apps' bump has no effect
 - Never run `npm audit fix --force`: it takes major-version bumps. Ask first
 - If a fix is still cooling down, report when it clears and ask before
   taking it early. Taking it early means reviewing the release's diff
   against the previous version, then:
-  - npm: `npm install <pkg>@<version> --min-release-age=0`
+  - npm: `npm install <pkg>@<version> -w <project> --min-release-age=0` at
+    the root
   - Cargo: add an `[[allow.exact]]` entry to `cooldown.toml` with a comment
     naming the advisory and the date it can be removed
 

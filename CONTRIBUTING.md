@@ -1,8 +1,8 @@
 # Contributing
 
 This repository holds two projects, each with its own development guide:
-`explorer/README.md` and `desktop/README.md`. This file covers what
-applies to both.
+`explorer/README.md` and `desktop/README.md`, and the UI code they share in
+`shared/ui/`. This file covers what applies to all of them.
 
 * Before adding any code dependencies, check with the maintainers if this is okay.
 * Write properly formatted comments: they should be english sentences, eg:
@@ -31,9 +31,10 @@ When proposing changes via a patch:
 
 Both projects only install releases that are at least 7 days old, to give
 the ecosystem time to catch compromised packages. npm enforces this through
-`min-release-age` in each project's `.npmrc`; Cargo through its
-`cooldown.toml`, which needs `cargo install cargo-cooldown cargo-audit`.
-From the project's directory:
+`min-release-age` in the root `.npmrc`; Cargo through each project's
+`cooldown.toml`, which needs `cargo install cargo-cooldown cargo-audit`. npm
+commands cover the whole workspace from anywhere in it; run Cargo commands
+from the project's directory:
 
 ```sh
 npm audit
@@ -46,8 +47,8 @@ Use `cargo cooldown update` rather than `cargo update`, which ignores the
 cooldown, and avoid `npm audit fix --force`, which takes major-version bumps.
 
 When a security fix is still cooling down and can't wait, review the release's
-diff against the previous version first. Then install it with
-`npm install <pkg>@<version> --min-release-age=0`, or allow it in
+diff against the previous version first. Then install it at the root with
+`npm install <pkg>@<version> -w <project> --min-release-age=0`, or allow it in
 `cooldown.toml` with an `[[allow.exact]]` entry and a comment naming the
 advisory and the date it can be removed.
 
@@ -107,7 +108,7 @@ filters can tell the projects apart:
 | `httpd` | `explorer/crates/radicle-httpd/` and `explorer/crates/radicle-search/` |
 
 A patch that touches several components gets several labels. Changes to
-shared files (`.github/`, `.buildkite/`, `.ryph/`, root docs) get the labels
+shared files (`shared/`, `.github/`, `.buildkite/`, `.ryph/`, root files) get the labels
 of the components they affect. `git push` can't set labels, so add them
 once the patch is open:
 

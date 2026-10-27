@@ -4,10 +4,12 @@ Tauri desktop app for Radicle. Svelte 5 frontend communicates with a Rust
 backend via Tauri IPC commands. TypeScript types are generated from Rust
 structs using ts-rs (`crates/radicle-types/`).
 
-The app lives in `desktop/` of the radicle-gui monorepo. It is its own npm
-package and Cargo workspace: run every command here from `desktop/`, and all
-paths in this file are relative to it. Conventions shared with explorer
-are in the root `AGENTS.md`.
+The app lives in `desktop/` of the radicle-gui monorepo. It is a package in
+the root npm workspace and its own Cargo workspace: install npm dependencies
+at the repository root with `npm ci -w desktop`, and run every other command
+here from `desktop/`. All paths in this file are relative to it. Conventions
+shared with explorer are in the root `AGENTS.md`, and UI code shared with it
+lives in `shared/ui/`.
 
 ## Svelte syntax and aliases
 

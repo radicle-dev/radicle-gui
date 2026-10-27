@@ -3,10 +3,12 @@
 The Svelte web app for browsing Radicle repositories, its TypeScript HTTP
 client, and the `radicle-httpd` and `radicle-search` backends it talks to.
 
-The project lives in `explorer/` of the radicle-gui monorepo. It is its own
-npm package and Cargo workspace: run every command here from `explorer/`,
-and all paths in this file are relative to it. Conventions shared with
-desktop are in the root `AGENTS.md`.
+The project lives in `explorer/` of the radicle-gui monorepo. It is a
+package in the root npm workspace and its own Cargo workspace: install npm
+dependencies at the repository root with `npm ci -w explorer`, and run every
+other command here from `explorer/`. All paths in this file are relative to
+it. Conventions shared with desktop are in the root `AGENTS.md`, and UI code
+shared with it lives in `shared/ui/`.
 
 ## Checks and linting (tsc, svelte-check, eslint, prettier)
 
