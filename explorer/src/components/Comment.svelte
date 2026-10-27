@@ -75,6 +75,7 @@
     gap: 0.5rem;
     border-radius: var(--border-radius-sm);
     scroll-margin-top: 5rem;
+    min-width: 0;
   }
   .card.targeted {
     box-shadow: 0 0 0 2px var(--color-border-brand);
@@ -127,6 +128,11 @@
     word-wrap: break-word;
     font: var(--txt-body-m-regular);
     padding: 0 2.25rem;
+  }
+  .card-body-content {
+    overflow: hidden;
+    width: 100%;
+    min-width: 0;
   }
   .card-empty-body {
     padding: 0;
@@ -226,7 +232,7 @@
 
   {#if body}
     <div class="card-body">
-      <div style:overflow="hidden" style:width="100%">
+      <div class="card-body-content">
         <Markdown breaks {rawPath} content={body} />
       </div>
     </div>
