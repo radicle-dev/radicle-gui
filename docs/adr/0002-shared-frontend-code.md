@@ -4,13 +4,13 @@ Date: 2026-10-21
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
 Desktop and explorer have copied a lot of front-end code from each other.
-Desktop is the most developed of the two and already on Svelte 5, so it is the
-source we extract shared code from.
+This ADR decides how both apps consume shared code; ADR 3 decides what moves
+into it and in which shape.
 
 We also considered consuming `shared/ui` as a plain source folder and as a
 local `file:` dependency. Both need workarounds in each app's Vite and
@@ -29,9 +29,6 @@ Shared stylesheets and fonts live in `shared/ui/public`. A Vite plugin from the
 package serves them next to each app's public directory in dev and adds them
 to the build, so the apps keep their `<link>` tags, marked `vite-ignore`.
 
-Shared code must not import `@tauri-apps/*`, `@bindings` or `@http-client`.
-It takes plain props, and each app adapts its own data to them.
-
 ## Consequences
 
 - The apps share one dependency tree. Shared code gets a single copy of
@@ -42,5 +39,3 @@ It takes plain props, and each app adapts its own data to them.
 - Installs and builds start from the repository root. Working on one app means
   installing it with `-w`, and Nix, Docker and CI have to use the root
   lockfile.
-- Shared components are written with runes. Explorer can render them while it
-  still uses legacy syntax, at the cost of some friction where the two meet.
