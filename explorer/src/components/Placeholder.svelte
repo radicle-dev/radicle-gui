@@ -3,7 +3,7 @@
 
   import Icon from "./Icon.svelte";
 
-  export let iconName: ComponentProps<Icon>["name"];
+  export let iconName: ComponentProps<Icon>["name"] | undefined = undefined;
   export let caption: string;
   export let inline: boolean = false;
 </script>
@@ -33,7 +33,9 @@
 </style>
 
 <div class="placeholder" class:inline>
-  <div class="icon"><Icon name={iconName} /></div>
+  {#if iconName}
+    <div class="icon"><Icon name={iconName} /></div>
+  {/if}
   {#each caption.split("\n") as line}
     {line}
     <br />

@@ -43,6 +43,7 @@
     fileDiff.type === "plain" &&
     fileDiff.hunks.some(h => h.lines.some(l => !l.line));
   $: extension = filePath.split(".").pop();
+  $: previewContent = headerBadgeCaption === "deleted" ? oldContent : content;
 
   onMount(() => {
     window.addEventListener("click", deselectHandler);
@@ -435,18 +436,20 @@
             </Button>
           </Radio>
         {/if}
-        <Link
-          route={{
-            resource: "repo.source",
-            repo: repoId,
-            node: baseUrl,
-            path: filePath,
-            revision,
-          }}>
-          <IconButton title="View file at this commit">
-            <Icon name="chevron-left-right" />
-          </IconButton>
-        </Link>
+        {#if headerBadgeCaption !== "deleted"}
+          <Link
+            route={{
+              resource: "repo.source",
+              repo: repoId,
+              node: baseUrl,
+              path: filePath,
+              revision,
+            }}>
+            <IconButton title="View file at this commit">
+              <Icon name="chevron-left-right" />
+            </IconButton>
+          </Link>
+        {/if}
       </div>
     {/if}
   </svelte:fragment>
@@ -517,16 +520,16 @@
             {/each}
           </tbody>
         </table>
-      {:else if isImagePath(filePath) && extension && content}
+      {:else if isImagePath(filePath) && extension && previewContent}
         <div style:margin="1rem 0" style:text-align="center">
           <img
-            src={`data:image/${extension};base64,${content}`}
+            src={`data:image/${extension};base64,${previewContent}`}
             alt={filePath} />
         </div>
-      {:else if preview && content}
+      {:else if preview && previewContent}
         <div style:margin="1rem 0" style:text-align="center">
           <img
-            src={`data:image/svg+xml;base64,${btoa(content)}`}
+            src={`data:image/svg+xml;base64,${btoa(previewContent)}`}
             alt={filePath} />
         </div>
       {:else}
@@ -534,6 +537,18 @@
           <Placeholder iconName="document" caption="Empty file" inline />
         </div>
       {/if}
+    {:else if isImagePath(filePath) && extension && previewContent}
+      <div style:margin="1rem 0" style:text-align="center">
+        <img
+          src={`data:image/${extension};base64,${previewContent}`}
+          alt={filePath} />
+      </div>
+    {:else if isImagePath(filePath)}
+      <div
+        style:margin="1rem 0"
+        title="The file may be too large for the seed node to serve, or it failed to load.">
+        <Placeholder caption="Preview not available" inline />
+      </div>
     {:else}
       <div style:margin="1rem 0">
         <Placeholder iconName="binary" caption="Binary file" inline />
