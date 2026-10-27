@@ -40,7 +40,7 @@
     baseUrl.port === config.nodes.defaultHttpdPort
       ? ""
       : `:${baseUrl.port}`;
-  $: archiveUrl = `curl -OJ ${baseUrl.scheme}://${baseUrl.hostname}${portFragment}/raw/${alias ?? id}/archive/${currentRefname}`;
+  $: archiveUrl = `${baseUrl.scheme}://${baseUrl.hostname}${portFragment}/raw/${alias ?? id}/archive/${currentRefname}`;
   $: gitCloneUrl = `git clone ${baseUrl.scheme}://${
     baseUrl.hostname
   }${portFragment}/${alias ?? parseRepositoryId(id)?.pubkey ?? id}.git ${name}`;
@@ -127,7 +127,9 @@
               If you don’t have Radicle installed, you can still download an
               archive of the repository.
             </label>
-            <Command command={archiveUrl} />
+            <Command
+              command={`curl -OJ ${archiveUrl}`}
+              downloadHref={archiveUrl} />
             <div style:margin-top="1.5rem">
               Note that a compressed archive of the source code does not include
               any of the social artifacts such as issues or patches nor the git

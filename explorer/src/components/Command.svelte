@@ -1,9 +1,11 @@
 <script lang="ts">
   import Clipboard from "@app/components/Clipboard.svelte";
+  import Icon from "@app/components/Icon.svelte";
 
   export let command: string;
   export let fullWidth: boolean = false;
   export let showPrompt: boolean = true;
+  export let downloadHref: string | undefined = undefined;
 
   let clipboard: Clipboard;
 </script>
@@ -31,15 +33,24 @@
     border: 1px solid var(--color-border-mid);
     color: var(--color-text-primary);
   }
-  .clipboard {
+  .with-download {
+    padding-right: 3.5rem;
+  }
+  .actions {
     display: flex;
     align-items: center;
-    justify-content: center;
     position: absolute;
-    right: 0;
+    right: 0.25rem;
     top: 0;
-    width: 2rem;
     height: 100%;
+  }
+  .download {
+    width: 1.5rem;
+    height: 1.5rem;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    color: inherit;
   }
 
   .full-width.wrapper,
@@ -55,6 +66,7 @@
     tabindex="0"
     class="cmd"
     class:full-width={fullWidth}
+    class:with-download={downloadHref}
     on:click={() => {
       clipboard.copy();
     }}>
@@ -62,7 +74,18 @@
       {#if showPrompt}${/if}
       {command}
     </div>
-    <div class="clipboard">
+    <div class="actions">
+      {#if downloadHref}
+        <a
+          class="download"
+          href={downloadHref}
+          download
+          aria-label="Download"
+          title="Download"
+          on:click|stopPropagation>
+          <Icon name="download" />
+        </a>
+      {/if}
       <Clipboard bind:this={clipboard} text={command} />
     </div>
   </div>
