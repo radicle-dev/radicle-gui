@@ -1,19 +1,21 @@
 import type { BaseUrl } from "@http-client";
-import type { ErrorRoute, NotFoundRoute } from "@app/lib/router/definitions";
+import type { ErrorRoute } from "@app/lib/router/definitions";
 
+import config from "@app/lib/config";
 import { ResponseParseError, ResponseError } from "@http-client/lib/fetcher";
 
 export function handleError(
   error: Error | ResponseParseError | ResponseError,
   baseUrl: BaseUrl,
-): NotFoundRoute | ErrorRoute {
+): ErrorRoute {
   if (error instanceof ResponseParseError) {
+    const version = error.apiVersion ? ` (v${error.apiVersion})` : "";
     return {
       resource: "error",
       params: {
         error,
-        title: "Could not parse the request",
-        description: error.description,
+        title: "This node isn’t supported",
+        description: `The node responded, but this explorer couldn’t read its response. It’s probably running a version of radicle-httpd${version} that this explorer doesn’t support (${config.nodes.requiredApiVersion}).`,
         baseUrl,
       },
     };
@@ -23,8 +25,7 @@ export function handleError(
       params: {
         error,
         title: "Could not load this node",
-        description:
-          "You’re trying to access a node that is not reachable. Make sure the address below is correct and the right ports are exposed if it’s your node.",
+        description: `The node responded with an error (${error.status}). It may be having temporary problems, or it may be misconfigured.`,
         baseUrl,
       },
     };
@@ -33,11 +34,11 @@ export function handleError(
     error.message === "Failed to fetch"
   ) {
     return {
-      resource: "notFound",
+      resource: "error",
       params: {
-        title: "Could not connect to",
+        title: "Could not reach this node",
         description:
-          "The node may be offline or the address may be incorrect.\nSelect a different node to continue.",
+          "The node may be offline, or the address may be wrong. If it’s your node, make sure radicle-httpd is running and its port is reachable.",
         baseUrl,
       },
     };
@@ -47,8 +48,7 @@ export function handleError(
       params: {
         error,
         title: "Could not load this node",
-        description:
-          "You stumbled on an unknown error, we aren’t exactly sure what happened.",
+        description: "Something unexpected went wrong while loading this node.",
         baseUrl,
       },
     };

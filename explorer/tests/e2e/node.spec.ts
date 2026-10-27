@@ -57,19 +57,18 @@ test("unreachable node shows error with seed selector", async ({ page }) => {
     waitUntil: "networkidle",
   });
 
-  // Shows the error title with the unreachable hostname.
-  await expect(page.getByText("Could not connect to")).toBeVisible();
-  await expect(page.getByText("this.node.does.not.exist.xyz")).toBeVisible();
-
-  // Shows the description.
+  await expect(page.getByText("Could not reach this node")).toBeVisible();
   await expect(
-    page.getByText("The node may be offline or the address may be incorrect."),
+    page.getByText("The node may be offline, or the address may be wrong."),
   ).toBeVisible();
   await expect(
-    page.getByText("Select a different node to continue."),
+    page.getByText("https://this.node.does.not.exist.xyz:443"),
   ).toBeVisible();
 
-  // Shows the seed selector toggle.
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Go to localhost" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Seed selector" }),
   ).toBeVisible();
@@ -82,7 +81,7 @@ test("seed selector on not-found page allows navigating to a working node", asyn
     waitUntil: "networkidle",
   });
 
-  await expect(page.getByText("Could not connect to")).toBeVisible();
+  await expect(page.getByText("Could not reach this node")).toBeVisible();
 
   // Open the seed selector and navigate to the working local node.
   await page.getByRole("button", { name: "Seed selector" }).click();

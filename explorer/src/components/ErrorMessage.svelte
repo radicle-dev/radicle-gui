@@ -37,6 +37,7 @@
     background-color: var(--color-surface-mid);
     border-radius: var(--border-radius-sm);
     padding: 0.125rem 0.25rem;
+    overflow-wrap: anywhere;
   }
 
   .help {
@@ -62,6 +63,7 @@
   {#if seed}
     <div class="label"><code>{seed}</code></div>
   {/if}
+  <slot />
   {#if error}
     <div class="help">
       If you need help resolving this issue, copy the error message

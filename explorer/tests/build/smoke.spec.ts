@@ -5,5 +5,5 @@ test("exceptions in production build", async ({ page }) => {
   // Wait for scripts to finish executing, there might be exceptions that
   // happen after the page has been painted.
   await page.waitForTimeout(2000);
-  await expect(page.getByText("Could not connect to")).toBeVisible();
+  await expect(page.getByText("Could not reach this node")).toBeVisible();
 });
