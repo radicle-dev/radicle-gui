@@ -19,6 +19,7 @@
     grid-area: left;
     background-color: var(--color-surface-base);
     height: calc(100vh - var(--global-header-height));
+    overflow-y: auto;
   }
   .center {
     grid-area: center;

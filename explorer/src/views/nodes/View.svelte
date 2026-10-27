@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { BaseUrl, Node, NodeStats } from "@http-client";
 
+  import { tick } from "svelte";
+
   import dompurify from "dompurify";
   import { markdown, sanitizeConfig } from "@app/lib/markdown";
 
@@ -22,6 +24,33 @@
   export let baseUrl: BaseUrl;
   export let stats: NodeStats;
   export let node: Node;
+
+  let descriptionContent: HTMLDivElement | undefined = undefined;
+  let descriptionExpanded = false;
+  let descriptionTruncated = false;
+
+  // Clamp to three lines, but only when that hides at least two: a Show more
+  // that reveals a single line costs as much space as the line itself.
+  function measureDescription() {
+    if (descriptionContent && !descriptionExpanded) {
+      const lineHeight = parseFloat(
+        getComputedStyle(descriptionContent).lineHeight,
+      );
+      descriptionTruncated = descriptionContent.offsetHeight > 4.5 * lineHeight;
+    }
+  }
+
+  function observeSize(element: HTMLElement) {
+    const observer = new ResizeObserver(measureDescription);
+    observer.observe(element);
+    return { destroy: () => observer.disconnect() };
+  }
+
+  $: {
+    descriptionExpanded = false;
+    void node.description;
+    void tick().then(measureDescription);
+  }
 
   function render(content: string): string {
     return dompurify.sanitize(
@@ -73,6 +102,34 @@
 
   .description {
     word-break: break-word;
+  }
+
+  .description.clamped {
+    max-height: 3.75rem;
+    overflow: hidden;
+    mask-image: linear-gradient(to bottom, black 50%, transparent);
+  }
+
+  .description :global(p:first-child) {
+    margin-top: 0;
+  }
+
+  .description :global(p:last-child) {
+    margin-bottom: 0;
+  }
+
+  .description-toggle {
+    margin-top: 0.25rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    font: var(--txt-body-m-semibold);
+    color: var(--color-text-secondary);
+  }
+
+  .description-toggle:hover {
+    color: var(--color-text-primary);
   }
 
   .sidebar-item {
@@ -138,8 +195,22 @@
         </div>
 
         {#if node.description}
-          <div class="description txt-body-m-regular">
-            {@html render(node.description)}
+          <div>
+            <div
+              class="description txt-body-m-regular"
+              class:clamped={descriptionTruncated && !descriptionExpanded}>
+              <div bind:this={descriptionContent} use:observeSize>
+                {@html render(node.description)}
+              </div>
+            </div>
+            {#if descriptionTruncated}
+              <button
+                class="description-toggle"
+                aria-expanded={descriptionExpanded}
+                on:click={() => (descriptionExpanded = !descriptionExpanded)}>
+                {descriptionExpanded ? "Show less" : "Show more"}
+              </button>
+            {/if}
           </div>
         {:else}
           <div
