@@ -295,18 +295,30 @@
     selectedCommit ? selectedCommit !== commitId : false;
 
   let commitList = $state<Commit[]>([]);
+  let commitListRange = $state<string>();
   $effect(() => {
     const ridLocal = rid;
     const baseRev = revision.base;
     const headRev = revision.head;
     let cancelled = false;
     void cachedListCommits(ridLocal, baseRev, headRev).then(c => {
-      if (!cancelled) commitList = c;
+      if (!cancelled) {
+        commitList = c;
+        commitListRange = `${baseRev}..${headRev}`;
+      }
     });
     return () => {
       cancelled = true;
     };
   });
+
+  // A revision whose head is already part of its base, e.g. after a rebase
+  // onto a branch that contains its commits, has nothing to list or diff.
+  const noCommits = $derived(
+    commitListRange === `${revision.base}..${revision.head}` &&
+      commitList.length === 0,
+  );
+  const emptyRevision = $derived(noCommits && stats?.filesChanged === 0);
 
   // A single-commit revision has nothing to choose between, so select that
   // commit automatically to surface its message. The diff stays the
@@ -581,6 +593,26 @@
   .stats {
     min-width: 0;
   }
+  .no-commits {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    padding: 2rem 1.25rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--border-radius-md);
+    background-color: var(--color-surface-canvas);
+    color: var(--color-text-tertiary);
+    text-align: center;
+  }
+  .no-commits-title {
+    color: var(--color-text-primary);
+  }
+  .no-commits-body {
+    max-width: 32rem;
+    color: var(--color-text-secondary);
+  }
   .selected-commit-message {
     margin-bottom: 1rem;
     padding: 0.75rem;
@@ -819,29 +851,45 @@
       </div>
     {/if}
   {/if}
-  <div class="stats-row txt-body-m-regular">
-    <div class="stats" style:color="var(--color-text-secondary)">
-      {#if diffFailed}
-        <span style:color="var(--color-feedback-error-text)">
-          Failed to load the changes.
-        </span>
-      {:else if stats}
-        {stats.filesChanged}
-        {pluralize("file", stats.filesChanged)} modified with
-        <span style:color="var(--color-feedback-success-text)">
-          {stats.insertions}
-          {pluralize("insertion", stats.insertions)}
-        </span>
-        and
-        <span style:color="var(--color-feedback-error-text)">
-          {stats.deletions}
-          {pluralize("deletion", stats.deletions)}
-        </span>
-      {:else}
-        Loading…
-      {/if}
+  {#if emptyRevision}
+    <div class="no-commits">
+      <Icon name="commit" />
+      <div class="no-commits-title txt-body-m-medium">
+        No commits in this revision
+      </div>
+      <div class="no-commits-body txt-body-m-regular">
+        {#if revision.head === revision.base}
+          Its head is the same commit as its base.
+        {:else}
+          Its head is already part of its base.
+        {/if}
+      </div>
     </div>
-  </div>
+  {:else}
+    <div class="stats-row txt-body-m-regular">
+      <div class="stats" style:color="var(--color-text-secondary)">
+        {#if diffFailed}
+          <span style:color="var(--color-feedback-error-text)">
+            Failed to load the changes.
+          </span>
+        {:else if stats}
+          {stats.filesChanged}
+          {pluralize("file", stats.filesChanged)} modified with
+          <span style:color="var(--color-feedback-success-text)">
+            {stats.insertions}
+            {pluralize("insertion", stats.insertions)}
+          </span>
+          and
+          <span style:color="var(--color-feedback-error-text)">
+            {stats.deletions}
+            {pluralize("deletion", stats.deletions)}
+          </span>
+        {:else}
+          Loading…
+        {/if}
+      </div>
+    </div>
+  {/if}
 
   <div>
     {#if selectedCommitData}
@@ -881,6 +929,6 @@
   codeComments={diffCodeComments}
   commentCommit={isRevisionDiff ? head : undefined}
   header={diffHeader}
-  overlayLeft={commitsColumn}
+  overlayLeft={noCommits ? undefined : commitsColumn}
   {filesHeader}
   stickyTop={tabs} />
