@@ -4,4 +4,4 @@ set -e
 # svelte-check also type-checks the .ts files in tsconfig.json, like tsc would.
 npx svelte-check --tsconfig tsconfig.json --fail-on-warnings --compiler-warnings options_missing_custom_element:ignore
 npx eslint --cache --cache-location node_modules/.cache/eslint --max-warnings 0 .
-npx prettier "**/*.@(ts|js|svelte|json|css|html|yml)" "!crates/**/*" --ignore-path .gitignore --check --cache
+npx prettier . --check --cache
