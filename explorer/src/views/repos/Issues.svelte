@@ -8,11 +8,11 @@
   import Button from "@app/components/Button.svelte";
   import ErrorMessage from "@app/components/ErrorMessage.svelte";
   import Icon from "@app/components/Icon.svelte";
+  import InfiniteScroll from "@app/components/InfiniteScroll.svelte";
   import IssueTeaser from "@app/views/repos/Issue/IssueTeaser.svelte";
   import Layout from "./Layout.svelte";
   import Link from "@app/components/Link.svelte";
   import List from "@app/components/List.svelte";
-  import Loading from "@app/components/Loading.svelte";
   import Placeholder from "@app/components/Placeholder.svelte";
   import Separator from "./Separator.svelte";
 
@@ -26,6 +26,7 @@
 
   let loading = false;
   let page = 0;
+  let reachedEnd: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let error: any;
   let allIssues: Issue[];
@@ -33,20 +34,32 @@
   $: {
     allIssues = issues;
     page = 0;
+    reachedEnd = false;
+    error = undefined;
   }
 
   const api = new HttpdClient(baseUrl);
 
-  async function loadIssues(status: IssueState["status"]): Promise<void> {
+  async function loadMore(): Promise<void> {
+    if (loading) {
+      return;
+    }
+    const requestedStatus = status;
+    const next = page + 1;
     loading = true;
-    page += 1;
+    error = undefined;
     try {
       const response = await api.repo.getAllIssues(repo.rid, {
-        status,
-        page,
+        status: requestedStatus,
+        page: next,
         perPage: ISSUES_PER_PAGE,
       });
+      if (requestedStatus !== status) {
+        return;
+      }
       allIssues = [...allIssues, ...response];
+      page = next;
+      reachedEnd = response.length < ISSUES_PER_PAGE;
     } catch (e) {
       error = e;
     } finally {
@@ -54,9 +67,8 @@
     }
   }
 
-  $: showMoreButton =
-    !loading &&
-    !error &&
+  $: hasMore =
+    !reachedEnd &&
     allIssues.length < repo.payloads["xyz.radicle.project"].meta.issues[status];
 </script>
 
@@ -66,13 +78,6 @@
     gap: 0.25rem;
     padding: 1rem;
     border-bottom: 1px solid var(--color-border-subtle);
-  }
-  .more {
-    margin-top: 2rem;
-    min-height: 3rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
   .counter {
     border-radius: var(--border-radius-sm);
@@ -171,20 +176,9 @@
     </div>
   {/if}
 
-  {#if loading || showMoreButton}
-    <div class="more">
-      {#if loading}
-        <Loading noDelay small={page !== 0} center />
-      {/if}
-
-      {#if showMoreButton}
-        <Button
-          size="large"
-          variant="outline"
-          on:click={() => loadIssues(status)}>
-          More
-        </Button>
-      {/if}
-    </div>
-  {/if}
+  <InfiniteScroll
+    {loading}
+    {hasMore}
+    failed={error !== undefined}
+    on:loadMore={loadMore} />
 </Layout>
