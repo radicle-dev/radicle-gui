@@ -12,6 +12,7 @@
     validName,
   } from "@app/lib/board";
   import { disableHide, enableHide, hide } from "@app/lib/modal";
+  import { motion } from "@app/lib/motion";
 
   import Button from "@app/components/Button.svelte";
   import Icon from "@app/components/Icon.svelte";
@@ -295,7 +296,7 @@
           class="row"
           class:dragging={dragging === row.key}
           data-row={row.key}
-          animate:flip={{ duration: 150, easing: cubicOut }}>
+          animate:flip={{ duration: motion(150), easing: cubicOut }}>
           <button
             class="icon-button handle"
             title="Drag to reorder"

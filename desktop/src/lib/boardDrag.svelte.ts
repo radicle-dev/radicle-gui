@@ -3,6 +3,7 @@ import type { Column } from "@bindings/cob/board/Column";
 import { tick } from "svelte";
 
 import type { BoardItem } from "@app/lib/board";
+import { motion } from "@app/lib/motion";
 
 const DRAG_THRESHOLD = 4;
 const LANDING_MS = 160;
@@ -348,7 +349,7 @@ export class BoardDrag {
     const slot = this.#slotPosition();
     if (slot) {
       this.#landing = slot;
-      await new Promise(resolve => setTimeout(resolve, LANDING_MS));
+      await new Promise(resolve => setTimeout(resolve, motion(LANDING_MS)));
     }
 
     const { item, over, index } = this.#drag;

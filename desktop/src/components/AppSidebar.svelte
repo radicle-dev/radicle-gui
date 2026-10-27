@@ -11,6 +11,7 @@
   import { hints } from "@app/lib/hints";
   import { dynamicInterval } from "@app/lib/interval";
   import { modalStore, show } from "@app/lib/modal";
+  import { motion } from "@app/lib/motion";
   import {
     badgeCount,
     notificationCount,
@@ -114,7 +115,10 @@
   function snapWidth() {
     snapping = true;
     if (snapTimeout !== undefined) clearTimeout(snapTimeout);
-    snapTimeout = setTimeout(() => (snapping = false), SNAP_DURATION_MS);
+    snapTimeout = setTimeout(
+      () => (snapping = false),
+      motion(SNAP_DURATION_MS),
+    );
   }
 
   // Held so unmounting mid-drag doesn't leave listeners and the body class
@@ -565,8 +569,12 @@
       <div
         class="view"
         class:mini={isMini}
-        in:swap={{ duration: COLLAPSE_MS, rise: 8, width: bodyTargetWidth }}
-        out:swap={{ duration: COLLAPSE_MS }}>
+        in:swap={{
+          duration: motion(COLLAPSE_MS),
+          rise: 8,
+          width: bodyTargetWidth,
+        }}
+        out:swap={{ duration: motion(COLLAPSE_MS) }}>
         <div
           class="drag-strip"
           style:height={dragStripHeight}
@@ -639,8 +647,12 @@
               {#if !mini && notificationCount.value > 0}
                 <span
                   class="global-counter-badge"
-                  in:scale={{ duration: 200, easing: backOut, start: 0 }}
-                  out:fade={{ duration: 200 }}>
+                  in:scale={{
+                    duration: motion(200),
+                    easing: backOut,
+                    start: 0,
+                  }}
+                  out:fade={{ duration: motion(200) }}>
                   {notificationCount.value}
                 </span>
               {/if}

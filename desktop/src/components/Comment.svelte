@@ -17,6 +17,7 @@
 
   import type { CommentOrigin } from "@app/lib/codeComments";
   import { writeToClipboard } from "@app/lib/invoke";
+  import { scrollBehavior } from "@app/lib/motion";
   import * as utils from "@app/lib/utils";
 
   import DropdownList from "@app/components/DropdownList.svelte";
@@ -145,7 +146,7 @@
       mode = "edit";
       await tick();
       utils.scrollIntoView(`edit-${id}`, {
-        behavior: "smooth",
+        behavior: scrollBehavior(),
         block: "center",
       });
     } else if (mode === "edit") {

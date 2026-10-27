@@ -155,6 +155,13 @@ Read `docs/adr/0005-boards.md` before working on boards.
 ### Svelte components
 
 - Props use `$props()`: `const { foo, bar = undefined }: Props = $props()`
+- Respect reduced motion. CSS transitions and animations are handled globally in
+  `public/index.css`. Anything driven from JS is not: wrap every Svelte
+  `transition:`/`in:`/`out:`/`animate:` duration, `element.animate()` duration,
+  and `setTimeout` that waits on an animation in `motion(ms)`, and use
+  `scrollBehavior()` instead of `behavior: "smooth"` (both from
+  `@app/lib/motion`). Custom transition functions apply `motion()` to the
+  durations they return.
 
 ### TypeScript
 

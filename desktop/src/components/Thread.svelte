@@ -10,6 +10,7 @@
 
   import type { Resolution } from "@app/lib/commentResolutions";
   import { embedMap } from "@app/lib/embeds";
+  import { scrollBehavior } from "@app/lib/motion";
   import { formatResolvedCaption, scrollIntoView } from "@app/lib/utils";
 
   import CommentComponent from "@app/components/Comment.svelte";
@@ -98,7 +99,7 @@
 
     await tick();
     scrollIntoView(`reply-${root.id}`, {
-      behavior: "smooth",
+      behavior: scrollBehavior(),
       block: "center",
     });
   }

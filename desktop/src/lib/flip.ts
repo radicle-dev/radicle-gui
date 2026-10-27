@@ -1,3 +1,5 @@
+import { motion } from "@app/lib/motion";
+
 // FLIP: animate elements from where they were to where a layout change just put
 // them. Capture from `$effect.pre` and play from `$effect`, both reading the
 // state that drives the change so they land on the same flush.
@@ -55,7 +57,7 @@ export function playFlip(
 ): void {
   if (!container || !first) return;
 
-  const duration = options.durationMs ?? DEFAULT_DURATION_MS;
+  const duration = motion(options.durationMs ?? DEFAULT_DURATION_MS);
   const base = container.getBoundingClientRect();
 
   if (

@@ -59,6 +59,7 @@
   import { nodeRunning } from "@app/lib/events";
   import { invoke } from "@app/lib/invoke";
   import { show } from "@app/lib/modal";
+  import { motion } from "@app/lib/motion";
   import * as roles from "@app/lib/roles";
   import * as router from "@app/lib/router";
   import type { SidebarData } from "@app/lib/router/definitions";
@@ -319,11 +320,11 @@
   // uses the separate scale property to leave that transform alone.
   function filterOut(node: Element) {
     if (node.classList.contains("placeholder")) {
-      return { duration: 150, css: (t: number) => `opacity: ${t};` };
+      return { duration: motion(150), css: (t: number) => `opacity: ${t};` };
     }
     if (!filtering) return { duration: 0 };
     return {
-      duration: 180,
+      duration: motion(180),
       easing: cubicOut,
       css: (t: number) => `opacity: ${t}; scale: ${0.96 + 0.04 * t};`,
     };
@@ -335,7 +336,7 @@
   function arriveIn(node: HTMLElement) {
     if (node.dataset.key !== arriving) return { duration: 0 };
     arriving = undefined;
-    return slide(node, { duration: 220, easing: cubicOut });
+    return slide(node, { duration: motion(220), easing: cubicOut });
   }
 
   // An issue created from a column's add button or menu is placed at the end
@@ -1345,7 +1346,7 @@
             class:lifted={dnd.liftedColumn === column.id}
             class:refused={dnd.current?.refused === column.id}
             data-column={column.id}
-            animate:flip={{ duration: 200, easing: cubicOut }}>
+            animate:flip={{ duration: motion(200), easing: cubicOut }}>
             <div class="column-header">
               {#if renaming?.id === column.id}
                 <!-- svelte-ignore a11y_autofocus -->
@@ -1393,7 +1394,7 @@
                     data-key={item.key}
                     role="button"
                     tabindex="0"
-                    animate:flip={{ duration: 200, easing: cubicOut }}
+                    animate:flip={{ duration: motion(200), easing: cubicOut }}
                     in:arriveIn
                     out:filterOut
                     onpointerdown={e => dnd.onCardPointerDown(e, item)}
@@ -1456,7 +1457,7 @@
                     data-key={item.key}
                     role="button"
                     tabindex="0"
-                    animate:flip={{ duration: 200, easing: cubicOut }}
+                    animate:flip={{ duration: motion(200), easing: cubicOut }}
                     in:arriveIn
                     out:filterOut
                     onpointerdown={e => dnd.onCardPointerDown(e, item)}
@@ -1494,7 +1495,7 @@
     style:width="{drag.width}px">
     {@render content(drag.item, view === "board" ? "card" : "row")}
     {#if drag.refused && !landing}
-      <div class="refusal" transition:fade={{ duration: 150 }}>
+      <div class="refusal" transition:fade={{ duration: motion(150) }}>
         <span class="refusal-icon"><Icon name="warning" /></span>
         <span>{refusalFor(drag.item, drag.refused)}</span>
       </div>

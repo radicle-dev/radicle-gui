@@ -77,6 +77,7 @@
   import { labs } from "@app/lib/labs";
   import { entityUrl } from "@app/lib/mentions";
   import { show } from "@app/lib/modal";
+  import { motion } from "@app/lib/motion";
   import { repoListScope } from "@app/lib/repoListScope";
   import * as router from "@app/lib/router";
   import { seededRepos, seedRepo, setFetchingRepos } from "@app/lib/seedRepo";
@@ -310,7 +311,7 @@
     // filter/refresh that should not animate at all.
     fallback: (node: Element, params: CrossfadeParams & { key?: string }) =>
       params.key !== undefined && params.key === unseedingRid
-        ? fadeCollapse(node, ANIMATION_DURATION_MS)
+        ? fadeCollapse(node, motion(ANIMATION_DURATION_MS))
         : { duration: 0 },
   });
 
@@ -364,7 +365,7 @@
     if (animationTimeout !== undefined) clearTimeout(animationTimeout);
     animationTimeout = setTimeout(() => {
       animatingPinnedList = false;
-    }, ANIMATION_DURATION_MS);
+    }, motion(ANIMATION_DURATION_MS));
     fn();
   }
 
@@ -1021,9 +1022,9 @@
         drag.dropPosition === "after" &&
         drag.draggingRid !== repo.rid}
       {...{ [DRAG_RID_ATTRIBUTE]: repo.rid }}
-      animate:flip={{ duration: animationDuration }}
-      in:receive={{ key: repo.rid, duration: animationDuration }}
-      out:send={{ key: repo.rid, duration: animationDuration }}
+      animate:flip={{ duration: motion(animationDuration) }}
+      in:receive={{ key: repo.rid, duration: motion(animationDuration) }}
+      out:send={{ key: repo.rid, duration: motion(animationDuration) }}
       onoutroend={() => clearUnseeding(repo.rid)}>
       {@render repoRowInner(repo, true)}
     </div>
@@ -1092,8 +1093,8 @@
       {#if !sidebarCollapsed.value && unpinnedReposCount > 1}
         <span
           class="global-counter-badge"
-          in:scale={{ duration: 200, easing: backOut, start: 0 }}
-          out:fade={{ duration: 200 }}>
+          in:scale={{ duration: motion(200), easing: backOut, start: 0 }}
+          out:fade={{ duration: motion(200) }}>
           {unpinnedReposCount}
         </span>
       {/if}
@@ -1187,7 +1188,7 @@
     {@const activeProject = activeRepo?.payloads["xyz.radicle.project"]}
     <div
       class="sub-items"
-      transition:slide={{ duration: ANIMATION_DURATION_MS }}>
+      transition:slide={{ duration: motion(ANIMATION_DURATION_MS) }}>
       {#if labs.boards}
         {@render subItem(
           repo.name,
@@ -1259,8 +1260,8 @@
     {#if !sidebarCollapsed.value && count !== undefined}
       <span
         class="global-counter-badge"
-        in:scale={{ duration: 200, easing: backOut, start: 0 }}
-        out:fade={{ duration: 200 }}>
+        in:scale={{ duration: motion(200), easing: backOut, start: 0 }}
+        out:fade={{ duration: motion(200) }}>
         {count}
       </span>
     {/if}
@@ -1271,7 +1272,7 @@
   {#if reposExpanded.value}
     <div
       class="repos-scroll"
-      transition:unroll|local={{ duration: ANIMATION_DURATION_MS }}>
+      transition:unroll|local={{ duration: motion(ANIMATION_DURATION_MS) }}>
       <ScrollArea
         style="mask-image: linear-gradient(to bottom, transparent 0, black 0.5rem, black calc(100% - 0.5rem), transparent 100%);">
         <div class="repos-list scrolling">
@@ -1279,9 +1280,12 @@
             <div
               class="repo-row-group"
               data-unpinned-rid={repo.rid}
-              animate:flip={{ duration: animationDuration }}
-              in:receive={{ key: repo.rid, duration: animationDuration }}
-              out:send={{ key: repo.rid, duration: animationDuration }}
+              animate:flip={{ duration: motion(animationDuration) }}
+              in:receive={{
+                key: repo.rid,
+                duration: motion(animationDuration),
+              }}
+              out:send={{ key: repo.rid, duration: motion(animationDuration) }}
               onoutroend={() => clearUnseeding(repo.rid)}>
               {@render repoRowInner(repo, false)}
             </div>

@@ -34,6 +34,7 @@
     cachedListCommits,
     invoke,
   } from "@app/lib/invoke";
+  import { motion } from "@app/lib/motion";
   import type { PatchActivityData } from "@app/lib/patchTimeline";
   import { patchTimeline } from "@app/lib/patchTimeline";
   import { revisionRange } from "@app/lib/revisionCompare";
@@ -1173,7 +1174,9 @@
           ? ""
           : (revBody ?? "")}
         {#if expanded}
-          <div class="revision-card" transition:slide={{ duration: 180 }}>
+          <div
+            class="revision-card"
+            transition:slide={{ duration: motion(180) }}>
             <PatchActivityItem
               op={data.op}
               {rid}
@@ -1286,7 +1289,7 @@
                               class="older-revisions txt-body-m-regular"
                               role="button"
                               tabindex="0"
-                              transition:slide={{ duration: 180 }}
+                              transition:slide={{ duration: motion(180) }}
                               onclick={() => expandCommitGroup(groupKey)}>
                               <div class="icon">
                                 <span class="icon-stack">
@@ -1427,7 +1430,7 @@
         {:else if isOlder}
           <div
             class="older-revision-entry"
-            transition:slide={{ duration: 180 }}>
+            transition:slide={{ duration: motion(180) }}>
             <PatchActivityItem
               op={data.op}
               {rid}
@@ -1548,7 +1551,7 @@
         class="older-revisions txt-body-m-regular"
         role="button"
         tabindex="0"
-        transition:slide={{ duration: 180 }}
+        transition:slide={{ duration: motion(180) }}
         onclick={() => toggleRevisionRun(data.groupKey, data.revisionIds)}>
         <div class="icon">
           <span class="icon-stack">

@@ -5,6 +5,7 @@
   import { slide } from "svelte/transition";
 
   import { stateCaption, stateIcon } from "@app/lib/identityState";
+  import { motion } from "@app/lib/motion";
   import type { SidebarData } from "@app/lib/router/definitions";
   import {
     absoluteTimestamp,
@@ -368,7 +369,9 @@
                   rev.rejected.length +
                   rev.pending.length}
                 {@const caption = stateCaption(rev.state)}
-                <div class="detail" transition:slide={{ duration: 180 }}>
+                <div
+                  class="detail"
+                  transition:slide={{ duration: motion(180) }}>
                   {#if caption}
                     <div class="state-caption">{caption}</div>
                   {/if}

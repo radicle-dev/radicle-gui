@@ -24,6 +24,7 @@
 
   import { fontSettings } from "@app/lib/appearance.svelte";
   import type { CodeComments } from "@app/lib/codeComments";
+  import { scrollBehavior } from "@app/lib/motion";
   import { forwardPatchActivityContext } from "@app/lib/patchActivityContext";
   import type {
     CommentAnchor,
@@ -380,7 +381,7 @@
   // is not the container's `scrollTop` and has to go through `scrollTo`.
   function scrollToPosition(
     position: number,
-    behavior: "smooth" | "instant" = "smooth",
+    behavior: "smooth" | "instant" = scrollBehavior(),
   ): void {
     view?.scrollTo({ type: "position", position, behavior });
   }
