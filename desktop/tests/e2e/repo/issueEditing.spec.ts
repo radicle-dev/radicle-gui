@@ -51,7 +51,7 @@ test("labels can be added and removed", async ({ page, peer }) => {
 
   await label.click();
   await waitForCommand(page, "edit_issue", () =>
-    label.getByRole("img", { name: "icon-close" }).click(),
+    page.getByRole("button", { name: "Remove label" }).click(),
   );
   await expect(label).toBeHidden();
   await reload(page);

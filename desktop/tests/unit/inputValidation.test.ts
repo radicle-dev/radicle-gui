@@ -4,6 +4,7 @@ import {
   aliasErrors,
   labelError,
   parseAssignee,
+  renameLabel,
 } from "@app/lib/inputValidation";
 
 const nid = "z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK";
@@ -26,6 +27,15 @@ test("labelError flags a label that is already assigned", () => {
   expect(labelError(" bug ", ["bug"])).toBe("This label is already assigned");
   expect(labelError("feature", ["bug"])).toBeUndefined();
   expect(labelError("  ", ["bug"])).toBeUndefined();
+});
+
+test("renameLabel replaces a label and keeps the list sorted", () => {
+  expect(renameLabel(["bug", "foo", "ui"], "foo", "foo:bar")).toEqual([
+    "bug",
+    "foo:bar",
+    "ui",
+  ]);
+  expect(renameLabel(["bug", "ui"], "ui", "a11y")).toEqual(["a11y", "bug"]);
 });
 
 describe("parseAssignee", () => {
