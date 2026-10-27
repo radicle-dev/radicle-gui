@@ -47,6 +47,7 @@
   .container {
     position: relative;
     overflow-x: auto;
+    overscroll-behavior-x: contain;
   }
   @media (max-width: 719.98px) {
     .header {
