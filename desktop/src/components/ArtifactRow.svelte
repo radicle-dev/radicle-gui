@@ -8,6 +8,7 @@
   import { artifactNodeRunning } from "@app/lib/events";
   import { invoke, InvokeError } from "@app/lib/invoke";
   import { show } from "@app/lib/modal";
+  import { motion } from "@app/lib/motion";
   import {
     attestedBy,
     canAttest,
@@ -796,7 +797,7 @@
   </div>
 
   {#if open}
-    <div class="details" transition:slide={{ duration: 180 }}>
+    <div class="details" transition:slide={{ duration: motion(180) }}>
       <div class="section">
         <div class="section-title">
           Metadata

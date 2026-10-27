@@ -2,6 +2,7 @@
   import { cubicIn, cubicOut } from "svelte/easing";
   import { fly } from "svelte/transition";
 
+  import { motion } from "@app/lib/motion";
   import { comboKeys, shortcuts } from "@app/lib/shortcuts.svelte";
 
   const rows = Object.values(shortcuts).map(s => ({
@@ -111,8 +112,8 @@
 
 <div
   class="modal"
-  in:fly={{ y: 8, duration: 160, easing: cubicOut }}
-  out:fly={{ y: 8, duration: 120, easing: cubicIn }}>
+  in:fly={{ y: 8, duration: motion(160), easing: cubicOut }}
+  out:fly={{ y: 8, duration: motion(120), easing: cubicIn }}>
   <div class="header">
     <span class="title">Keyboard shortcuts</span>
   </div>

@@ -12,6 +12,7 @@
   import { itemDiff } from "@app/lib/cobActivity";
   import { cachedConfig, writeToClipboard } from "@app/lib/invoke";
   import { entityUrl } from "@app/lib/mentions";
+  import { motion } from "@app/lib/motion";
   import { splitDescription } from "@app/lib/revisionDescription";
   import {
     absoluteTimestamp,
@@ -425,7 +426,7 @@
         {/if}
       </div>
       {#if !firstRevision && desc.body && expanded && !bodyExternal}
-        <div class="revision-body" transition:slide={{ duration: 180 }}>
+        <div class="revision-body" transition:slide={{ duration: motion(180) }}>
           <Markdown {rid} breaks content={desc.body} />
         </div>
       {/if}

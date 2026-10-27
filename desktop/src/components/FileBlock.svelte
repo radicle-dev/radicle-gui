@@ -3,6 +3,8 @@
 
   import { tick } from "svelte";
 
+  import { scrollBehavior } from "@app/lib/motion";
+
   import Icon from "@app/components/Icon.svelte";
 
   interface Props {
@@ -50,7 +52,7 @@
     onToggle?.(expanded);
     if (!expanded && header) {
       await tick();
-      header.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      header.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" });
     }
   }
 </script>

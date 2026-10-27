@@ -94,11 +94,6 @@
   .avatars .avatar + .more {
     margin-left: 0.25rem;
   }
-  @media (prefers-reduced-motion: reduce) {
-    .avatars .avatar + .avatar {
-      transition: none;
-    }
-  }
   .card {
     display: flex;
     flex-direction: column;

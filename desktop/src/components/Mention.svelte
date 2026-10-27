@@ -20,6 +20,7 @@
     referenceRoute,
     toRadReference,
   } from "@app/lib/mentions";
+  import { scrollBehavior } from "@app/lib/motion";
   import type { Route } from "@app/lib/router";
   import { push, routeToPath } from "@app/lib/router";
   import { fetchingRepos } from "@app/lib/seedRepo";
@@ -225,12 +226,12 @@
         /auto|scroll/.test(overflow) &&
         node.scrollHeight > node.clientHeight
       ) {
-        node.scrollTo({ top: 0, behavior: "smooth" });
+        node.scrollTo({ top: 0, behavior: scrollBehavior() });
         return;
       }
       node = node.parentElement;
     }
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: scrollBehavior() });
   }
 
   function isCurrentPage(candidate: Route): boolean {

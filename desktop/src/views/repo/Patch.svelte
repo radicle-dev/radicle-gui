@@ -27,6 +27,7 @@
     cachedListCommits,
     invoke,
   } from "@app/lib/invoke";
+  import { scrollBehavior } from "@app/lib/motion";
   import { setPatchActivitySource } from "@app/lib/patchActivityContext";
   import { patchContributions } from "@app/lib/patchContributions";
   import type { ReviewEntry } from "@app/lib/reviewSummary";
@@ -166,7 +167,10 @@
     const viewport = bottomSentinel?.closest<HTMLElement>(
       "[data-overlayscrollbars-viewport]",
     );
-    viewport?.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
+    viewport?.scrollTo({
+      top: viewport.scrollHeight,
+      behavior: scrollBehavior(),
+    });
   }
   // A sentinel at the end of the scroll area, so "Jump to most recent" hides
   // itself on a short patch or once you have scrolled down.

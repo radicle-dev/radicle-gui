@@ -8,6 +8,7 @@
 
   import type { DraftReview } from "@app/lib/draftReviewStorage";
   import { draftReviewStorage } from "@app/lib/draftReviewStorage";
+  import { motion } from "@app/lib/motion";
   import { formatAnchor } from "@app/lib/pierreComments";
   import { isPublishableReview, verdictBadge } from "@app/lib/utils";
 
@@ -573,8 +574,8 @@
 <div
   class="bar"
   class:expanded
-  in:fly={{ y: 120, duration: 260, easing: backOut }}
-  out:fly={{ y: 120, duration: 180, easing: cubicIn }}>
+  in:fly={{ y: 120, duration: motion(260), easing: backOut }}
+  out:fly={{ y: 120, duration: motion(180), easing: cubicIn }}>
   <textarea
     bind:this={summaryEl}
     class="summary"

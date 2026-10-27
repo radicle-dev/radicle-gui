@@ -2,6 +2,7 @@
   import { fade } from "svelte/transition";
 
   import { hide, modalStore } from "@app/lib/modal";
+  import { motion } from "@app/lib/motion";
   import { DRAG_REGION_HEIGHT } from "@app/lib/window";
 
   // Only Tauri drags the window, and outside it the strip would do nothing but
@@ -48,7 +49,7 @@
       role="button"
       tabindex="0"
       class="overlay"
-      transition:fade={{ duration: 120 }}
+      transition:fade={{ duration: motion(120) }}
       onclick={$modalStore.disableScrimClose ? undefined : hide}
       style:cursor={$modalStore.disableHide ? "not-allowed" : "default"}>
     </div>
