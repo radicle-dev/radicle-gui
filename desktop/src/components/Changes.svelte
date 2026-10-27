@@ -666,6 +666,14 @@
   .commit-stats .deletions {
     color: var(--color-feedback-error-text);
   }
+  .latest-chip {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 0 0.375rem;
+    border-radius: var(--border-radius-sm);
+    background-color: var(--color-surface-brand-subtle);
+    color: var(--color-text-brand);
+  }
   .commits {
     display: flex;
     flex-direction: column;
@@ -786,6 +794,9 @@
                   {/await}
                 {/if}
                 {#if commit.id === revision.head}
+                  {#if commitList.length > 1}
+                    <span class="latest-chip txt-body-s-medium">Latest</span>
+                  {/if}
                   <JobCob {rid} commit={commit.id} />
                 {/if}
               </CobCommitTeaser>
