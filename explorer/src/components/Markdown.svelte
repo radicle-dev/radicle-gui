@@ -481,6 +481,7 @@
     padding: 1rem !important;
     border-radius: var(--border-radius-sm);
     overflow: scroll;
+    overscroll-behavior-x: contain;
     scrollbar-width: none;
   }
 

@@ -27,6 +27,7 @@ html {
   -ms-overflow-style: scrollbar;
   -webkit-tap-highlight-color: transparent;
   scrollbar-gutter: stable;
+  overscroll-behavior-y: none;
 }
 
 /* Repo views fill the viewport and scroll their own content region, so the
@@ -47,7 +48,6 @@ body {
   scrollbar-width: thin;
   scrollbar-height: thin;
   scrollbar-color: var(--color-border-subtle) transparent;
-  overscroll-behavior: none;
 }
 
 /* Chrome/Edge/Safari scrollbar */
