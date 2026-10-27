@@ -1412,6 +1412,7 @@
           selectedRevisionId = revisionId;
           setView("changes");
         }}
+        merge={patch.state.status === "merged" ? patch.state : undefined}
         chrome={patchHeader}
         {tabs}
         bind:showingRevisionDiff

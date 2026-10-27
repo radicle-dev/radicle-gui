@@ -31,9 +31,14 @@
   } from "@app/lib/invoke";
   import { anchorOf, commentCountsByPath } from "@app/lib/pierreComments";
   import { isCommitListDescription } from "@app/lib/revisionDescription";
+  import {
+    autoSelectedCommit,
+    lastRevisionWithChanges,
+  } from "@app/lib/revisionList";
   import { useShortcuts } from "@app/lib/shortcuts.svelte";
   import { pluralize } from "@app/lib/utils";
 
+  import Button from "@app/components/Button.svelte";
   import CobCommitTeaser from "@app/components/CobCommitTeaser.svelte";
   import CommitsContainer from "@app/components/CommitsContainer.svelte";
   import ExtendedTextarea from "@app/components/ExtendedTextarea.svelte";
@@ -65,6 +70,12 @@
     // Where the comment stepper stands, for the tab bar to render. An index of
     // `-1` means it has not been stepped yet.
     commentPosition?: { index: number; total: number };
+    // The patch's revisions in timeline order, so an empty revision can point
+    // back at the last one that had changes.
+    revisions?: Revision[];
+    // The revision and commit the patch is marked merged at, if any.
+    merge?: { revision: string; commit: string };
+    onViewRevision?: (revisionId: string) => void;
   }
 
   /* eslint-disable prefer-const */
@@ -86,6 +97,9 @@
     // Another output binding, like `filesExpanded`: the tab bar renders the
     // stepper and reads this, while the stepping itself happens here.
     commentPosition = $bindable({ index: -1, total: 0 }),
+    revisions = [],
+    merge,
+    onViewRevision,
   }: Props = $props();
   /* eslint-enable prefer-const */
 
@@ -295,27 +309,49 @@
     selectedCommit ? selectedCommit !== commitId : false;
 
   let commitList = $state<Commit[]>([]);
+  let commitListRange = $state<string>();
   $effect(() => {
     const ridLocal = rid;
     const baseRev = revision.base;
     const headRev = revision.head;
     let cancelled = false;
     void cachedListCommits(ridLocal, baseRev, headRev).then(c => {
-      if (!cancelled) commitList = c;
+      if (!cancelled) {
+        commitList = c;
+        commitListRange = `${baseRev}..${headRev}`;
+      }
     });
     return () => {
       cancelled = true;
     };
   });
 
-  // A single-commit revision has nothing to choose between, so select that
-  // commit automatically to surface its message. The diff stays the
-  // revision's own range: a merge commit's first parent is the side it merged
-  // into, not the revision base, so narrowing to the commit diff there would
-  // show the other branch's changes instead of the patch's.
+  // A revision whose head is already part of its base has nothing to list or
+  // diff. Why that happened (a merge pushed before the patch branch, a push of
+  // the wrong commit, an explicit base) isn't recorded, so the empty state only
+  // states the fact and points at the last revision that had changes. An empty
+  // list alone decides it: when the head is a strict ancestor of the base, the
+  // tree diff between them is the base's newer commits in reverse, not the
+  // patch's changes.
+  const emptyRevision = $derived(
+    commitListRange === `${revision.base}..${revision.head}` &&
+      commitList.length === 0,
+  );
+  const earlierRevision = $derived(
+    lastRevisionWithChanges(revisions, revision.id),
+  );
+
+  // The diff stays the revision's own range: a merge commit's first parent is
+  // the side it merged into, not the revision base, so narrowing to the commit
+  // diff there would show the other branch's changes instead of the patch's.
   $effect(() => {
-    if (commitList.length === 1 && !selectedCommit) {
-      const only = commitList[0];
+    const only = autoSelectedCommit(
+      commitList,
+      commitListRange,
+      `${revision.base}..${revision.head}`,
+      selectedCommit,
+    );
+    if (only) {
       selectRevision({
         headId: revision.head,
         baseId: revision.base,
@@ -581,6 +617,26 @@
   .stats {
     min-width: 0;
   }
+  .no-commits {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    padding: 2rem 1.25rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--border-radius-md);
+    background-color: var(--color-surface-canvas);
+    color: var(--color-text-tertiary);
+    text-align: center;
+  }
+  .no-commits-title {
+    color: var(--color-text-primary);
+  }
+  .no-commits-body {
+    max-width: 32rem;
+    color: var(--color-text-secondary);
+  }
   .selected-commit-message {
     margin-bottom: 1rem;
     padding: 0.75rem;
@@ -819,29 +875,59 @@
       </div>
     {/if}
   {/if}
-  <div class="stats-row txt-body-m-regular">
-    <div class="stats" style:color="var(--color-text-secondary)">
-      {#if diffFailed}
-        <span style:color="var(--color-feedback-error-text)">
-          Failed to load the changes.
-        </span>
-      {:else if stats}
-        {stats.filesChanged}
-        {pluralize("file", stats.filesChanged)} modified with
-        <span style:color="var(--color-feedback-success-text)">
-          {stats.insertions}
-          {pluralize("insertion", stats.insertions)}
-        </span>
-        and
-        <span style:color="var(--color-feedback-error-text)">
-          {stats.deletions}
-          {pluralize("deletion", stats.deletions)}
-        </span>
-      {:else}
-        Loading…
+  {#if emptyRevision}
+    <div class="no-commits">
+      <Icon name="commit" />
+      <div class="no-commits-title txt-body-m-medium">
+        No changes in this revision
+      </div>
+      <div class="no-commits-body txt-body-m-regular">
+        {#if revision.head === revision.base}
+          Its head is the same commit as its base.
+        {:else}
+          Its head is already part of its base.
+        {/if}
+        {#if merge?.revision === revision.id}
+          The patch was marked as merged at this revision, at commit
+          <Id
+            id={merge.commit}
+            clipboard={merge.commit}
+            label="merge commit" />. Because this revision has no changes, that
+          commit doesn't show where the patch's changes landed.
+        {/if}
+      </div>
+      {#if earlierRevision && onViewRevision}
+        {@const earlier = earlierRevision}
+        <Button variant="outline" onclick={() => onViewRevision(earlier.id)}>
+          Show changes from revision {earlier.number}
+        </Button>
       {/if}
     </div>
-  </div>
+  {:else}
+    <div class="stats-row txt-body-m-regular">
+      <div class="stats" style:color="var(--color-text-secondary)">
+        {#if diffFailed}
+          <span style:color="var(--color-feedback-error-text)">
+            Failed to load the changes.
+          </span>
+        {:else if stats}
+          {stats.filesChanged}
+          {pluralize("file", stats.filesChanged)} modified with
+          <span style:color="var(--color-feedback-success-text)">
+            {stats.insertions}
+            {pluralize("insertion", stats.insertions)}
+          </span>
+          and
+          <span style:color="var(--color-feedback-error-text)">
+            {stats.deletions}
+            {pluralize("deletion", stats.deletions)}
+          </span>
+        {:else}
+          Loading…
+        {/if}
+      </div>
+    </div>
+  {/if}
 
   <div>
     {#if selectedCommitData}
@@ -861,7 +947,7 @@
 
 <PierreDiff
   bind:this={diffView}
-  patch={loadedDiff?.text ?? ""}
+  patch={emptyRevision ? "" : (loadedDiff?.text ?? "")}
   cacheKeyPrefix={loadedDiff?.key}
   diffStyle={diffOptions.diffStyle}
   wordWrap={diffOptions.wordWrap}
@@ -881,6 +967,6 @@
   codeComments={diffCodeComments}
   commentCommit={isRevisionDiff ? head : undefined}
   header={diffHeader}
-  overlayLeft={commitsColumn}
+  overlayLeft={emptyRevision ? undefined : commitsColumn}
   {filesHeader}
   stickyTop={tabs} />

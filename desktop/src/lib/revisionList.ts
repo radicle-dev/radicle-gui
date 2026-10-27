@@ -64,3 +64,35 @@ export function newCommitsByRevision(
   }
   return result;
 }
+
+/// The latest revision before `revisionId` that has changes of its own, with
+/// its 1-based timeline number. An empty revision (head already part of its
+/// base) doesn't record why it is empty, so the Changes view points at this
+/// one instead of guessing what was meant.
+export function lastRevisionWithChanges(
+  revisions: Revision[],
+  revisionId: string,
+): { id: string; number: number } | undefined {
+  const index = revisions.findIndex(r => r.id === revisionId);
+  for (let i = index - 1; i >= 0; i--) {
+    if (revisions[i].base !== revisions[i].head) {
+      return { id: revisions[i].id, number: i + 1 };
+    }
+  }
+  return undefined;
+}
+
+/// The commit to select automatically: a single-commit revision has nothing
+/// to choose between, so its only commit is selected to surface its message.
+/// `listedRange` is the `base..head` the list was loaded for. Right after a
+/// revision switch the list still holds the previous revision's commits, and
+/// selecting from it would carry that commit over.
+export function autoSelectedCommit(
+  commits: Commit[],
+  listedRange: string | undefined,
+  range: string,
+  selectedCommit: string | undefined,
+): Commit | undefined {
+  if (listedRange !== range || selectedCommit) return undefined;
+  return commits.length === 1 ? commits[0] : undefined;
+}

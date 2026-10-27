@@ -108,6 +108,8 @@
     hiddenCommentSources?: string[];
     filesExpanded?: boolean;
     onViewChanges?: (revisionId: string) => void;
+    // The revision and commit the patch is marked merged at, if any.
+    merge?: { revision: string; commit: string };
     // The patch view's own header, forwarded to the Changes tab so it can render
     // it inside the diff's scroll content.
     chrome?: Snippet;
@@ -136,6 +138,7 @@
     hiddenCommentSources = [],
     filesExpanded = $bindable(true),
     onViewChanges,
+    merge,
     chrome,
     tabs,
     commentPosition = $bindable({ index: -1, total: 0 }),
@@ -1563,6 +1566,9 @@
     onSaveDescription={async (body, embeds) => {
       await editRevision(body, embeds, revision.id);
     }}
+    {revisions}
+    {merge}
+    onViewRevision={onViewChanges}
     {chrome}
     {tabs}
     bind:showingRevisionDiff

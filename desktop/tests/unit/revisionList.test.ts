@@ -3,6 +3,8 @@ import type { Commit } from "@bindings/repo/Commit";
 import { describe, expect, test } from "vitest";
 
 import {
+  autoSelectedCommit,
+  lastRevisionWithChanges,
   newCommitsByRevision,
   orderRevisions,
   revisionNumbers,
@@ -118,4 +120,71 @@ test("newCommitsByRevision keeps only commits not in an earlier revision", () =>
       Object.entries(added).map(([id, list]) => [id, list.map(x => x.id)]),
     ),
   ).toEqual({ a1: ["1", "2"], b1: ["3"], c1: ["4", "5"] });
+});
+
+describe("lastRevisionWithChanges", () => {
+  // Revisions with `base === head` are empty: their head was already part of
+  // their base when they were pushed.
+  const changed = (id: string) => revision({ id, base: "b", head: id });
+  const empty = (id: string) => revision({ id, base: id, head: id });
+
+  test("finds the latest earlier revision with changes, numbered", () => {
+    const list = [changed("r1"), changed("r2"), empty("r3"), empty("r4")];
+
+    expect(lastRevisionWithChanges(list, "r4")).toEqual({
+      id: "r2",
+      number: 2,
+    });
+  });
+
+  test("can point at the first revision", () => {
+    expect(lastRevisionWithChanges([changed("r1"), empty("r2")], "r2")).toEqual(
+      { id: "r1", number: 1 },
+    );
+  });
+
+  test("ignores revisions after the selected one", () => {
+    const list = [empty("r1"), empty("r2"), changed("r3")];
+
+    expect(lastRevisionWithChanges(list, "r2")).toBeUndefined();
+  });
+
+  test("has nothing to point at for the first revision", () => {
+    expect(lastRevisionWithChanges([empty("r1")], "r1")).toBeUndefined();
+  });
+
+  test("has nothing to point at for an unknown revision", () => {
+    expect(
+      lastRevisionWithChanges([changed("r1"), empty("r2")], "gone"),
+    ).toBeUndefined();
+  });
+});
+
+describe("autoSelectedCommit", () => {
+  const c = (id: string) => ({ id }) as Commit;
+
+  test("selects the only commit of the listed revision", () => {
+    expect(autoSelectedCommit([c("1")], "b..h", "b..h", undefined)?.id).toBe(
+      "1",
+    );
+  });
+
+  // Regression: switching revisions left the previous revision's single
+  // commit selected, before the new revision's list had loaded.
+  test("doesn't select from a list loaded for another revision", () => {
+    expect(
+      autoSelectedCommit([c("1")], "b..old", "b..new", undefined),
+    ).toBeUndefined();
+  });
+
+  test("keeps a selection that is already made", () => {
+    expect(autoSelectedCommit([c("1")], "b..h", "b..h", "1")).toBeUndefined();
+  });
+
+  test("selects nothing when there is nothing or more than one", () => {
+    expect(autoSelectedCommit([], "b..h", "b..h", undefined)).toBeUndefined();
+    expect(
+      autoSelectedCommit([c("1"), c("2")], "b..h", "b..h", undefined),
+    ).toBeUndefined();
+  });
 });
