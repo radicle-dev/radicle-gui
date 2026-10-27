@@ -211,7 +211,7 @@
 
 {#snippet repliesSnippet()}
   <div class="replies-list">
-    {#each replies as reply}
+    {#each replies as reply, index}
       <div
         class="reply-box"
         class:highlighted={highlightedCommentId === reply.id}>
@@ -234,7 +234,15 @@
           reactOnComment={reactOnComment?.bind(null, reply.id)}
           deleteComment={canModifyComment(reply.author.did)
             ? deleteComment?.bind(null, reply.id)
-            : undefined} />
+            : undefined}>
+          {#snippet actions()}
+            {#if createReply && index === replies.length - 1}
+              <span class="global-icon-button" title="Reply">
+                <Icon name="reply" onclick={toggleReply} />
+              </span>
+            {/if}
+          {/snippet}
+        </CommentComponent>
       </div>
     {/each}
     {#if createReply && showReplyForm}
