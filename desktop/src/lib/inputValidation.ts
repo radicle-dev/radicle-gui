@@ -22,6 +22,14 @@ export function labelError(
   }
 }
 
+export function renameLabel(
+  labels: string[],
+  from: string,
+  to: string,
+): string[] {
+  return [...labels.filter(label => label !== from), to].sort();
+}
+
 export function parseAssignee(
   input: string,
   assignees: { did: string }[],

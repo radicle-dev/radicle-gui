@@ -1,6 +1,6 @@
 <script lang="ts">
   import { positionInputPopover } from "@app/lib/inputPopover";
-  import { labelError } from "@app/lib/inputValidation";
+  import { labelError, renameLabel } from "@app/lib/inputValidation";
   import { portal } from "@app/lib/portal";
 
   import Button from "@app/components/Button.svelte";
@@ -31,12 +31,25 @@
   const validationMessage = $derived(labelError(inputValue, updatedLabels));
   const valid = $derived(validationMessage === undefined);
 
-  let removeToggles: Record<string, boolean> = $state({});
+  let editingLabel: string | undefined = $state();
+  let editValue = $state("");
+  const editValidationMessage = $derived(
+    editingLabel !== undefined && editValue.trim() !== editingLabel
+      ? labelError(editValue, updatedLabels)
+      : undefined,
+  );
 
   let anchorEl: HTMLDivElement | undefined = $state();
   let floatingEl: HTMLDivElement | undefined = $state();
 
-  const panelVisible = $derived(showInput && validationMessage !== undefined);
+  const panelMessage = $derived(
+    editingLabel !== undefined
+      ? editValidationMessage
+      : showInput
+        ? validationMessage
+        : undefined,
+  );
+  const panelVisible = $derived(panelMessage !== undefined);
 
   $effect(() => {
     if (!panelVisible || !floatingEl || !anchorEl) return;
@@ -50,7 +63,7 @@
     updatedLabels = labels;
 
     showInput = false;
-    removeToggles = {};
+    editingLabel = undefined;
   });
 
   function addLabel() {
@@ -66,6 +79,35 @@
     updatedLabels = updatedLabels.filter(x => x !== label);
     save($state.snapshot(updatedLabels));
     showInput = false;
+  }
+
+  function startEdit(label: string) {
+    showInput = false;
+    inputValue = "";
+    editValue = label;
+    editingLabel = label;
+  }
+
+  function cancelEdit() {
+    editingLabel = undefined;
+  }
+
+  function commitEdit() {
+    const label = editingLabel;
+    if (label === undefined) {
+      return;
+    }
+    editingLabel = undefined;
+    const value = editValue.trim();
+    if (value === "") {
+      removeLabel(label);
+    } else if (
+      value !== label &&
+      labelError(value, updatedLabels) === undefined
+    ) {
+      updatedLabels = renameLabel(updatedLabels, label, value);
+      save($state.snapshot(updatedLabels));
+    }
   }
 </script>
 
@@ -94,14 +136,18 @@
     color: var(--color-text-secondary);
     font: var(--txt-body-m-regular);
   }
-  .removable-label {
+  .editable-label {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
     background: none;
     border: none;
     padding: 0;
-    cursor: pointer;
+    cursor: text;
+  }
+  .label-editor {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
   }
   .input-row {
     display: flex;
@@ -143,11 +189,6 @@
             bind:value={inputValue}
             onSubmit={addLabel} />
         </div>
-        {#if panelVisible}
-          <div class="popover" bind:this={floatingEl} use:portal>
-            <div class="validation-message">{validationMessage}</div>
-          </div>
-        {/if}
         <Button
           variant="outline"
           onclick={() => {
@@ -164,6 +205,7 @@
         title={allowedToEdit ? undefined : "Only delegates can add labels"}
         onclick={() => {
           inputValue = "";
+          editingLabel = undefined;
           showInput = true;
         }}>
         <Icon name="label" />
@@ -172,18 +214,55 @@
     {/if}
 
     {#each updatedLabels as label}
-      {#if allowedToEdit}
+      {#if allowedToEdit && editingLabel === label}
+        <div class="label-editor">
+          <div
+            style:width={`calc(${Math.min(Math.max(editValue.length, 3), 32)}ch + 1.5rem + 2px)`}
+            bind:this={anchorEl}>
+            <TextInput
+              autofocus
+              autoselect
+              disabled={submitInProgress}
+              bind:value={editValue}
+              onSubmit={() => {
+                if (editValidationMessage === undefined) {
+                  commitEdit();
+                }
+              }}
+              onBlur={commitEdit}
+              onKeydown={event => {
+                if (event.key === "Escape") {
+                  cancelEdit();
+                  return true;
+                }
+                return false;
+              }} />
+          </div>
+          <button
+            title="Remove label"
+            onmousedown={event => event.preventDefault()}
+            onclick={() => {
+              editingLabel = undefined;
+              removeLabel(label);
+            }}>
+            <Icon name="close" />
+          </button>
+        </div>
+      {:else if allowedToEdit}
         <button
-          class="removable-label"
-          onclick={() => (removeToggles[label] = !removeToggles[label])}>
+          class="editable-label"
+          title="Edit label"
+          onclick={() => startEdit(label)}>
           <Label {label} />
-          {#if removeToggles[label]}
-            <Icon name="close" onclick={() => removeLabel(label)} />
-          {/if}
         </button>
       {:else}
         <Label {label} />
       {/if}
     {/each}
+    {#if panelVisible}
+      <div class="popover" bind:this={floatingEl} use:portal>
+        <div class="validation-message">{panelMessage}</div>
+      </div>
+    {/if}
   </div>
 {/if}
