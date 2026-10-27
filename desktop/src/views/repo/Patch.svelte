@@ -9,11 +9,9 @@
   import type { Revision } from "@bindings/cob/patch/Revision";
   import type { Config } from "@bindings/config/Config";
   import type { Stats } from "@bindings/diff/Stats";
-  import type { Commit } from "@bindings/repo/Commit";
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
   import countBy from "lodash/countBy";
-  import mapValues from "lodash/mapValues";
   import { SvelteSet } from "svelte/reactivity";
 
   import { commentSourcesOf } from "@app/lib/commentSources";
@@ -31,11 +29,7 @@
   import { patchContributions } from "@app/lib/patchContributions";
   import type { ReviewEntry } from "@app/lib/reviewSummary";
   import { revisionTitle } from "@app/lib/revisionDescription";
-  import {
-    newCommitsByRevision,
-    orderRevisions,
-    revisionNumbers,
-  } from "@app/lib/revisionList";
+  import { orderRevisions, revisionNumbers } from "@app/lib/revisionList";
   import { revisionListSettings } from "@app/lib/revisionListSettings";
   import * as roles from "@app/lib/roles";
   import * as router from "@app/lib/router";
@@ -368,20 +362,20 @@
     const ridLocal = repo.rid;
     const ordered = orderedRevisions;
     void Promise.all(
-      ordered.map(async (rev): Promise<[string, Commit[]]> => {
+      ordered.map(async (rev): Promise<[string, number | undefined]> => {
         try {
           const commits = await cachedListCommits(ridLocal, rev.base, rev.head);
-          return [rev.id, commits];
+          return [rev.id, commits.length];
         } catch {
-          return [rev.id, []];
+          return [rev.id, undefined];
         }
       }),
     ).then(entries => {
-      const commits = Object.fromEntries(entries);
-      commitCountsByRevisionId = mapValues(
-        newCommitsByRevision(ordered, id => commits[id] ?? []),
-        added => added.length,
-      );
+      const next: Record<string, number> = {};
+      for (const [id, count] of entries) {
+        if (count !== undefined) next[id] = count;
+      }
+      commitCountsByRevisionId = next;
     });
   });
   // Per-revision diff stats for the dropdown: one request each, so they are
