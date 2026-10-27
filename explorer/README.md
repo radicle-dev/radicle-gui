@@ -4,8 +4,8 @@ This user interface lets you interact with [Radicle][rad], a peer-to-peer code
 collaboration and publishing stack, directly from your web browser.
 
 It lives in the `explorer/` folder of the radicle-gui repository, next to the
-[Radicle desktop app](../desktop/README.md). Run all commands below from
-`explorer/`.
+[Radicle desktop app](../desktop/README.md). Install dependencies at the
+repository root, and run all other commands below from `explorer/`.
 
 **Deployment Options:**
 
@@ -24,8 +24,9 @@ Run the following commands to access the web UI locally:
 
 ```shell
 git clone https://seed.radicle.dev/z4V1sjrXqjvFdnCUbxPFqd5p4DtH5.git radicle-gui
-cd radicle-gui/explorer
-npm install
+cd radicle-gui
+npm ci -w explorer
+cd explorer
 npm start
 ```
 
@@ -37,7 +38,8 @@ There are several ways to deploy the UI publicly. Here are two common options:
 
 **Using your own web server:**
 
-1. Run `npm install && npm build` to create a build for deployment
+1. Run `npm ci -w explorer` at the repository root, then `npm run build` in
+   `explorer/` to create a build for deployment
 2. Configure your web server to serve the contents of the `/build` directory
 
 **Using Vercel (or similar static file hosting):**

@@ -4,7 +4,8 @@ This desktop application lets you interact with [Radicle][rad], a peer-to-peer
 code collaboration and publishing stack.
 
 It lives in the `desktop/` folder of the radicle-gui repository, next to the
-Radicle web explorer. Run all commands below from `desktop/`.
+Radicle web explorer. Install dependencies at the repository root, and run all
+other commands below from `desktop/`.
 
 ## Installation
 
@@ -29,8 +30,9 @@ Run the following commands to build the desktop app locally:
 
 ```
 git clone https://seed.radicle.dev/z4V1sjrXqjvFdnCUbxPFqd5p4DtH5.git radicle-gui
-cd radicle-gui/desktop
-npm install
+cd radicle-gui
+npm ci -w desktop
+cd desktop
 npm run tauri build
 ```
 
