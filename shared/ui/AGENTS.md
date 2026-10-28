@@ -60,7 +60,7 @@ the components:
   heartwood
 - Define them in `lib/types.ts`, named after domain concepts such as `Author`
   or `Reaction`. The first extraction that needs a domain type creates the
-  file
+  file. ADR 4 moves them to `@radicle-gui/core` once that package exists
 - Apps pass their own objects when the shapes match, and map them in one place
   where they don't. Never import an app's types here
 
