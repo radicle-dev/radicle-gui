@@ -43,6 +43,10 @@ interactions such as editing, but the app owns all data and I/O.
   in, and never fetched, cached or persisted by the component
 - No side effects: no `fetch`, `invoke`, `localStorage`, `location`, polling or
   app context. Context defined in this package, such as the theme, is fine
+- Props can change at any time when newer data arrives. Keep local state such
+  as drafts, scroll position, selection and expanded threads across such
+  updates, and key lists by stable ids so items update instead of being
+  recreated
 - Style only with scoped CSS and the shared design tokens
 
 ESLint enforces the import and global restrictions.
