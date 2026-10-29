@@ -4,13 +4,11 @@ import { describe, expect } from "vitest";
 
 import { testFixture } from "@http-client/tests/support/fixtures.js";
 import { createRepo } from "@tests/support/repo.js";
-import { useLocalHttpd } from "@tests/support/support.js";
 
 describe("release", () => {
-  // The release read API only exists in the local httpd build, so skip these
-  // against the stable pre-built binary the default suite runs. Releases are
-  // seeded on an isolated peer to avoid perturbing the shared fixtures.
-  testFixture.skipIf(!useLocalHttpd)(
+  // Releases are seeded on an isolated peer to avoid perturbing the shared
+  // fixtures.
+  testFixture(
     "#getAllReleases(rid) + #getReleaseById(rid, id)",
     async ({ httpd: { api, peer } }) => {
       const { rid, repoFolder } = await createRepo(peer, {

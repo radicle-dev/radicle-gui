@@ -1,4 +1,4 @@
-import { test, cobUrl, expect } from "@tests/support/fixtures.js";
+import { test, cobRid, cobUrl, expect } from "@tests/support/fixtures.js";
 import {
   createContributor,
   createRepo,
@@ -6,10 +6,8 @@ import {
   registerArtifact,
   syncFrom,
 } from "@tests/support/repo.js";
-import { releaseApiOnlyLocal, useLocalHttpd } from "@tests/support/support.js";
 
 test.describe(() => {
-  test.skip(!useLocalHttpd, releaseApiOnlyLocal);
   // Release fixtures need several rad-artifact commands, which takes longer
   // than the default per-test budget.
   test.describe.configure({ timeout: 30_000 });
@@ -106,7 +104,13 @@ test.describe(() => {
 });
 
 test("releases are unavailable on older nodes", async ({ page }) => {
-  test.skip(useLocalHttpd, "older nodes are the pre-built httpd release");
+  // Older nodes don't report a release count.
+  await page.route(`**/api/v1/repos/${cobRid}`, async route => {
+    const response = await route.fetch();
+    const json = await response.json();
+    delete json.payloads["xyz.radicle.project"].meta.releases;
+    await route.fulfill({ response, json });
+  });
 
   await page.goto(cobUrl);
   await expect(page.getByRole("link", { name: /^Releases/ })).toBeHidden();

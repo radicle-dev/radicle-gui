@@ -6,10 +6,8 @@ import {
   registerArtifact,
   syncFrom,
 } from "@tests/support/repo.js";
-import { releaseApiOnlyLocal, useLocalHttpd } from "@tests/support/support.js";
 
 test.describe(() => {
-  test.skip(!useLocalHttpd, releaseApiOnlyLocal);
   // Release fixtures need several rad-artifact commands, which takes longer
   // than the default per-test budget.
   test.describe.configure({ timeout: 30_000 });

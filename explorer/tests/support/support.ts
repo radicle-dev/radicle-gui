@@ -39,9 +39,6 @@ export const radicleArtifactRelease = (
 
 export const useLocalHttpd = process.env.USE_LOCAL_HTTPD === "true";
 
-export const releaseApiOnlyLocal =
-  "the release read API only exists in the local httpd build";
-
 // Assert that binaries are installed and are the correct version.
 export async function assertBinariesInstalled(
   binary: string,
