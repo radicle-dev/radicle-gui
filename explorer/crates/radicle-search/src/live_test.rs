@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::process::{Child, Command};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -546,6 +547,123 @@ async fn live_unseed_purges() {
     })
     .await;
     assert!(purged, "unseed did not purge repo/issue docs within 10s");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_node_announced_keeps_follow_alias_and_skips_non_seeds() {
+    use radicle::crypto::{Seed, Signer, SigningKey};
+    use radicle::node::{Alias, Event, Features, Timestamp, UserAgent};
+
+    let meili = LiveMeili::spawn();
+    let (_tmp, profile, _rid) = crate::test::fixture();
+    let config = config_with(&meili.url);
+    let indexes = Arc::new(Indexes::connect(&config).expect("connect"));
+    indexes
+        .configure_all_with_retry()
+        .await
+        .expect("configure indexes");
+
+    let followed = *SigningKey::from_seed(Seed::new([0x11; 32])).public_key();
+    let laptop = *SigningKey::from_seed(Seed::new([0x22; 32])).public_key();
+    profile
+        .policies_mut()
+        .expect("open policy store")
+        .follow(&followed, Some(&Alias::new("local-name")))
+        .expect("follow");
+    profile
+        .database_mut()
+        .expect("open node db")
+        .init(
+            &followed,
+            Features::SEED,
+            &Alias::new("announced"),
+            &UserAgent::default(),
+            Timestamp::try_from(crate::test::TIMESTAMP + 1).unwrap(),
+            [],
+        )
+        .expect("init address book");
+
+    let db = profile.database().expect("open node db");
+    let primed = build::node_documents(&profile, &db, std::iter::empty()).expect("node docs");
+    indexes
+        .nodes
+        .upsert(&primed, crate::index::node::Document::PRIMARY_KEY)
+        .await
+        .expect("prime nodes index");
+
+    let profile = Arc::new(profile);
+    let indexer = Indexer::new(profile.clone(), indexes.clone(), config);
+    let client = SearchClient::new(&meili.url, None, "", Duration::from_secs(5))
+        .expect("construct search client");
+    let ready = poll_until(Duration::from_secs(10), || {
+        let client = client.clone();
+        async move { matches!(client.get_node(&followed).await, Ok(Some(_))) }
+    })
+    .await;
+    assert!(ready, "primed node doc did not appear within 10s");
+
+    let ts = Timestamp::try_from(crate::test::TIMESTAMP + 2).unwrap();
+    indexer
+        .handle_event(
+            &Event::NodeAnnounced {
+                nid: followed,
+                alias: Alias::new("announced"),
+                timestamp: ts,
+                features: Features::SEED,
+                addresses: vec![],
+            },
+            &mut HashSet::new(),
+        )
+        .await
+        .expect("handle followed announcement");
+    indexer
+        .handle_event(
+            &Event::NodeAnnounced {
+                nid: laptop,
+                alias: Alias::new("laptop"),
+                timestamp: ts,
+                features: Features::NONE,
+                addresses: vec![],
+            },
+            &mut HashSet::new(),
+        )
+        .await
+        .expect("handle laptop announcement");
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let doc = client
+        .get_node(&followed)
+        .await
+        .expect("get followed node")
+        .expect("followed node document present");
+    assert_eq!(doc.alias.as_deref(), Some("local-name"));
+    assert!(matches!(client.get_node(&laptop).await, Ok(None)));
+
+    indexer
+        .handle_event(
+            &Event::NodeAnnounced {
+                nid: laptop,
+                alias: Alias::new("laptop"),
+                timestamp: ts,
+                features: Features::SEED,
+                addresses: vec![],
+            },
+            &mut HashSet::new(),
+        )
+        .await
+        .expect("handle laptop seed announcement");
+    let appeared = poll_until(Duration::from_secs(10), || {
+        let client = client.clone();
+        async move {
+            matches!(client.get_node(&laptop).await, Ok(Some(d)) if d.alias.as_deref() == Some("laptop"))
+        }
+    })
+    .await;
+    assert!(
+        appeared,
+        "seed announcement did not create the node document within 10s"
+    );
 }
 
 #[tokio::test]

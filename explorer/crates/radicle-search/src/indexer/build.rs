@@ -8,7 +8,7 @@ use radicle::identity::doc::Delegates;
 use radicle::identity::{Did, RepoId};
 use radicle::node::address::Store as AddressStore;
 use radicle::node::routing::Store as _;
-use radicle::node::{Alias, NodeId};
+use radicle::node::{Alias, Features, NodeId};
 use radicle::prelude::Doc;
 use radicle::storage::{ReadRepository, ReadStorage};
 use radicle_artifact::Releases;
@@ -187,6 +187,28 @@ pub(crate) fn release_documents(
 
 pub(crate) fn node_alias(follow_alias: Option<Alias>, announced: Option<Alias>) -> Option<String> {
     follow_alias.or(announced).map(|a| a.to_string())
+}
+
+pub(crate) fn node_document_from_announcement(
+    profile: &Profile,
+    db: &radicle::node::Database,
+    nid: NodeId,
+    announced: Alias,
+    features: Features,
+) -> Result<Option<node::Document>> {
+    if !features.has(Features::SEED) {
+        return Ok(None);
+    }
+    let follow_alias = profile
+        .policies()?
+        .follow_policy(&nid)?
+        .and_then(|policy| policy.alias);
+    let agent = AddressStore::get(db, &nid)?.map(|n| n.agent.to_string());
+    Ok(Some(node::Document::new(
+        nid,
+        node_alias(follow_alias, Some(announced)),
+        agent,
+    )))
 }
 
 pub(crate) fn node_documents(
@@ -537,6 +559,116 @@ mod tests {
                 .iter()
                 .any(|d| d.nid == remote_nid && d.alias.as_deref() == Some("remote-peer"))
         );
+    }
+
+    #[test]
+    fn announcement_keeps_follow_alias_over_announced() {
+        use radicle::crypto::{Seed, Signer, SigningKey};
+        use radicle::node::{Alias, Features, Timestamp, UserAgent};
+
+        let (_tmp, profile, _rid) = crate::test::fixture();
+        let remote_nid = *SigningKey::from_seed(Seed::new([0x11; 32])).public_key();
+        profile
+            .policies_mut()
+            .unwrap()
+            .follow(&remote_nid, Some(&Alias::new("local-name")))
+            .unwrap();
+        profile
+            .database_mut()
+            .unwrap()
+            .init(
+                &remote_nid,
+                Features::SEED,
+                &Alias::new("announced"),
+                &UserAgent::default(),
+                Timestamp::try_from(crate::test::TIMESTAMP + 1).unwrap(),
+                [],
+            )
+            .unwrap();
+        let db = profile.database().unwrap();
+
+        let doc = node_document_from_announcement(
+            &profile,
+            &db,
+            remote_nid,
+            Alias::new("announced"),
+            Features::SEED,
+        )
+        .unwrap()
+        .expect("seed node produces a document");
+
+        assert_eq!(doc.nid, remote_nid);
+        assert_eq!(doc.alias.as_deref(), Some("local-name"));
+        assert_eq!(
+            doc.agent.as_deref(),
+            Some(UserAgent::default().to_string().as_str())
+        );
+    }
+
+    #[test]
+    fn announcement_uses_announced_alias_without_follow() {
+        use radicle::crypto::{Seed, Signer, SigningKey};
+        use radicle::node::{Alias, Features, Timestamp, UserAgent};
+
+        let (_tmp, profile, _rid) = crate::test::fixture();
+        let remote_nid = *SigningKey::from_seed(Seed::new([0x11; 32])).public_key();
+        profile
+            .database_mut()
+            .unwrap()
+            .init(
+                &remote_nid,
+                Features::SEED,
+                &Alias::new("announced"),
+                &UserAgent::default(),
+                Timestamp::try_from(crate::test::TIMESTAMP + 1).unwrap(),
+                [],
+            )
+            .unwrap();
+        let db = profile.database().unwrap();
+
+        let doc = node_document_from_announcement(
+            &profile,
+            &db,
+            remote_nid,
+            Alias::new("announced"),
+            Features::SEED,
+        )
+        .unwrap()
+        .expect("seed node produces a document");
+
+        assert_eq!(doc.alias.as_deref(), Some("announced"));
+    }
+
+    #[test]
+    fn announcement_from_non_seed_node_is_ignored() {
+        use radicle::crypto::{Seed, Signer, SigningKey};
+        use radicle::node::{Alias, Features};
+
+        let (_tmp, profile, _rid) = crate::test::fixture();
+        let laptop = *SigningKey::from_seed(Seed::new([0x22; 32])).public_key();
+        let db = profile.database().unwrap();
+
+        let ignored = node_document_from_announcement(
+            &profile,
+            &db,
+            laptop,
+            Alias::new("laptop"),
+            Features::NONE,
+        )
+        .unwrap();
+        assert!(ignored.is_none());
+
+        let seed = node_document_from_announcement(
+            &profile,
+            &db,
+            laptop,
+            Alias::new("laptop"),
+            Features::SEED,
+        )
+        .unwrap()
+        .expect("seed announcement produces a document");
+        assert_eq!(seed.alias.as_deref(), Some("laptop"));
+        assert_eq!(seed.agent, None);
     }
 
     #[test]

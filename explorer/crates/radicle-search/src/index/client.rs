@@ -82,6 +82,34 @@ impl Index {
         Ok(())
     }
 
+    pub async fn update<D: Serialize + Send + Sync>(
+        &self,
+        docs: &[D],
+        primary_key: &str,
+    ) -> Result<()> {
+        if docs.is_empty() {
+            return Ok(());
+        }
+        let task = retry_meili("update", is_transient, || {
+            self.index.add_or_update(docs, Some(primary_key))
+        })
+        .await?;
+        watch_task(self.client.clone(), task, "update", self.wait);
+        Ok(())
+    }
+
+    pub async fn exists(&self, id: &str) -> Result<bool> {
+        match self.index.get_document::<serde_json::Value>(id).await {
+            Ok(_) => Ok(true),
+            Err(meilisearch_sdk::errors::Error::Meilisearch(inner))
+                if inner.error_code == meilisearch_sdk::errors::ErrorCode::DocumentNotFound =>
+            {
+                Ok(false)
+            }
+            Err(e) => Err(e).context("document lookup failed"),
+        }
+    }
+
     /// Enqueue a delete with Meilisearch. Same semantics as
     /// [`Self::upsert`] — the enqueue call is awaited (retrying transient
     /// failures); task completion is watched in the background.

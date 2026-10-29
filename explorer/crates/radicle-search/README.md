@@ -69,12 +69,11 @@ announced.
 2. **Real time.** Subscribes to the node's control socket (same stream as
    `rad node events`) and reacts to:
    - `RefsFetched`, `LocalRefsAnnounced`, `CanonicalRefUpdated`, `RefsSynced` →
-     re-index the affected repo, its issues, and its patches.
-   - `RefsAnnounced` → re-index only if the rid is one we locally seed (filtered
-     against an in-memory cache, so gossip about repos we don't host is dropped
-     at near-zero cost).
-   - `SeedDiscovered` and `SeedDropped` are ignored; the seeding count they
-     affect is refreshed by the periodic rescan.
+     re-index the affected repo, its issues, patches and releases.
+   - `SeedDiscovered`, `SeedDropped` and `RefsAnnounced` are ignored; the
+     seeding count the seed events affect is refreshed by the periodic rescan,
+     and the content changes a ref announcement precedes arrive as
+     `RefsFetched`.
    - `NodeAnnounced` → upsert the node document.
    - `InventoryAnnounced` → replace the inventory document for that node.
 

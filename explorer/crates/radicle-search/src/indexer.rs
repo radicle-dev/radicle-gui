@@ -11,7 +11,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use radicle::Profile;
 use radicle::identity::RepoId;
-use radicle::node::{Event, Handle as _, NodeId};
+use radicle::node::{Alias, Event, Features, Handle as _, NodeId};
 use radicle::storage::{ReadRepository, ReadStorage};
 use tokio::sync::{RwLock, mpsc, watch};
 
@@ -340,7 +340,7 @@ impl Indexer {
     /// Bring the index in sync with the current local state of `rid`. If
     /// we're still seeding it, upsert a fresh document. If we've dropped
     /// it (or it's no longer indexable), delete the document and prune
-    /// the seeded cache so subsequent gossip events don't re-trigger.
+    /// the seeded cache.
     pub async fn reindex(&self, rid: RepoId) -> Result<()> {
         let key = repo::DocumentKey::new(rid);
         let profile = self.profile.clone();
@@ -348,8 +348,8 @@ impl Indexer {
             let policies = profile.policies()?;
             // Propagate on lookup failure rather than treating it as
             // "not seeded" — a transient sqlite error would otherwise
-            // delete the entry and prune the cache, hiding the rid from
-            // subsequent gossip events until the next full rescan.
+            // delete the entry and prune the cache until the next full
+            // rescan.
             if !policies.is_seeding(&rid)? {
                 return Ok(ReindexAction::Delete);
             }
@@ -415,6 +415,104 @@ impl Indexer {
         Ok(())
     }
 
+    pub(crate) async fn handle_event(
+        &self,
+        event: &Event,
+        pending: &mut HashSet<RepoId>,
+    ) -> Result<()> {
+        let Some(class) = event::classify_event(event) else {
+            tracing::debug!("ignored event: {}", event::event_kind(event));
+            return Ok(());
+        };
+        match class {
+            event::EventClass::Repo(rid, category) => {
+                self.handle_repo_event(rid, category, event, pending).await
+            }
+            event::EventClass::Node {
+                nid,
+                alias,
+                features,
+            } => self.handle_node_event(nid, alias, features).await,
+            event::EventClass::Inventory { nid, inventory } => {
+                self.handle_inventory_event(nid, inventory).await
+            }
+        }
+    }
+
+    async fn handle_repo_event(
+        &self,
+        rid: RepoId,
+        category: event::EventCategory,
+        event: &Event,
+        pending: &mut HashSet<RepoId>,
+    ) -> Result<()> {
+        let key = repo::DocumentKey::new(rid);
+        let is_seeded = self.seeded.contains(&key).await;
+        match event::event_action(category, is_seeded) {
+            event::EventAction::Reindex => {}
+            event::EventAction::DiscoverAndReindex => {
+                self.seeded.insert(key).await;
+                tracing::info!("discovered new local seed: {rid}");
+            }
+        }
+        if pending.insert(rid) {
+            tracing::debug!(
+                "queued reindex of {rid} (event: {})",
+                event::event_kind(event)
+            );
+        }
+        Ok(())
+    }
+
+    async fn handle_node_event(&self, nid: NodeId, alias: Alias, features: Features) -> Result<()> {
+        let profile = self.profile.clone();
+        let doc = tokio::task::spawn_blocking(move || {
+            let db = profile.database()?;
+            build::node_document_from_announcement(&profile, &db, nid, alias, features)
+        })
+        .await
+        .context("node doc task panicked")?;
+        let doc = match doc {
+            Ok(Some(doc)) => doc,
+            Ok(None) => {
+                tracing::debug!("ignoring announcement from non-seed node {nid}");
+                return Ok(());
+            }
+            Err(e) => {
+                tracing::warn!("node doc for {nid} failed: {e:#}");
+                return Ok(());
+            }
+        };
+        if let Err(e) = self
+            .indexes
+            .nodes
+            .upsert(
+                std::slice::from_ref(&doc),
+                crate::index::node::Document::PRIMARY_KEY,
+            )
+            .await
+        {
+            tracing::warn!("node doc upsert for {nid} failed: {e:#}");
+        }
+        Ok(())
+    }
+
+    async fn handle_inventory_event(&self, nid: NodeId, inventory: Vec<RepoId>) -> Result<()> {
+        let doc = crate::index::inventory::Document::new(nid, inventory);
+        if let Err(e) = self
+            .indexes
+            .inventory
+            .upsert(
+                std::slice::from_ref(&doc),
+                crate::index::inventory::Document::PRIMARY_KEY,
+            )
+            .await
+        {
+            tracing::warn!("inventory doc upsert for {nid} failed: {e:#}");
+        }
+        Ok(())
+    }
+
     pub async fn run(&self, mut shutdown: watch::Receiver<bool>) -> Result<()> {
         tokio::select! {
             _ = shutdown.changed() => return Ok(()),
@@ -451,84 +549,7 @@ impl Indexer {
                         }
                         None => break,
                     };
-                    let Some(class) = event::classify_event(&event) else {
-                        tracing::debug!("ignored event: {}", event::event_kind(&event));
-                        continue;
-                    };
-                    match class {
-                        event::EventClass::Repo(rid, category) => {
-                            let key = repo::DocumentKey::new(rid);
-                            let is_seeded = self.seeded.contains(&key).await;
-                            match event::event_action(category, is_seeded) {
-                                event::EventAction::Skip => {
-                                    tracing::debug!(
-                                        "skipping {rid} ({}): not locally seeded",
-                                        event::event_kind(&event)
-                                    );
-                                    continue;
-                                }
-                                event::EventAction::Reindex => {}
-                                event::EventAction::DiscoverAndReindex => {
-                                    self.seeded.insert(key).await;
-                                    tracing::info!("discovered new local seed: {rid}");
-                                }
-                            }
-                            if pending.insert(rid) {
-                                tracing::debug!(
-                                    "queued reindex of {rid} (event: {})",
-                                    event::event_kind(&event)
-                                );
-                            }
-                        }
-                        event::EventClass::Node { nid, alias } => {
-                            let profile = self.profile.clone();
-                            let doc = tokio::task::spawn_blocking(move || {
-                                let db = profile.database()?;
-                                let agent = radicle::node::address::Store::get(&db, &nid)?
-                                    .map(|n| n.agent.to_string());
-                                Ok::<_, anyhow::Error>(crate::index::node::Document::new(
-                                    nid,
-                                    Some(alias.to_string()),
-                                    agent,
-                                ))
-                            })
-                            .await
-                            .context("node doc task panicked")?;
-                            let doc = match doc {
-                                Ok(doc) => doc,
-                                Err(e) => {
-                                    tracing::warn!("node doc for {nid} failed: {e:#}");
-                                    continue;
-                                }
-                            };
-                            if let Err(e) = self
-                                .indexes
-                                .nodes
-                                .upsert(
-                                    std::slice::from_ref(&doc),
-                                    crate::index::node::Document::PRIMARY_KEY,
-                                )
-                                .await
-                            {
-                                tracing::warn!("node doc upsert for {nid} failed: {e:#}");
-                            }
-                        }
-                        event::EventClass::Inventory { nid, inventory } => {
-                            let doc =
-                                crate::index::inventory::Document::new(nid, inventory);
-                            if let Err(e) = self
-                                .indexes
-                                .inventory
-                                .upsert(
-                                    std::slice::from_ref(&doc),
-                                    crate::index::inventory::Document::PRIMARY_KEY,
-                                )
-                                .await
-                            {
-                                tracing::warn!("inventory doc upsert for {nid} failed: {e:#}");
-                            }
-                        }
-                    }
+                    self.handle_event(&event, &mut pending).await?;
                 }
                 () = async {
                     if let Some(work) = work.as_mut() {
