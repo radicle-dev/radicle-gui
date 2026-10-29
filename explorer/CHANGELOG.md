@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Event subscription kept during rescans**: radicle-search keeps reading node
+  events while it rescans or reindexes, so the node no longer drops its
+  subscription during every periodic rescan, and the events emitted meanwhile
+  are no longer lost. Rescans and batched reindexes also keep running while the
+  event stream is down, and the catch-up rescan after a reconnect runs in the
+  background instead of delaying the resubscription
+
 ## radicle-httpd + radicle-search 0.30.0
 
 - **`tar.zst` archive downloads**: `/raw/{rid}/archive/{ref}.tar.zst` joins the

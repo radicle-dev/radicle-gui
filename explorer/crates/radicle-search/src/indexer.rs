@@ -3,6 +3,8 @@ mod build;
 mod event;
 
 use std::collections::HashSet;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -50,8 +52,15 @@ impl Seeded {
         self.inner.write().await.remove(key)
     }
 
-    async fn replace(&self, keys: HashSet<repo::DocumentKey>) {
-        *self.inner.write().await = keys;
+    async fn reconcile(
+        &self,
+        before: &HashSet<repo::DocumentKey>,
+        scanned: HashSet<repo::DocumentKey>,
+    ) {
+        let mut inner = self.inner.write().await;
+        let inserted: Vec<_> = inner.difference(before).copied().collect();
+        *inner = scanned;
+        inner.extend(inserted);
     }
 
     async fn contains(&self, key: &repo::DocumentKey) -> bool {
@@ -78,7 +87,7 @@ impl Indexer {
         let profile = self.profile.clone();
         let previous_seeded = self.seeded.as_inner().await;
 
-        let handler = bootstrap::Bootstrap::new(previous_seeded);
+        let handler = bootstrap::Bootstrap::new(previous_seeded.clone());
         let (docs, seeded) = tokio::task::spawn_blocking(
             move || -> Result<(Vec<repo::Document>, HashSet<repo::DocumentKey>)> {
                 let policies = profile.policies()?;
@@ -141,7 +150,9 @@ impl Indexer {
                 );
             }
         }
-        self.seeded.replace(seeded.clone()).await;
+        self.seeded
+            .reconcile(&previous_seeded, seeded.clone())
+            .await;
 
         let removed = match self.index.list_doc_ids().await {
             Ok(meili_ids) => {
@@ -214,60 +225,8 @@ impl Indexer {
             res = self.bootstrap() => res?,
         }
 
-        loop {
-            let sub_shutdown = shutdown.clone();
-            tokio::select! {
-                _ = shutdown.changed() => return Ok(()),
-                res = self.subscribe_loop(sub_shutdown) => match res {
-                    Ok(()) => tracing::warn!("event stream ended without error; reconnecting"),
-                    Err(e) => tracing::warn!("event stream error: {e:#}; reconnecting"),
-                },
-            }
-            tokio::select! {
-                _ = shutdown.changed() => return Ok(()),
-                _ = tokio::time::sleep(self.config.reconnect_backoff) => {}
-            }
-            tokio::select! {
-                _ = shutdown.changed() => return Ok(()),
-                res = self.bootstrap() => {
-                    if let Err(e) = res {
-                        tracing::error!("rescan after disconnect failed: {e:#}");
-                    }
-                }
-            }
-        }
-    }
-
-    async fn subscribe_loop(&self, mut shutdown: watch::Receiver<bool>) -> Result<()> {
-        let socket = self.profile.home().socket_from_env();
-        tracing::info!("subscribing to node events at {}", socket.display());
-        let node = radicle::Node::new(&socket);
-
-        let (tx, mut rx) = mpsc::channel::<Event>(EVENT_CHANNEL_CAPACITY);
-        let blocking_shutdown = shutdown.clone();
-        let blocking = tokio::task::spawn_blocking(move || -> Result<()> {
-            let events = node
-                .subscribe(Duration::from_secs(1))
-                .context("subscribe to node socket failed")?;
-            for event in events {
-                if *blocking_shutdown.borrow() {
-                    break;
-                }
-                let event = match event {
-                    Ok(e) => e,
-                    Err(radicle::node::Error::TimedOut) => continue,
-                    Err(e) => {
-                        return Err(anyhow::Error::from(e).context("event read failed"));
-                    }
-                };
-                if tx.blocking_send(event).is_err() {
-                    break;
-                }
-            }
-            Ok(())
-        });
-
         let mut rescan_timer = tokio::time::interval(self.config.rescan_interval);
+        rescan_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         rescan_timer.tick().await;
 
         let mut pending = HashSet::new();
@@ -275,11 +234,27 @@ impl Indexer {
         batch_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         batch_timer.tick().await;
 
+        let (tx, mut rx) = mpsc::channel::<Feed>(EVENT_CHANNEL_CAPACITY);
+        let reader = tokio::spawn(read_events(
+            self.profile.clone(),
+            self.config.reconnect_backoff,
+            shutdown.clone(),
+            tx,
+        ));
+
+        let mut work: Option<Pin<Box<dyn Future<Output = ()> + '_>>> = None;
         loop {
             tokio::select! {
                 _ = shutdown.changed() => break,
-                event = rx.recv() => {
-                    let Some(event) = event else { break; };
+                feed = rx.recv() => {
+                    let event = match feed {
+                        Some(Feed::Event(event)) => event,
+                        Some(Feed::Resubscribed) => {
+                            rescan_timer.reset_immediately();
+                            continue;
+                        }
+                        None => break,
+                    };
                     let Some((rid, category)) = event::classify_event(&event) else {
                         tracing::debug!("ignored event: {}", event::event_kind(&event));
                         continue;
@@ -307,34 +282,128 @@ impl Indexer {
                         );
                     }
                 }
-                _ = batch_timer.tick() => {
-                    if pending.is_empty() {
-                        continue;
+                () = async {
+                    if let Some(work) = work.as_mut() {
+                        work.await;
                     }
-                    tracing::info!("reindexing {} repositories (batched)", pending.len());
-                    for rid in pending.drain().collect::<Vec<_>>() {
-                        if let Err(e) = self.reindex(rid).await {
-                            tracing::warn!("reindex {} failed: {e:#}", rid);
-                        }
+                }, if work.is_some() => work = None,
+                _ = batch_timer.tick(), if work.is_none() => {
+                    if !pending.is_empty() {
+                        work = Some(Box::pin(self.reindex_batch(pending.drain().collect())));
                     }
                 }
-                _ = rescan_timer.tick() => {
-                    if let Err(e) = self.bootstrap().await {
-                        tracing::warn!("periodic rescan failed: {e:#}");
-                    }
+                _ = rescan_timer.tick(), if work.is_none() => {
+                    work = Some(Box::pin(self.rescan()));
                 }
             }
         }
 
-        blocking
-            .await
-            .context("event reader task panicked")?
-            .context("event reader task returned an error")?;
+        drop(rx);
+        reader.await.context("event reader task panicked")?;
         Ok(())
+    }
+
+    async fn reindex_batch(&self, rids: Vec<RepoId>) {
+        tracing::info!("reindexing {} repositories (batched)", rids.len());
+        for rid in rids {
+            if let Err(e) = self.reindex(rid).await {
+                tracing::warn!("reindex {} failed: {e:#}", rid);
+            }
+        }
+    }
+
+    async fn rescan(&self) {
+        if let Err(e) = self.bootstrap().await {
+            tracing::warn!("periodic rescan failed: {e:#}");
+        }
+    }
+}
+
+enum Feed {
+    Event(Event),
+    Resubscribed,
+}
+
+async fn read_events(
+    profile: Arc<Profile>,
+    reconnect_backoff: Duration,
+    mut shutdown: watch::Receiver<bool>,
+    tx: mpsc::Sender<Feed>,
+) {
+    let mut resubscribing = false;
+    loop {
+        let socket = profile.home().socket_from_env();
+        tracing::info!("subscribing to node events at {}", socket.display());
+        let node = radicle::Node::new(&socket);
+        let feed = tx.clone();
+        let blocking_shutdown = shutdown.clone();
+        let res = tokio::task::spawn_blocking(move || -> Result<()> {
+            let events = node
+                .subscribe(Duration::from_secs(1))
+                .context("subscribe to node socket failed")?;
+            if resubscribing && feed.blocking_send(Feed::Resubscribed).is_err() {
+                return Ok(());
+            }
+            for event in events {
+                if *blocking_shutdown.borrow() {
+                    break;
+                }
+                let event = match event {
+                    Ok(e) => e,
+                    Err(radicle::node::Error::TimedOut) => continue,
+                    Err(e) => {
+                        return Err(anyhow::Error::from(e).context("event read failed"));
+                    }
+                };
+                if feed.blocking_send(Feed::Event(event)).is_err() {
+                    break;
+                }
+            }
+            Ok(())
+        })
+        .await;
+        if *shutdown.borrow() || tx.is_closed() {
+            return;
+        }
+        match res {
+            Ok(Ok(())) => tracing::warn!("event stream ended without error; reconnecting"),
+            Ok(Err(e)) => tracing::warn!("event stream error: {e:#}; reconnecting"),
+            Err(e) => tracing::warn!("event reader task panicked: {e}; reconnecting"),
+        }
+        tokio::select! {
+            _ = shutdown.changed() => return,
+            _ = tokio::time::sleep(reconnect_backoff) => {}
+        }
+        resubscribing = true;
     }
 }
 
 enum ReindexAction {
     Upsert(Box<repo::Document>),
     Delete,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn key(rid: &str) -> repo::DocumentKey {
+        repo::DocumentKey::new(rid.parse().unwrap())
+    }
+
+    #[tokio::test]
+    async fn reconcile_keeps_keys_inserted_during_the_rescan() {
+        let seeded = Seeded::new();
+        let kept = key("rad:z4V1sjrXqjvFdnCUbxPFqd5p4DtH5");
+        let unseeded = key("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5");
+        let discovered = key("rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp");
+        seeded.insert(kept).await;
+        seeded.insert(unseeded).await;
+        let before = seeded.as_inner().await;
+
+        seeded.insert(discovered).await;
+        seeded.reconcile(&before, HashSet::from([kept])).await;
+
+        assert_eq!(seeded.as_inner().await, HashSet::from([kept, discovered]));
+    }
 }
