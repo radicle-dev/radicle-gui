@@ -7,7 +7,7 @@ use serde_json::json;
 use tokio::time::{timeout, Duration};
 
 use radicle::crypto::ssh::fmt;
-use radicle::identity::Did;
+use radicle::identity::{Did, RepoId};
 use radicle::node::address::Store as AddressStore;
 use radicle::node::routing::Store;
 use radicle::node::{AliasStore, Config, Handle, NodeId, UserAgent};
@@ -72,10 +72,21 @@ impl Response {
 /// `GET /info` aggregate.
 pub(crate) async fn build_response(ctx: &Context) -> Result<Response, Error> {
     let node_id = ctx.profile.public_key;
-    let home = ctx.profile.database()?;
-    let agent = AddressStore::get(&home, &node_id)
-        .unwrap_or_default()
-        .map(|node| node.agent);
+    let agent = match ctx.source() {
+        crate::Source::Sqlite => {
+            let home = ctx.profile.database()?;
+            AddressStore::get(&home, &node_id)
+                .unwrap_or_default()
+                .map(|node| node.agent)
+        }
+        crate::Source::Meilisearch => ctx
+            .search()
+            .ok_or(Error::SearchUnavailable)?
+            .get_node(&node_id)
+            .await?
+            .and_then(|d| d.agent)
+            .and_then(|a| a.parse::<UserAgent>().ok()),
+    };
 
     // The call to `is_running` is a blocking call, which has been, anecdotally, slow to respond.
     // Spawn a thread with a timeout to ensure that the call to `is_running` does not slow down the
@@ -135,9 +146,17 @@ async fn node_handler(State(ctx): State<Context>) -> impl IntoResponse {
 /// Return stored information about other nodes.
 /// `GET /nodes/:nid`
 async fn nodes_handler(State(ctx): State<Context>, Path(nid): Path<NodeId>) -> impl IntoResponse {
-    let aliases = ctx.profile.aliases();
+    let alias = match ctx.source() {
+        crate::Source::Sqlite => ctx.profile.aliases().alias(&nid).map(|a| a.to_string()),
+        crate::Source::Meilisearch => ctx
+            .search()
+            .ok_or(Error::SearchUnavailable)?
+            .get_node(&nid)
+            .await?
+            .and_then(|d| d.alias),
+    };
     let response = json!({
-        "alias": aliases.alias(&nid),
+        "alias": alias,
         "did": Did::from(nid),
         "ssh": {
             "full": fmt::key(&nid),
@@ -154,8 +173,18 @@ async fn nodes_inventory_handler(
     State(ctx): State<Context>,
     Path(nid): Path<NodeId>,
 ) -> impl IntoResponse {
-    let db = &ctx.profile.database()?;
-    let resources = db.get_inventory(&nid)?;
+    let resources: Vec<RepoId> = match ctx.source() {
+        crate::Source::Sqlite => {
+            let db = &ctx.profile.database()?;
+            db.get_inventory(&nid)?.into_iter().collect()
+        }
+        crate::Source::Meilisearch => ctx
+            .search()
+            .ok_or(Error::SearchUnavailable)?
+            .get_inventory(&nid)
+            .await?
+            .unwrap_or_default(),
+    };
 
     Ok::<_, Error>(Json(resources))
 }
@@ -163,8 +192,19 @@ async fn nodes_inventory_handler(
 /// Return local repo policies information.
 /// `GET /node/policies/repos`
 async fn node_policies_repos_handler(State(ctx): State<Context>) -> impl IntoResponse {
-    let policies = ctx.profile.policies()?;
-    let policies = policies.seed_policies()?.collect::<Result<Vec<_>, _>>()?;
+    let policies = match ctx.source() {
+        crate::Source::Sqlite => {
+            let policies = ctx.profile.policies()?;
+            let policies = policies.seed_policies()?.collect::<Result<Vec<_>, _>>()?;
+            policies
+        }
+        crate::Source::Meilisearch => {
+            ctx.search()
+                .ok_or(Error::SearchUnavailable)?
+                .list_policies()
+                .await?
+        }
+    };
 
     Ok::<_, Error>(Json(policies))
 }
@@ -176,10 +216,21 @@ async fn node_policies_repo_handler(
     Path(rid): Path<String>,
 ) -> impl IntoResponse {
     let rid = ctx.resolve_repo(&rid)?;
-    let policies = ctx.profile.policies()?;
-    let policy = policies.seed_policy(&rid)?;
+    let policy = match ctx.source() {
+        crate::Source::Sqlite => {
+            let policies = ctx.profile.policies()?;
+            *policies.seed_policy(&rid)?
+        }
+        crate::Source::Meilisearch => {
+            let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
+            match backend.get_policy(rid).await? {
+                Some(policy) => policy,
+                None => ctx.profile.config.node.seeding_policy.into(),
+            }
+        }
+    };
 
-    Ok::<_, Error>(Json(*policy))
+    Ok::<_, Error>(Json(policy))
 }
 
 #[cfg(test)]
@@ -332,6 +383,55 @@ mod routes {
             json_response["bannerUrl"],
             json!("https://example.com/banner.png")
         );
+    }
+
+    #[tokio::test]
+    async fn test_node_endpoints_meili_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+        let nid = ctx.profile().public_key;
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, "/node").await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: Value = response.json().await;
+        assert!(body["state"].is_string());
+
+        let response = get(&app, format!("/nodes/{nid}")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: Value = response.json().await;
+        assert_eq!(body["alias"], CONTRIBUTOR_ALIAS);
+
+        let unknown = "z6MksFqXN3Yhqk8pTJdUGLwATkRfQvwZXPqR2qMEhbS9wzpT";
+        let response = get(&app, format!("/nodes/{unknown}")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: Value = response.json().await;
+        assert_eq!(body["alias"], Value::Null);
+
+        let response = get(&app, format!("/nodes/{nid}/inventory")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: Value = response.json().await;
+        assert_eq!(body.as_array().unwrap().len(), 1);
+        let response = get(&app, format!("/nodes/{unknown}/inventory")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.json().await, serde_json::json!([]));
+
+        let response = get(&app, format!("/node/policies/repos/{RID}")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: Value = response.json().await;
+        assert_eq!(body["policy"], "allow");
+        assert_eq!(body["scope"], "all");
+        let response = get(&app, "/node/policies/repos").await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.json().await.as_array().unwrap().len(), 1);
+
+        let response = get(
+            &app,
+            "/node/policies/repos/rad:zLuTzcmoWMcdK37xqArS8eckp9vK",
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[tokio::test]

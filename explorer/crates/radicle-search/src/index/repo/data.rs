@@ -73,6 +73,8 @@ pub struct Document {
     pub v: u32,
     pub id: DocumentKey,
     pub rid: RepoId,
+    #[serde(default)]
+    pub rid_hex: String,
     pub name: String,
     pub description: String,
     pub default_branch: git::fmt::RefString,
@@ -88,6 +90,12 @@ pub struct Document {
 
 impl Document {
     pub const PRIMARY_KEY: &str = "id";
+}
+
+/// Fixed-width hex of the underlying object id: sorts in the same order as
+/// [`RepoId`] itself, which the variable-length base58 `id` does not.
+pub fn rid_hex(rid: RepoId) -> String {
+    (*rid).to_string()
 }
 
 #[cfg(test)]
@@ -117,12 +125,12 @@ impl Activity {
 }
 
 impl Document {
-    /// Construct a new [`RepoDocument`] for the given [`RepoId`], [`Doc`],
+    /// Construct a new [`Document`] for the given [`RepoId`], [`Doc`],
     /// [`Activity`], seeding count, and issue and patch counts.
     ///
     /// If the [`Doc::visibility`] is not public or the [`Doc::project`] fails
     /// to resolve, then `None` is returned.
-    pub(crate) fn new(
+    pub fn new(
         rid: RepoId,
         doc: &Doc,
         activity: Activity,
@@ -147,6 +155,7 @@ impl Document {
             v: crate::index::SCHEMA_VERSION,
             id: DocumentKey::new(rid),
             rid,
+            rid_hex: rid_hex(rid),
             name: project.name().to_string(),
             description: project.description().to_string(),
             default_branch: project.default_branch().clone(),

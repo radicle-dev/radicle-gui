@@ -64,6 +64,24 @@ pub struct Options {
     /// Search backend configuration. `None` disables search at runtime and
     /// falls back to the built-in storage walk.
     pub search: Option<SearchOptions>,
+    /// Data source for derived state (repos, cobs, nodes, policies).
+    pub source: Source,
+}
+
+/// The data source httpd reads derived state from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Source {
+    Sqlite,
+    Meilisearch,
+}
+
+impl Source {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sqlite => "sqlite",
+            Self::Meilisearch => "meilisearch",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -241,6 +259,7 @@ mod routes {
             listen: DualAddr::Tcp(SocketAddr::from(([0, 0, 0, 0], 8080))),
             cache: None,
             search: None,
+            source: crate::Source::Sqlite,
         };
         let profile = test::profile(tmp.path(), [0xff; 32]);
         let web_config = crate::api::WebConfig::from_profile(&profile);

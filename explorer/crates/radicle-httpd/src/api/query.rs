@@ -106,3 +106,40 @@ impl PatchStatus {
         }
     }
 }
+
+impl IssueStatus {
+    pub fn as_state_filter(&self) -> Option<&'static str> {
+        match self {
+            Self::All => None,
+            Self::Open => Some("open"),
+            Self::Closed => Some("closed"),
+        }
+    }
+}
+
+impl PatchStatus {
+    pub fn as_state_filter(&self) -> Option<&'static str> {
+        match self {
+            Self::All => None,
+            Self::Open => Some("open"),
+            Self::Draft => Some("draft"),
+            Self::Archived => Some("archived"),
+            Self::Merged => Some("merged"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_filters_map_to_state_strings() {
+        assert_eq!(IssueStatus::All.as_state_filter(), None);
+        assert_eq!(IssueStatus::Open.as_state_filter(), Some("open"));
+        assert_eq!(IssueStatus::Closed.as_state_filter(), Some("closed"));
+        assert_eq!(PatchStatus::All.as_state_filter(), None);
+        assert_eq!(PatchStatus::Draft.as_state_filter(), Some("draft"));
+        assert_eq!(PatchStatus::Merged.as_state_filter(), Some("merged"));
+    }
+}

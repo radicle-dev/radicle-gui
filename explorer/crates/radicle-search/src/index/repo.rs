@@ -1,5 +1,5 @@
 pub mod data;
-pub use data::{Activity, Document, DocumentKey, IssueCounts, PatchCounts};
+pub use data::{Activity, Document, DocumentKey, IssueCounts, PatchCounts, rid_hex};
 
 use meilisearch_sdk::settings::{PaginationSetting, Settings};
 
@@ -7,11 +7,13 @@ use meilisearch_sdk::settings::{PaginationSetting, Settings};
 pub const FIELD_HEAD_COMMITTER_TIME: &str = "headCommitterTime";
 /// Meilisearch field name for the count of nodes seeding this repo.
 pub const FIELD_SEEDING_COUNT: &str = "seedingCount";
+/// Meilisearch field name for the repo id in byte order (see [`rid_hex`]).
+pub const FIELD_RID_HEX: &str = "ridHex";
 
 pub const SORTABLE: &[&str] = &[
     FIELD_HEAD_COMMITTER_TIME,
     FIELD_SEEDING_COUNT,
-    Document::PRIMARY_KEY,
+    FIELD_RID_HEX,
 ];
 pub const SEARCHABLE: &[&str] = &["name", "description"];
 pub const FILTERABLE: &[&str] = &["delegates", "visibility", "rid"];

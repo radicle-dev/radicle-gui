@@ -1,15 +1,58 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{json, Value};
 
 use radicle::cob;
 use radicle::cob::{issue, patch};
 use radicle::identity;
-use radicle::node::AliasStore;
+use radicle::node::{AliasStore, NodeId};
 use radicle::storage::{git, refs, RemoteRepository};
 
 use super::thread;
 use super::{edit, reactions, Author};
+
+pub(crate) fn issue_participants(issue: &issue::Issue) -> Vec<NodeId> {
+    let mut nids = BTreeSet::new();
+    nids.insert(*issue.author().id().as_key());
+    nids.extend(issue.assignees().map(|did| *did.as_key()));
+    for (_, comment) in issue.comments() {
+        comment_participants(comment, &mut nids);
+    }
+    nids.into_iter().collect()
+}
+
+pub(crate) fn patch_participants(patch: &patch::Patch) -> Vec<NodeId> {
+    let mut nids = BTreeSet::new();
+    nids.insert(*patch.author().id().as_key());
+    nids.extend(patch.assignees().map(|did| *did.as_key()));
+    nids.extend(patch.merges().map(|(nid, _)| *nid));
+    for (_, revision) in patch.revisions() {
+        nids.insert(*revision.author().id().as_key());
+        nids.extend(revision.edits().map(|edit| edit.author));
+        nids.extend(
+            revision
+                .reactions()
+                .values()
+                .flat_map(|reactions| reactions.iter().map(|(nid, _)| *nid)),
+        );
+        for (_, comment) in revision.discussion().comments() {
+            comment_participants(comment, &mut nids);
+        }
+        for (_, review) in revision.reviews() {
+            nids.insert(*review.author().id().as_key());
+            for (_, comment) in review.comments() {
+                comment_participants(comment, &mut nids);
+            }
+        }
+    }
+    nids.into_iter().collect()
+}
+
+fn comment_participants<T>(comment: &cob::thread::Comment<T>, nids: &mut BTreeSet<NodeId>) {
+    nids.insert(*comment.author());
+    nids.extend(comment.edits().map(|edit| edit.author));
+    nids.extend(comment.reactions().into_values().flatten().copied());
+}
 
 pub(crate) struct Issue<'a>(&'a issue::Issue);
 

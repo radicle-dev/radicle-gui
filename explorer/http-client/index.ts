@@ -127,6 +127,7 @@ const infoSchema = z.object({
   node: nodeSchema,
   httpd: z.object({
     searchAvailable: z.boolean(),
+    source: z.enum(["sqlite", "meilisearch"]).optional(),
   }),
 });
 

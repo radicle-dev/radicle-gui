@@ -58,7 +58,7 @@ pub(crate) fn ensure_v(v: u32) -> Result<(), SearchError> {
 pub enum SortField {
     HeadCommitterTime,
     SeedingCount,
-    Id,
+    Rid,
 }
 
 impl SortField {
@@ -66,14 +66,14 @@ impl SortField {
         match self {
             Self::HeadCommitterTime => repo::FIELD_HEAD_COMMITTER_TIME,
             Self::SeedingCount => repo::FIELD_SEEDING_COUNT,
-            Self::Id => repo::Document::PRIMARY_KEY,
+            Self::Rid => repo::FIELD_RID_HEX,
         }
     }
 
     fn direction(self) -> &'static str {
         match self {
             Self::HeadCommitterTime | Self::SeedingCount => "desc",
-            Self::Id => "asc",
+            Self::Rid => "asc",
         }
     }
 }

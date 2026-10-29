@@ -427,7 +427,7 @@ async fn live_pagination_cap() {
         let client = client.clone();
         async move {
             client
-                .sorted_rids(SortField::Id, offset, limit)
+                .sorted_rids(SortField::Rid, offset, limit)
                 .await
                 .unwrap()
         }
@@ -439,6 +439,7 @@ async fn live_pagination_cap() {
     assert!(first_page.iter().all(|rid| !second_page.contains(rid)));
     let both_pages: Vec<RepoId> = first_page.into_iter().chain(second_page).collect();
     assert_eq!(by_id(0, 100).await, both_pages);
+    assert!(both_pages.windows(2).all(|pair| pair[0] < pair[1]));
 }
 
 #[tokio::test]

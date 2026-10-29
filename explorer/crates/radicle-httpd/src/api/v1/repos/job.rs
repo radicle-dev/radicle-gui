@@ -86,23 +86,33 @@ impl From<radicle_job::Status> for Status {
     }
 }
 
+fn shape_jobs(found: Vec<(JobId, radicle_job::Job)>, aliases: &impl AliasStore) -> Vec<Job> {
+    let mut jobs: Vec<Job> = found
+        .into_iter()
+        .map(|(id, job)| Job::new(id, &job, aliases))
+        .collect();
+    jobs.sort_by_key(|job| job.job_id);
+
+    jobs
+}
+
 pub trait FindJobs {
     fn find_by_commit(&self, oid: Oid) -> Result<Vec<(JobId, radicle_job::Job)>, ApiError>;
+
+    fn find_non_empty(&self, oid: Oid) -> Result<Vec<(JobId, radicle_job::Job)>, ApiError> {
+        Ok(self
+            .find_by_commit(oid)?
+            .into_iter()
+            .filter(|(_, job)| !job.runs().is_empty())
+            .collect())
+    }
 
     fn jobs_by_commit<A: AliasStore>(
         &self,
         commit: Oid,
         aliases: &A,
     ) -> Result<Vec<Job>, ApiError> {
-        let mut jobs: Vec<Job> = self
-            .find_by_commit(commit)?
-            .into_iter()
-            .filter(|(_, job)| !job.runs().is_empty())
-            .map(|(id, job)| Job::new(id, &job, aliases))
-            .collect();
-        jobs.sort_by_key(|job| job.job_id);
-
-        Ok(jobs)
+        Ok(shape_jobs(self.find_non_empty(commit)?, aliases))
     }
 }
 
@@ -128,11 +138,28 @@ pub async fn handler(
     Path((rid, sha)): Path<(String, Oid)>,
 ) -> impl IntoResponse {
     let rid = ctx.resolve_repo(&rid)?;
-    let jobs = crate::api::blocking(move || {
-        let aliases = ctx.profile.aliases();
-        JobsSource { ctx: &ctx, rid }.jobs_by_commit(sha, &aliases)
-    })
-    .await?;
+    let jobs = match ctx.source() {
+        crate::Source::Sqlite => {
+            crate::api::blocking(move || {
+                let aliases = ctx.profile.aliases();
+                JobsSource { ctx: &ctx, rid }.jobs_by_commit(sha, &aliases)
+            })
+            .await?
+        }
+        crate::Source::Meilisearch => {
+            let found = {
+                let ctx = ctx.clone();
+                crate::api::blocking(move || JobsSource { ctx: &ctx, rid }.find_non_empty(sha))
+                    .await?
+            };
+            let nids = crate::api::unique_nids(
+                found.iter().flat_map(|(_, job)| job.runs().keys().copied()),
+            );
+            let backend = ctx.search().ok_or(ApiError::SearchUnavailable)?;
+            let aliases = backend.get_aliases(&nids).await?;
+            shape_jobs(found, &aliases)
+        }
+    };
 
     Ok::<_, ApiError>(Json(jobs))
 }

@@ -39,6 +39,9 @@ Environment
                                      Unrecognised values fall back to "text".
     RADICLE_SEARCH_INDEX_PREFIX      Prefix prepended to every index name (e.g. "staging-").
                                      Defaults to "" (no prefix).
+    RADICLE_HTTPD_SOURCE             Data source for derived state: sqlite (default) or
+                                     meilisearch (requires RADICLE_SEARCH_URL; SQLite is
+                                     never opened)
 "#;
 
 #[tokio::main]
@@ -116,12 +119,30 @@ fn parse_options() -> anyhow::Result<httpd::Options> {
             _ => return Err(arg.unexpected().into()),
         }
     }
+    let source = parse_source(std::env::var("RADICLE_HTTPD_SOURCE").ok())?;
+    let search = search_options_from_env()?;
+    if source == httpd::Source::Meilisearch && search.is_none() {
+        bail!("RADICLE_HTTPD_SOURCE=meilisearch requires RADICLE_SEARCH_URL to be set");
+    }
     Ok(httpd::Options {
         aliases,
         listen: listen.unwrap_or_else(|| DualAddr::Tcp(([0, 0, 0, 0], 8080).into())),
         cache,
-        search: search_options_from_env()?,
+        search,
+        source,
     })
+}
+
+/// Parse the `RADICLE_HTTPD_SOURCE` environment variable into a [`httpd::Source`].
+/// Unset or empty defaults to sqlite; unrecognized values are a fatal error.
+fn parse_source(raw: Option<String>) -> anyhow::Result<httpd::Source> {
+    match raw.as_deref() {
+        None | Some("") | Some("sqlite") => Ok(httpd::Source::Sqlite),
+        Some("meilisearch") => Ok(httpd::Source::Meilisearch),
+        Some(other) => anyhow::bail!(
+            "RADICLE_HTTPD_SOURCE={other:?} is not recognized (expected sqlite or meilisearch)"
+        ),
+    }
 }
 
 /// Read the search backend configuration from the environment. Search is
@@ -129,7 +150,9 @@ fn parse_options() -> anyhow::Result<httpd::Options> {
 /// is unset (or empty) this returns `None` and httpd serves repo listings and
 /// search from its built-in storage walk. When set, httpd routes activity/
 /// seeding sorts and `/repos/search` through the index, transparently falling
-/// back to the storage walk if the backend is unreachable.
+/// back to the storage walk if the backend is unreachable. In meilisearch
+/// source mode there is no fallback; index-backed endpoints return 503 while
+/// the backend is unreachable.
 fn search_options_from_env() -> anyhow::Result<Option<httpd::SearchOptions>> {
     let url = match std::env::var("RADICLE_SEARCH_URL") {
         Ok(url) if !url.is_empty() => url,
@@ -226,5 +249,27 @@ mod tests {
         let result = parse_timeout_ms_from_env(var, 500);
         unsafe { std::env::remove_var(var) };
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn source_unset_defaults_to_sqlite() {
+        assert_eq!(parse_source(None).unwrap(), httpd::Source::Sqlite);
+    }
+
+    #[test]
+    fn source_parses_both_values() {
+        assert_eq!(
+            parse_source(Some("sqlite".into())).unwrap(),
+            httpd::Source::Sqlite
+        );
+        assert_eq!(
+            parse_source(Some("meilisearch".into())).unwrap(),
+            httpd::Source::Meilisearch
+        );
+    }
+
+    #[test]
+    fn source_rejects_unknown_values() {
+        assert!(parse_source(Some("mysql".into())).is_err());
     }
 }

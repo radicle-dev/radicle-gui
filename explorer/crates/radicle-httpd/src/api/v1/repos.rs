@@ -17,8 +17,9 @@ use serde_json::json;
 
 use radicle::cob::{issue::cache::Issues as _, patch::cache::Patches as _};
 use radicle::git::fmt::{Qualified, RefString};
-use radicle::node::{Alias, AliasStore, NodeId};
+use radicle::node::{Alias, NodeId};
 use radicle::storage::{ReadRepository, RemoteRepository};
+use radicle_search::query::CobKind;
 
 use crate::api;
 use crate::api::error::Error;
@@ -29,6 +30,7 @@ use crate::api::PeelToCommit;
 use crate::axum_extra::{cached_response, immutable_response, Path, Query};
 
 const MAX_BODY_LIMIT: usize = 4_194_304;
+pub(crate) const DELEGATE_REPOS_MAX: usize = 1000;
 
 pub fn router(ctx: Context) -> Router {
     let router = Router::new()
@@ -142,9 +144,10 @@ mod storage {
                             return None;
                         }
                         let (repo, doc) = ctx.repo(info.rid).ok()?;
-                        ctx.repo_info(&repo, doc).ok()
+                        let meta = ctx.repo_meta_sqlite(&repo, &doc.doc).ok()?;
+                        ctx.repo_info(&repo, doc, meta).ok()
                     })
-                    .skip(page * per_page)
+                    .skip(page.saturating_mul(per_page))
                     .take(per_page)
                     .collect::<Vec<_>>()
             }
@@ -165,11 +168,12 @@ mod storage {
                 with_time.sort_by_key(|x| std::cmp::Reverse(x.1));
                 with_time
                     .into_iter()
-                    .skip(page * per_page)
+                    .skip(page.saturating_mul(per_page))
                     .take(per_page)
                     .filter_map(|(rid, _)| {
                         let (repo, doc) = ctx.repo(rid).ok()?;
-                        ctx.repo_info(&repo, doc).ok()
+                        let meta = ctx.repo_meta_sqlite(&repo, &doc.doc).ok()?;
+                        ctx.repo_info(&repo, doc, meta).ok()
                     })
                     .collect::<Vec<_>>()
             }
@@ -188,11 +192,12 @@ mod storage {
                 with_count.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
                 with_count
                     .into_iter()
-                    .skip(page * per_page)
+                    .skip(page.saturating_mul(per_page))
                     .take(per_page)
                     .filter_map(|(rid, _)| {
                         let (repo, doc) = ctx.repo(rid).ok()?;
-                        ctx.repo_info(&repo, doc).ok()
+                        let meta = ctx.repo_meta_sqlite(&repo, &doc.doc).ok()?;
+                        ctx.repo_info(&repo, doc, meta).ok()
                     })
                     .collect::<Vec<_>>()
             }
@@ -228,7 +233,7 @@ mod storage {
             Ok::<_, Error>(
                 found_repos
                     .into_iter()
-                    .skip(page * per_page)
+                    .skip(page.saturating_mul(per_page))
                     .take(per_page)
                     .collect::<Vec<_>>(),
             )
@@ -244,19 +249,19 @@ mod storage {
 /// served from the Meilisearch index, transparently falling back to the
 /// storage walk on any backend failure. Without a backend, or for sort modes
 /// the index doesn't serve (pinned, rid), everything uses the storage walk.
-mod listing {
+pub(crate) mod listing {
     use axum::response::IntoResponse;
     use axum::Json;
     use radicle::node::routing::Store as _;
     use radicle::node::AliasStore;
-    use radicle_search::query::{SearchClient, SortField};
+    use radicle_search::query::SortField;
     use serde_json::json;
 
     use crate::api;
     use crate::api::error::Error;
     use crate::api::query::{RepoQuery, RepoSort};
     use crate::api::search::SearchResult;
-    use crate::api::Context;
+    use crate::api::{Backend, Context};
 
     #[allow(clippy::result_large_err)]
     pub async fn list_repos(
@@ -267,23 +272,144 @@ mod listing {
         per_page: usize,
         web_config: &radicle::web::Config,
     ) -> Result<Vec<api::repo::Info>, Error> {
-        let search_sort = match (&show, sort) {
-            (RepoQuery::All, RepoSort::Activity) => Some(SortField::HeadCommitterTime),
-            (RepoQuery::All, RepoSort::Seeding) => Some(SortField::SeedingCount),
-            _ => None,
-        };
-        if let (Some(field), Some(client)) = (search_sort, ctx.search()) {
-            match sorted_repos(ctx, client, field, page, per_page).await {
-                Ok(infos) => return Ok(infos),
-                Err(e) => {
-                    tracing::warn!("search backend failed, falling back to storage walk ({e:#})")
+        match ctx.source() {
+            crate::Source::Meilisearch => {
+                meili_repos(ctx, show, sort, page, per_page, web_config).await
+            }
+            crate::Source::Sqlite => {
+                let search_sort = match (&show, sort) {
+                    (RepoQuery::All, RepoSort::Activity) => Some(SortField::HeadCommitterTime),
+                    (RepoQuery::All, RepoSort::Seeding) => Some(SortField::SeedingCount),
+                    _ => None,
+                };
+                if let (Some(field), Some(client)) = (search_sort, ctx.search()) {
+                    match sorted_repos(ctx, client, field, page, per_page).await {
+                        Ok(infos) => return Ok(infos),
+                        Err(e) => tracing::warn!(
+                            "search backend failed, falling back to storage walk ({e:#})"
+                        ),
+                    }
                 }
+                let ctx = ctx.clone();
+                let web_config = web_config.clone();
+                crate::api::blocking(move || {
+                    super::storage::list_repos(&ctx, show, sort, page, per_page, &web_config)
+                })
+                .await
             }
         }
+    }
+
+    async fn meili_repos(
+        ctx: &Context,
+        show: RepoQuery,
+        sort: RepoSort,
+        page: usize,
+        per_page: usize,
+        web_config: &radicle::web::Config,
+    ) -> Result<Vec<api::repo::Info>, Error> {
+        let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
+        let offset = page.saturating_mul(per_page);
+
+        let mut docs: Vec<radicle_search::index::repo::Document> = match (&show, sort) {
+            (RepoQuery::All, RepoSort::Activity) => {
+                let rids = backend
+                    .sorted_rids(SortField::HeadCommitterTime, offset, per_page)
+                    .await?;
+                backend.get_repo_docs(&rids).await?
+            }
+            (RepoQuery::All, RepoSort::Seeding) => {
+                let rids = backend
+                    .sorted_rids(SortField::SeedingCount, offset, per_page)
+                    .await?;
+                backend.get_repo_docs(&rids).await?
+            }
+            (RepoQuery::All, RepoSort::Rid) => {
+                let rids = backend
+                    .sorted_rids(SortField::Rid, offset, per_page)
+                    .await?;
+                let docs = backend.get_repo_docs(&rids).await?;
+                in_rid_order(docs, &rids)
+            }
+            (RepoQuery::Pinned, sort) => {
+                let pinned: Vec<radicle::identity::RepoId> =
+                    web_config.pinned.repositories.iter().copied().collect();
+                let mut docs = backend.get_repo_docs(&pinned).await?;
+                sort_docs(&mut docs, sort);
+                docs.into_iter().skip(offset).take(per_page).collect()
+            }
+        };
+        if matches!(
+            (&show, sort),
+            (RepoQuery::All, RepoSort::Activity | RepoSort::Seeding)
+        ) {
+            sort_docs(&mut docs, sort);
+        }
+
+        hydrate_docs(ctx, docs).await
+    }
+
+    fn sort_docs(docs: &mut [radicle_search::index::repo::Document], sort: RepoSort) {
+        match sort {
+            RepoSort::Rid => docs.sort_by_key(|d| d.rid),
+            RepoSort::Activity => docs.sort_by(|a, b| {
+                b.activity
+                    .head_committer_time
+                    .cmp(&a.activity.head_committer_time)
+                    .then_with(|| a.rid.cmp(&b.rid))
+            }),
+            RepoSort::Seeding => docs.sort_by(|a, b| {
+                b.seeding_count
+                    .cmp(&a.seeding_count)
+                    .then_with(|| a.rid.cmp(&b.rid))
+            }),
+        }
+    }
+
+    fn in_rid_order(
+        mut docs: Vec<radicle_search::index::repo::Document>,
+        rids: &[radicle::identity::RepoId],
+    ) -> Vec<radicle_search::index::repo::Document> {
+        let position: std::collections::HashMap<radicle::identity::RepoId, usize> = rids
+            .iter()
+            .enumerate()
+            .map(|(index, rid)| (*rid, index))
+            .collect();
+        docs.sort_by_key(|doc| position.get(&doc.rid).copied().unwrap_or(usize::MAX));
+        docs
+    }
+
+    pub(crate) async fn hydrate_docs(
+        ctx: &Context,
+        docs: Vec<radicle_search::index::repo::Document>,
+    ) -> Result<Vec<api::repo::Info>, Error> {
+        let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
+        let all_nids = crate::api::unique_nids(
+            docs.iter()
+                .flat_map(|doc| doc.delegates.iter().map(|did| *did.as_key())),
+        );
+        let aliases = backend.get_aliases(&all_nids).await?;
+
         let ctx = ctx.clone();
-        let web_config = web_config.clone();
         crate::api::blocking(move || {
-            super::storage::list_repos(&ctx, show, sort, page, per_page, &web_config)
+            let infos: Vec<api::repo::Info> = docs
+                .into_iter()
+                .filter_map(|doc| {
+                    let meta = crate::api::meta_from_doc(&doc, aliases.clone());
+                    let info = ctx
+                        .repo(doc.rid)
+                        .and_then(|(repo, doc_at)| ctx.repo_info(&repo, doc_at, meta));
+                    match info {
+                        Ok(info) => Some(info),
+                        Err(e) if e.is_not_found() => None,
+                        Err(e) => {
+                            tracing::warn!("skipping {} in the listing: {e:#}", doc.rid);
+                            None
+                        }
+                    }
+                })
+                .collect();
+            Ok(infos)
         })
         .await
     }
@@ -295,41 +421,78 @@ mod listing {
         page: usize,
         per_page: usize,
     ) -> Result<axum::response::Response, Error> {
-        if let Some(client) = ctx.search() {
-            match search_by_query(ctx, client, q, page, per_page).await {
-                Ok(response) => return Ok(response),
-                Err(e) => {
-                    tracing::warn!("search backend failed, falling back to storage walk ({e:#})")
+        match ctx.source() {
+            crate::Source::Meilisearch => {
+                let client = ctx.search().ok_or(Error::SearchUnavailable)?;
+                search_by_query(ctx, client, q, page, per_page)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("search backend failed: {e:#}");
+                        Error::SearchUnavailable
+                    })
+            }
+            crate::Source::Sqlite => {
+                if let Some(client) = ctx.search() {
+                    match search_by_query(ctx, client, q, page, per_page).await {
+                        Ok(response) => return Ok(response),
+                        Err(e) => tracing::warn!(
+                            "search backend failed, falling back to storage walk ({e:#})"
+                        ),
+                    }
                 }
+                super::storage::search_repos(ctx, q, page, per_page).await
             }
         }
-        super::storage::search_repos(ctx, q, page, per_page).await
     }
 
     /// Full-text search via Meilisearch. Typo-tolerant prefix matching with
-    /// seedingCount tie-breaking. Returns `Err` on any backend failure so the
-    /// caller falls back to the storage walk.
+    /// seedingCount tie-breaking. In [`crate::Source::Sqlite`] mode, returns
+    /// `Err` on any backend failure so the caller falls back to the storage
+    /// walk; in [`crate::Source::Meilisearch`] mode, the caller propagates
+    /// the error instead.
     async fn search_by_query(
         ctx: &Context,
-        client: &SearchClient,
+        client: &Backend,
         q: &str,
         page: usize,
         per_page: usize,
     ) -> anyhow::Result<axum::response::Response> {
-        let rids = client.search_by_query(q, page * per_page, per_page).await?;
-        let aliases = ctx.profile.aliases();
-        let db = ctx.profile.database()?;
+        let rids = client
+            .search_by_query(q, page.saturating_mul(per_page), per_page)
+            .await?;
+
+        let details = match ctx.source() {
+            crate::Source::Meilisearch => {
+                let docs = client.get_repo_docs(&rids).await?;
+                let all_nids = crate::api::unique_nids(
+                    docs.iter()
+                        .flat_map(|doc| doc.delegates.iter().map(|did| *did.as_key())),
+                );
+                ResultDetails::Index {
+                    seeds: docs
+                        .iter()
+                        .map(|d| (d.rid, d.seeding_count as usize))
+                        .collect(),
+                    aliases: client.get_aliases(&all_nids).await?,
+                }
+            }
+            crate::Source::Sqlite => ResultDetails::Storage {
+                aliases: ctx.profile.aliases(),
+                db: ctx.profile.database()?,
+            },
+        };
+
         let found_repos: Vec<SearchResult> = rids
             .into_iter()
             .enumerate()
             .filter_map(|(i, rid)| {
+                let seeds = details.seeds(&rid)?;
                 let (_repo, doc_at) = ctx.repo(rid).ok()?;
-                let seeds = db.count(&rid).unwrap_or_default();
                 let delegates = doc_at
                     .doc
                     .delegates()
                     .iter()
-                    .map(|did| match aliases.alias(did) {
+                    .map(|did| match details.alias(did) {
                         Some(alias) => json!({ "id": did, "alias": alias }),
                         None => json!({ "id": did }),
                     })
@@ -346,11 +509,38 @@ mod listing {
         Ok(Json(found_repos).into_response())
     }
 
+    enum ResultDetails {
+        Index {
+            seeds: std::collections::HashMap<radicle::identity::RepoId, usize>,
+            aliases: std::collections::HashMap<radicle::node::NodeId, radicle::node::Alias>,
+        },
+        Storage {
+            aliases: radicle::profile::Aliases,
+            db: radicle::node::Database,
+        },
+    }
+
+    impl ResultDetails {
+        fn seeds(&self, rid: &radicle::identity::RepoId) -> Option<usize> {
+            match self {
+                Self::Index { seeds, .. } => seeds.get(rid).copied(),
+                Self::Storage { db, .. } => Some(db.count(rid).unwrap_or_default()),
+            }
+        }
+
+        fn alias(&self, did: &radicle::identity::Did) -> Option<radicle::node::Alias> {
+            match self {
+                Self::Index { aliases, .. } => aliases.get(did.as_key()).cloned(),
+                Self::Storage { aliases, .. } => aliases.alias(did.as_key()),
+            }
+        }
+    }
+
     /// Sorted repo listing (activity/seeding) via the index. Returns `Err` on
     /// backend failure so the caller falls back to the storage walk.
     async fn sorted_repos(
         ctx: &Context,
-        client: &SearchClient,
+        client: &Backend,
         field: SortField,
         page: usize,
         per_page: usize,
@@ -365,9 +555,65 @@ mod listing {
                     return None;
                 }
                 let (repo, doc) = ctx.repo(rid).ok()?;
-                ctx.repo_info(&repo, doc).ok()
+                let meta = ctx.repo_meta_sqlite(&repo, &doc.doc).ok()?;
+                ctx.repo_info(&repo, doc, meta).ok()
             })
             .collect())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::api::backend::fake::Fake;
+        use radicle::identity::doc::Delegates;
+        use radicle::identity::{Did, RepoId};
+        use std::str::FromStr;
+
+        fn doc(rid: RepoId) -> radicle_search::index::repo::Document {
+            radicle_search::index::repo::Document {
+                v: radicle_search::index::SCHEMA_VERSION,
+                id: radicle_search::index::repo::DocumentKey::new(rid),
+                rid,
+                rid_hex: radicle_search::index::repo::rid_hex(rid),
+                name: "x".to_string(),
+                description: String::new(),
+                default_branch: radicle::git::fmt::RefString::try_from("master").unwrap(),
+                delegates: Delegates::from(Did::from_str(crate::test::DID).unwrap()),
+                seeding_count: 0,
+                issue_counts: Default::default(),
+                patch_counts: Default::default(),
+                release_count: 0,
+                activity: radicle_search::index::repo::Activity {
+                    head: None,
+                    head_committer_time: None,
+                    activity_timestamps: vec![],
+                },
+            }
+        }
+
+        #[test]
+        fn rid_sort_matches_the_index_order() {
+            let high = RepoId::from(radicle::git::Oid::from_sha1([0xff; 20]));
+            let low = RepoId::from(radicle::git::Oid::from_sha1([60; 20]));
+            assert!(low < high);
+            assert!(
+                high.canonical() < low.canonical(),
+                "the pair must order differently as bytes and as strings"
+            );
+
+            let fake = Fake {
+                repos: vec![doc(low), doc(high)],
+                ..Default::default()
+            };
+            let index_order = fake.sorted_rids(SortField::Rid, 0, 2);
+
+            let mut docs = vec![doc(low), doc(high)];
+            sort_docs(&mut docs, RepoSort::Rid);
+            let local_order: Vec<RepoId> = docs.iter().map(|d| d.rid).collect();
+
+            assert_eq!(local_order, index_order);
+            assert_eq!(local_order, vec![low, high]);
+        }
     }
 }
 
@@ -415,11 +661,28 @@ async fn repo_search_handler(
 /// `GET /repos/:rid`
 async fn repo_handler(State(ctx): State<Context>, Path(rid): Path<String>) -> impl IntoResponse {
     let rid = ctx.resolve_repo(&rid)?;
-    let info = api::blocking(move || {
-        let (repo, doc) = ctx.repo(rid)?;
-        ctx.repo_info(&repo, doc)
-    })
-    .await?;
+    let info = match ctx.source() {
+        crate::Source::Sqlite => {
+            let ctx = ctx.clone();
+            api::blocking(move || {
+                let (repo, doc) = ctx.repo(rid)?;
+                let meta = ctx.repo_meta_sqlite(&repo, &doc.doc)?;
+                ctx.repo_info(&repo, doc, meta)
+            })
+            .await?
+        }
+        crate::Source::Meilisearch => {
+            let (repo, doc) = {
+                let ctx = ctx.clone();
+                api::blocking(move || ctx.repo(rid)).await?
+            };
+            let meta = ctx
+                .repo_meta_meili(rid)
+                .await?
+                .ok_or(Error::SearchUnavailable)?;
+            api::blocking(move || ctx.repo_info(&repo, doc, meta)).await?
+        }
+    };
 
     Ok::<_, Error>(Json(info))
 }
@@ -486,7 +749,7 @@ async fn history_handler(
                     _ => None,
                 }
             })
-            .skip(page * per_page)
+            .skip(page.saturating_mul(per_page))
             .take(per_page)
             .collect::<Vec<_>>();
         Ok::<_, Error>(commits)
@@ -745,20 +1008,32 @@ async fn activity_handler(
     Path(rid): Path<String>,
 ) -> impl IntoResponse {
     let rid = ctx.resolve_repo(&rid)?;
+    let current_date = chrono::Utc::now().timestamp();
+    // SAFETY: The number of weeks is static and not out of bounds.
+    #[allow(clippy::unwrap_used)]
+    let cutoff = current_date - chrono::Duration::try_weeks(52).unwrap().num_seconds();
+    let head = {
+        let ctx = ctx.clone();
+        api::blocking(move || {
+            let (repo, _) = ctx.repo(rid)?;
+            Ok::<_, Error>(Repository::open(repo.path())?.head()?)
+        })
+        .await?
+    };
+
+    if let Some(timestamps) = indexed_activity(&ctx, rid, head, cutoff).await {
+        return Ok::<_, Error>(cached_response(json!({ "activity": timestamps }), 3600));
+    }
+
     let timestamps = api::blocking(move || {
         let (repo, _) = ctx.repo(rid)?;
-        let current_date = chrono::Utc::now().timestamp();
-        // SAFETY: The number of weeks is static and not out of bounds.
-        #[allow(clippy::unwrap_used)]
-        let one_year_ago = chrono::Duration::try_weeks(52).unwrap();
         let repo = Repository::open(repo.path())?;
-        let head = repo.head()?;
         let timestamps = repo
             .history(head)?
             .filter_map(|a| {
                 if let Ok(a) = a {
                     let seconds = a.committer.time.seconds();
-                    if seconds > current_date - one_year_ago.num_seconds() {
+                    if seconds > cutoff {
                         return Some(seconds);
                     }
                 }
@@ -770,6 +1045,31 @@ async fn activity_handler(
     .await?;
 
     Ok::<_, Error>(cached_response(json!({ "activity": timestamps }), 3600))
+}
+
+async fn indexed_activity(
+    ctx: &Context,
+    rid: radicle::identity::RepoId,
+    head: Oid,
+    cutoff: i64,
+) -> Option<Vec<i64>> {
+    if ctx.source() != crate::Source::Meilisearch {
+        return None;
+    }
+    let doc = match ctx.search()?.get_repo_doc(rid).await {
+        Ok(doc) => doc?,
+        Err(e) => {
+            tracing::warn!("reading activity for {rid} from the search index: {e:#}");
+            return None;
+        }
+    };
+    (doc.activity.head == Some(head)).then(|| {
+        doc.activity
+            .activity_timestamps
+            .into_iter()
+            .filter(|&seconds| seconds > cutoff)
+            .collect()
+    })
 }
 
 /// Get repo source tree for '/' path.
@@ -891,19 +1191,28 @@ fn commit_count(repo: &radicle::storage::git::Repository, head: Oid) -> Result<u
 /// `GET /repos/:rid/remotes`
 async fn remotes_handler(State(ctx): State<Context>, Path(rid): Path<String>) -> impl IntoResponse {
     let rid = ctx.resolve_repo(&rid)?;
-    let remotes = api::blocking(move || {
-        let (repo, doc) = ctx.repo(rid)?;
-        let delegates = doc.delegates();
-        let aliases = &ctx.profile.aliases();
-
-        let remotes = repo
-            .remotes()?
-            .filter_map(|r| r.map(|r| r.1).ok())
-            .map(|remote| remote_info(&repo, &remote, delegates, aliases))
-            .collect::<Vec<_>>();
-        Ok::<_, Error>(remotes)
-    })
-    .await?;
+    let raw = {
+        let ctx = ctx.clone();
+        api::blocking(move || {
+            let (repo, doc) = ctx.repo(rid)?;
+            let delegates = doc.delegates();
+            let remotes = repo
+                .remotes()?
+                .filter_map(|r| r.map(|r| r.1).ok())
+                .map(|remote| remote_info_with_alias(&repo, &remote, delegates, None))
+                .collect::<Vec<_>>();
+            Ok::<_, Error>(remotes)
+        })
+        .await?
+    };
+    let aliases = ctx.aliases_for(raw.iter().map(|r| r.id).collect()).await?;
+    let remotes = raw
+        .into_iter()
+        .map(|info| {
+            let alias = aliases.get(&info.id).cloned();
+            info.with_alias(alias)
+        })
+        .collect::<Vec<_>>();
 
     Ok::<_, Error>(Json(remotes))
 }
@@ -915,15 +1224,22 @@ async fn remote_handler(
     Path((rid, node_id)): Path<(String, NodeId)>,
 ) -> impl IntoResponse {
     let rid = ctx.resolve_repo(&rid)?;
-    let info = api::blocking(move || {
-        let (repo, doc) = ctx.repo(rid)?;
-        let delegates = doc.delegates();
-        let aliases = &ctx.profile.aliases();
-        let remote = repo.remote(&node_id)?;
-
-        Ok::<_, Error>(remote_info(&repo, &remote, delegates, aliases))
-    })
-    .await?;
+    let raw = {
+        let ctx = ctx.clone();
+        api::blocking(move || {
+            let (repo, doc) = ctx.repo(rid)?;
+            let remote = repo.remote(&node_id)?;
+            Ok::<_, Error>(remote_info_with_alias(
+                &repo,
+                &remote,
+                doc.delegates(),
+                None,
+            ))
+        })
+        .await?
+    };
+    let aliases = ctx.aliases_for(vec![node_id]).await?;
+    let info = raw.with_alias(aliases.get(&node_id).cloned());
 
     Ok::<_, Error>(Json(info))
 }
@@ -1034,18 +1350,18 @@ where
 }
 
 #[tracing::instrument(skip_all, fields(remote.id = %remote.id()))]
-fn remote_info(
+fn remote_info_with_alias(
     repo: &radicle::storage::git::Repository,
     remote: &radicle::storage::Remote,
     delegates: &radicle::identity::doc::Delegates,
-    aliases: &radicle::profile::Aliases,
+    alias: Option<Alias>,
 ) -> RemoteInfo {
     let (heads, refs) = partition_refs(&remote.refs, repo);
     let id = remote.id();
     RemoteInfo::new(id)
         .with_heads(heads)
         .with_refs(refs)
-        .with_alias(aliases.alias(&id))
+        .with_alias(alias)
         .set_delegate(delegates.contains(&id.into()))
 }
 
@@ -1228,6 +1544,25 @@ async fn readme_handler(
     }
 }
 
+fn cob_from_doc<T: serde::de::DeserializeOwned>(
+    kind: &str,
+    doc: &radicle_search::index::cob::Document,
+) -> Result<(Oid, T), Error> {
+    let oid: Oid = doc.cob_id.parse().map_err(|e| {
+        tracing::error!(
+            "{kind} {} has unparsable cob id {}: {e}",
+            doc.id,
+            doc.cob_id
+        );
+        Error::SearchUnavailable
+    })?;
+    let cob = serde_json::from_str(&doc.cob).map_err(|e| {
+        tracing::error!("{kind} {} failed to deserialize: {e}", doc.id);
+        Error::SearchUnavailable
+    })?;
+    Ok((oid, cob))
+}
+
 /// Get repo issues list.
 /// `GET /repos/:rid/issues`
 async fn issues_handler(
@@ -1236,37 +1571,72 @@ async fn issues_handler(
     Query(qs): Query<CobsQuery<api::query::IssueStatus>>,
 ) -> impl IntoResponse {
     let rid = ctx.resolve_repo(&rid)?;
-    let issues = api::blocking(move || {
-        let (repo, _) = ctx.repo(rid)?;
-        let CobsQuery {
-            page,
-            per_page,
-            status,
-        } = qs;
-        let page = page.unwrap_or(0);
-        let per_page = per_page.unwrap_or(10);
-        let status = status.unwrap_or_default();
-        let issues = ctx.profile.issues(&repo)?;
-        let mut issues: Vec<_> = issues
-            .list()?
-            .filter_map(|r| {
-                let (id, issue) = r.ok()?;
-                (status.matches(issue.state())).then_some((id, issue))
-            })
-            .collect::<Vec<_>>();
+    let CobsQuery {
+        page,
+        per_page,
+        status,
+    } = qs;
+    let page = page.unwrap_or(0);
+    let per_page = per_page.unwrap_or(10).min(MAX_PER_PAGE);
+    let status = status.unwrap_or_default();
 
-        issues.sort_by_key(|(_, b)| std::cmp::Reverse(b.timestamp()));
-        let aliases = &ctx.profile.aliases();
-        Ok::<_, Error>(
+    let issues = match ctx.source() {
+        crate::Source::Meilisearch => {
+            let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
+            let repo_ctx = ctx.clone();
+            api::blocking(move || repo_ctx.repo(rid).map(|_| ())).await?;
+            let docs = backend
+                .list_cobs(
+                    CobKind::Issues,
+                    rid,
+                    status.as_state_filter(),
+                    page.saturating_mul(per_page),
+                    per_page,
+                )
+                .await?;
+            let issues: Vec<(Oid, radicle::issue::Issue)> = docs
+                .iter()
+                .filter_map(|d| cob_from_doc("issue", d).ok())
+                .collect();
+            let nids = api::unique_nids(
+                issues
+                    .iter()
+                    .flat_map(|(_, issue)| api::json::cobs::issue_participants(issue)),
+            );
+            let aliases = backend.get_aliases(&nids).await?;
             issues
-                .into_iter()
-                .map(|(id, issue)| api::json::cobs::Issue::new(&issue).as_json(id, aliases))
-                .skip(page * per_page)
-                .take(per_page)
-                .collect::<Vec<_>>(),
-        )
-    })
-    .await?;
+                .iter()
+                .map(|(oid, issue)| {
+                    api::json::cobs::Issue::new(issue).as_json((*oid).into(), &aliases)
+                })
+                .collect::<Vec<_>>()
+        }
+        crate::Source::Sqlite => {
+            api::blocking(move || {
+                let (repo, _) = ctx.repo(rid)?;
+                let issues = ctx.profile.issues(&repo)?;
+                let mut issues: Vec<_> = issues
+                    .list()?
+                    .filter_map(|r| {
+                        let (id, issue) = r.ok()?;
+                        (status.matches(issue.state())).then_some((id, issue))
+                    })
+                    .collect::<Vec<_>>();
+
+                issues.sort_by_key(|(_, b)| std::cmp::Reverse(b.timestamp()));
+                let aliases = &ctx.profile.aliases();
+                Ok::<_, Error>(
+                    issues
+                        .into_iter()
+                        .map(|(id, issue)| api::json::cobs::Issue::new(&issue).as_json(id, aliases))
+                        .skip(page.saturating_mul(per_page))
+                        .take(per_page)
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .await?
+        }
+    };
 
     Ok::<_, Error>(Json(issues))
 }
@@ -1278,18 +1648,39 @@ async fn issue_handler(
     Path((rid, issue_id)): Path<(String, Oid)>,
 ) -> impl IntoResponse {
     let rid = ctx.resolve_repo(&rid)?;
-    let value = api::blocking(move || {
-        let (repo, _) = ctx.repo(rid)?;
-        let issue = ctx
-            .profile
-            .issues(&repo)?
-            .get(&issue_id.into())?
-            .ok_or(Error::NotFound)?;
-        let aliases = ctx.profile.aliases();
 
-        Ok::<_, Error>(api::json::cobs::Issue::new(&issue).as_json(issue_id.into(), &aliases))
-    })
-    .await?;
+    let value = match ctx.source() {
+        crate::Source::Meilisearch => {
+            let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
+            let repo_ctx = ctx.clone();
+            api::blocking(move || repo_ctx.repo(rid).map(|_| ())).await?;
+            let d = backend
+                .get_cob(CobKind::Issues, rid, &issue_id.to_string())
+                .await?
+                .ok_or(Error::NotFound)?;
+            let (oid, issue) = cob_from_doc::<radicle::issue::Issue>("issue", &d)?;
+            let aliases = backend
+                .get_aliases(&api::json::cobs::issue_participants(&issue))
+                .await?;
+            api::json::cobs::Issue::new(&issue).as_json(oid.into(), &aliases)
+        }
+        crate::Source::Sqlite => {
+            api::blocking(move || {
+                let (repo, _) = ctx.repo(rid)?;
+                let issue = ctx
+                    .profile
+                    .issues(&repo)?
+                    .get(&issue_id.into())?
+                    .ok_or(Error::NotFound)?;
+                let aliases = ctx.profile.aliases();
+
+                Ok::<_, Error>(
+                    api::json::cobs::Issue::new(&issue).as_json(issue_id.into(), &aliases),
+                )
+            })
+            .await?
+        }
+    };
 
     Ok::<_, Error>(Json(value))
 }
@@ -1302,36 +1693,81 @@ async fn patches_handler(
     Query(qs): Query<CobsQuery<api::query::PatchStatus>>,
 ) -> impl IntoResponse {
     let rid = ctx.resolve_repo(&rid)?;
-    let patches = api::blocking(move || {
-        let (repo, _) = ctx.repo(rid)?;
-        let CobsQuery {
-            page,
-            per_page,
-            status,
-        } = qs;
-        let page = page.unwrap_or(0);
-        let per_page = per_page.unwrap_or(10);
-        let status = status.unwrap_or_default();
-        let patches = ctx.profile.patches(&repo)?;
-        let mut patches = patches
-            .list()?
-            .filter_map(|r| {
-                let (id, patch) = r.ok()?;
-                (status.matches(patch.state())).then_some((id, patch))
+    let CobsQuery {
+        page,
+        per_page,
+        status,
+    } = qs;
+    let page = page.unwrap_or(0);
+    let per_page = per_page.unwrap_or(10).min(MAX_PER_PAGE);
+    let status = status.unwrap_or_default();
+
+    let patches = match ctx.source() {
+        crate::Source::Meilisearch => {
+            let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
+            let docs = backend
+                .list_cobs(
+                    CobKind::Patches,
+                    rid,
+                    status.as_state_filter(),
+                    page.saturating_mul(per_page),
+                    per_page,
+                )
+                .await?;
+            let patches: Vec<(Oid, radicle::patch::Patch)> = docs
+                .iter()
+                .filter_map(|d| cob_from_doc("patch", d).ok())
+                .collect();
+            let nids = api::unique_nids(
+                patches
+                    .iter()
+                    .flat_map(|(_, patch)| api::json::cobs::patch_participants(patch)),
+            );
+            let aliases = backend.get_aliases(&nids).await?;
+            api::blocking(move || {
+                let (repo, _) = ctx.repo(rid)?;
+                Ok::<_, Error>(
+                    patches
+                        .iter()
+                        .map(|(oid, patch)| {
+                            api::json::cobs::Patch::new(patch).as_json(
+                                (*oid).into(),
+                                &repo,
+                                &aliases,
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                )
             })
-            .collect::<Vec<_>>();
-        patches.sort_by_key(|(_, b)| std::cmp::Reverse(b.timestamp()));
-        let aliases = ctx.profile.aliases();
-        Ok::<_, Error>(
-            patches
-                .into_iter()
-                .map(|(id, patch)| api::json::cobs::Patch::new(&patch).as_json(id, &repo, &aliases))
-                .skip(page * per_page)
-                .take(per_page)
-                .collect::<Vec<_>>(),
-        )
-    })
-    .await?;
+            .await?
+        }
+        crate::Source::Sqlite => {
+            api::blocking(move || {
+                let (repo, _) = ctx.repo(rid)?;
+                let patches = ctx.profile.patches(&repo)?;
+                let mut patches = patches
+                    .list()?
+                    .filter_map(|r| {
+                        let (id, patch) = r.ok()?;
+                        (status.matches(patch.state())).then_some((id, patch))
+                    })
+                    .collect::<Vec<_>>();
+                patches.sort_by_key(|(_, b)| std::cmp::Reverse(b.timestamp()));
+                let aliases = ctx.profile.aliases();
+                Ok::<_, Error>(
+                    patches
+                        .into_iter()
+                        .map(|(id, patch)| {
+                            api::json::cobs::Patch::new(&patch).as_json(id, &repo, &aliases)
+                        })
+                        .skip(page.saturating_mul(per_page))
+                        .take(per_page)
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .await?
+        }
+    };
 
     Ok::<_, Error>(Json(patches))
 }
@@ -1343,19 +1779,44 @@ async fn patch_handler(
     Path((rid, patch_id)): Path<(String, Oid)>,
 ) -> impl IntoResponse {
     let rid = ctx.resolve_repo(&rid)?;
-    let value = api::blocking(move || {
-        let (repo, _) = ctx.repo(rid)?;
-        let patches = ctx.profile.patches(&repo)?;
-        let patch = patches.get(&patch_id.into())?.ok_or(Error::NotFound)?;
-        let aliases = ctx.profile.aliases();
 
-        Ok::<_, Error>(api::json::cobs::Patch::new(&patch).as_json(
-            patch_id.into(),
-            &repo,
-            &aliases,
-        ))
-    })
-    .await?;
+    let value = match ctx.source() {
+        crate::Source::Meilisearch => {
+            let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
+            let d = backend
+                .get_cob(CobKind::Patches, rid, &patch_id.to_string())
+                .await?
+                .ok_or(Error::NotFound)?;
+            let (oid, patch) = cob_from_doc::<radicle::patch::Patch>("patch", &d)?;
+            let aliases = backend
+                .get_aliases(&api::json::cobs::patch_participants(&patch))
+                .await?;
+            api::blocking(move || {
+                let (repo, _) = ctx.repo(rid)?;
+                Ok::<_, Error>(api::json::cobs::Patch::new(&patch).as_json(
+                    oid.into(),
+                    &repo,
+                    &aliases,
+                ))
+            })
+            .await?
+        }
+        crate::Source::Sqlite => {
+            api::blocking(move || {
+                let (repo, _) = ctx.repo(rid)?;
+                let patches = ctx.profile.patches(&repo)?;
+                let patch = patches.get(&patch_id.into())?.ok_or(Error::NotFound)?;
+                let aliases = ctx.profile.aliases();
+
+                Ok::<_, Error>(api::json::cobs::Patch::new(&patch).as_json(
+                    patch_id.into(),
+                    &repo,
+                    &aliases,
+                ))
+            })
+            .await?
+        }
+    };
 
     Ok::<_, Error>(Json(value))
 }
@@ -1615,6 +2076,118 @@ mod routes {
     }
 
     #[tokio::test]
+    async fn test_repos_listing_meili_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, "/repos?show=all&sort=activity").await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value = response.json().await;
+        assert_eq!(body.as_array().unwrap().len(), 1);
+        assert_eq!(body[0]["rid"], RID);
+        assert_eq!(body[0]["seeding"], 1);
+        assert_eq!(
+            body[0]["payloads"]["xyz.radicle.project"]["meta"]["issues"]["open"],
+            1
+        );
+        assert_eq!(body[0]["delegates"][0]["alias"], CONTRIBUTOR_ALIAS);
+    }
+
+    #[tokio::test]
+    async fn test_repos_listing_meili_mode_skips_stale_doc() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing_rid: radicle::identity::RepoId =
+            "rad:z2u2CP3ZJzB7ZqE8jHrau19yjcfCQ".parse().unwrap();
+        let ctx = crate::test::seed_meili_with(tmp.path(), |fake, doc| {
+            let stale = radicle_search::index::repo::Document::new(
+                missing_rid,
+                doc,
+                radicle_search::index::repo::Activity {
+                    head: None,
+                    head_committer_time: Some(0),
+                    activity_timestamps: vec![],
+                },
+                1,
+                radicle_search::index::repo::IssueCounts { open: 0, closed: 0 },
+                radicle_search::index::repo::PatchCounts {
+                    open: 0,
+                    draft: 0,
+                    archived: 0,
+                    merged: 0,
+                },
+                0,
+            )
+            .unwrap();
+            fake.repos.push(stale);
+        });
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, "/repos?show=all&sort=activity").await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value = response.json().await;
+        assert_eq!(body.as_array().unwrap().len(), 1);
+        assert_eq!(body[0]["rid"], RID);
+    }
+
+    #[tokio::test]
+    async fn test_repos_listing_meili_mode_rid_sort_pages_through_backend() {
+        use radicle::identity::RepoId;
+        use std::str::FromStr;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let second_rid = "rad:z4GypKmh1gkEfmkXtarcYnkvtFUfE";
+        let ctx = crate::test::seed_meili_with(tmp.path(), |fake, doc| {
+            let second = radicle_search::index::repo::Document::new(
+                RepoId::from_str(second_rid).unwrap(),
+                doc,
+                radicle_search::index::repo::Activity {
+                    head: None,
+                    head_committer_time: Some(0),
+                    activity_timestamps: vec![],
+                },
+                1,
+                radicle_search::index::repo::IssueCounts { open: 0, closed: 0 },
+                radicle_search::index::repo::PatchCounts {
+                    open: 0,
+                    draft: 0,
+                    archived: 0,
+                    merged: 0,
+                },
+                0,
+            )
+            .unwrap();
+            fake.repos.push(second);
+        });
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let page = |n: usize| {
+            let app = app.clone();
+            async move {
+                let body: serde_json::Value =
+                    get(&app, format!("/repos?show=all&sort=rid&perPage=1&page={n}"))
+                        .await
+                        .json()
+                        .await;
+                body.as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|repo| repo["rid"].as_str().unwrap().to_string())
+                    .collect::<Vec<_>>()
+            }
+        };
+
+        assert_eq!(page(0).await, vec![RID.to_string()]);
+        assert_eq!(page(1).await, vec![second_rid.to_string()]);
+        assert!(page(2).await.is_empty());
+    }
+
+    #[tokio::test]
     async fn test_repos_per_page_is_clamped() {
         // A caller requesting more than MAX_PER_PAGE must not be able to
         // pull an unbounded result set. With the small fixture we can't
@@ -1734,6 +2307,62 @@ mod routes {
     }
 
     #[tokio::test]
+    async fn test_repo_meili_mode_matches_sqlite_shape() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, format!("/repos/{RID}")).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.json().await,
+            json!({
+              "payloads": {
+                "xyz.radicle.project": {
+                  "data": {
+                    "defaultBranch": "master",
+                    "description": "Rad repository for tests",
+                    "name": "hello-world",
+                  },
+                  "meta": {
+                    "head": HEAD,
+                    "patches": { "open": 1, "draft": 0, "archived": 0, "merged": 0 },
+                    "issues": { "open": 1, "closed": 0 },
+                    "releases": 0,
+                  }
+                }
+              },
+              "delegates": [{ "id": DID, "alias": CONTRIBUTOR_ALIAS }],
+              "threshold": 1,
+              "visibility": { "type": "public" },
+              "rid": RID,
+              "seeding": 1,
+              "refs": { "tags": {}, "refs": { "refs/heads/master": HEAD } }
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn test_repo_meili_mode_unindexed_is_503_but_missing_is_404() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, "/repos/rad:z4GypKmh1gkEfmkXtarcYnkvtFUfE").await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let response = get(&app, format!("/repos/{RID_PRIVATE}")).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let unknown = radicle::identity::RepoId::from(radicle::git::Oid::from_sha1([7u8; 20]));
+        let response = get(&app, format!("/repos/{unknown}")).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
     async fn test_repo_alias_resolution() {
         let tmp = tempfile::tempdir().unwrap();
         let mut ctx = seed(tmp.path());
@@ -1744,22 +2373,34 @@ mod routes {
         )]));
         let app = super::router(ctx);
 
-        // The alias resolves to the same repo as the RID, and the repo info
-        // advertises the configured alias.
         let response = get(&app, "/repos/hello").await;
         assert_eq!(response.status(), StatusCode::OK);
         let body = response.json().await;
         assert_eq!(body["rid"], json!(RID));
         assert_eq!(body["alias"], json!("hello"));
 
-        // The RID itself keeps working and still advertises the alias.
         let response = get(&app, format!("/repos/{RID}")).await;
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.json().await["alias"], json!("hello"));
 
-        // An unknown alias is not found.
         let response = get(&app, "/repos/nope").await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_repos_search_meili_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, "/repos/search?q=hello").await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value = response.json().await;
+        assert_eq!(body[0]["rid"], RID);
+        assert_eq!(body[0]["seeds"], 1);
+        assert_eq!(body[0]["delegates"][0]["alias"], CONTRIBUTOR_ALIAS);
     }
 
     #[tokio::test]
@@ -2288,6 +2929,27 @@ mod routes {
     }
 
     #[tokio::test]
+    async fn test_remotes_meili_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+        let nid = ctx.profile().public_key;
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, format!("/repos/{RID}/remotes")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value = response.json().await;
+        assert_eq!(body[0]["alias"], CONTRIBUTOR_ALIAS);
+        assert_eq!(body[0]["delegate"], true);
+
+        let response = get(&app, format!("/repos/{RID}/remotes/{nid}")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value = response.json().await;
+        assert_eq!(body["alias"], CONTRIBUTOR_ALIAS);
+        assert_eq!(body["delegate"], true);
+    }
+
+    #[tokio::test]
     async fn test_repos_multi_peer_canonical_refs() {
         let tmp = tempfile::tempdir().unwrap();
         let ctx = seed_multi_peer(tmp.path());
@@ -2588,6 +3250,20 @@ mod routes {
     }
 
     #[tokio::test]
+    async fn test_repos_issues_page_overflow_is_safe() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = super::router(seed(tmp.path()));
+        let response = get(
+            &app,
+            format!("/repos/{RID}/issues?page=18446744073709551615&perPage=99999"),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.json().await, json!([]));
+    }
+
+    #[tokio::test]
     async fn test_repos_issue() {
         let tmp = tempfile::tempdir().unwrap();
         let app = super::router(seed(tmp.path()));
@@ -2636,6 +3312,20 @@ mod routes {
                 "labels": []
             })
         );
+    }
+
+    #[tokio::test]
+    async fn test_repos_patches_page_overflow_is_safe() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = super::router(seed(tmp.path()));
+        let response = get(
+            &app,
+            format!("/repos/{RID}/patches?page=18446744073709551615&perPage=99999"),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.json().await, json!([]));
     }
 
     #[tokio::test]
@@ -2756,6 +3446,371 @@ mod routes {
     }
 
     #[tokio::test]
+    async fn test_issues_meili_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, format!("/repos/{RID}/issues")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.json().await,
+            json!([
+              {
+                "id": ISSUE_ID,
+                "author": {
+                  "id": DID,
+                  "alias": CONTRIBUTOR_ALIAS
+                },
+                "title": "Issue #1",
+                "state": {
+                  "status": "open"
+                },
+                "assignees": [],
+                "discussion": [
+                  {
+                    "id": ISSUE_ID,
+                    "author": {
+                      "id": DID,
+                      "alias": CONTRIBUTOR_ALIAS
+                    },
+                    "body": "Change 'hello world' to 'hello everyone'",
+                    "edits": [
+                      {
+                        "author": {
+                          "id": DID,
+                          "alias": CONTRIBUTOR_ALIAS
+                        },
+                        "body": "Change 'hello world' to 'hello everyone'",
+                        "timestamp": TIMESTAMP,
+                        "embeds": [],
+                      },
+                    ],
+                    "embeds": [],
+                    "reactions": [],
+                    "timestamp": TIMESTAMP,
+                    "replyTo": null,
+                    "resolved": false,
+                  }
+                ],
+                "labels": []
+              }
+            ])
+        );
+
+        let detail = get(&app, format!("/repos/{RID}/issues/{ISSUE_ID}")).await;
+        assert_eq!(detail.status(), StatusCode::OK);
+        assert_eq!(
+            detail.json().await,
+            json!({
+                "id": ISSUE_ID,
+                "author": {
+                  "id": DID,
+                  "alias": CONTRIBUTOR_ALIAS
+                },
+                "title": "Issue #1",
+                "state": {
+                  "status": "open"
+                },
+                "assignees": [],
+                "discussion": [
+                  {
+                    "id": ISSUE_ID,
+                    "author": {
+                      "id": DID,
+                      "alias": CONTRIBUTOR_ALIAS
+                    },
+                    "body": "Change 'hello world' to 'hello everyone'",
+                    "edits": [
+                      {
+                        "author": {
+                          "id": DID,
+                          "alias": CONTRIBUTOR_ALIAS
+                        },
+                        "body": "Change 'hello world' to 'hello everyone'",
+                        "timestamp": TIMESTAMP,
+                        "embeds": [],
+                      },
+                    ],
+                    "embeds": [],
+                    "reactions": [],
+                    "timestamp": TIMESTAMP,
+                    "replyTo": null,
+                    "resolved": false,
+                  }
+                ],
+                "labels": []
+            })
+        );
+
+        let missing = get(&app, format!("/repos/{RID}/issues/{HEAD}")).await;
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_issues_meili_mode_checks_repo_exists_and_is_public() {
+        use radicle::identity::RepoId;
+        use std::str::FromStr;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let private = RepoId::from_str(RID_PRIVATE).unwrap();
+        let unknown = RepoId::from(radicle::git::Oid::from_sha1([7u8; 20]));
+        let ctx = crate::test::seed_meili_with(tmp.path(), |fake, _| {
+            let mut leaked = fake.issues[0].clone();
+            leaked.rid = private;
+            leaked.id = radicle_search::index::cob::doc_id(private, &leaked.cob_id);
+            fake.issues.push(leaked);
+        });
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        for path in [
+            format!("/repos/{RID_PRIVATE}/issues"),
+            format!("/repos/{RID_PRIVATE}/issues/{ISSUE_ID}"),
+            format!("/repos/{unknown}/issues"),
+            format!("/repos/{unknown}/issues/{ISSUE_ID}"),
+        ] {
+            let response = get(&app, path.clone()).await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_cob_listings_meili_mode_skip_undeserializable_docs() {
+        use radicle::identity::RepoId;
+        use std::str::FromStr;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let rid = RepoId::from_str(RID).unwrap();
+        let bad_oid = "0000000000000000000000000000000000000bad";
+        let ctx = crate::test::seed_meili_with(tmp.path(), |fake, _| {
+            for docs in [&mut fake.issues, &mut fake.patches] {
+                let mut bad = docs[0].clone();
+                bad.cob_id = bad_oid.to_string();
+                bad.id = radicle_search::index::cob::doc_id(rid, bad_oid);
+                bad.cob = "{\"not\": \"a cob\"}".to_string();
+                docs.push(bad);
+            }
+        });
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        for (kind, good) in [("issues", ISSUE_ID), ("patches", PATCH_ID)] {
+            let response = get(&app, format!("/repos/{RID}/{kind}")).await;
+            assert_eq!(response.status(), StatusCode::OK, "{kind}");
+            let body: serde_json::Value = response.json().await;
+            let ids: Vec<&str> = body
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|cob| cob["id"].as_str().unwrap())
+                .collect();
+            assert_eq!(ids, vec![good], "{kind}");
+
+            let response = get(&app, format!("/repos/{RID}/{kind}/{bad_oid}")).await;
+            assert_eq!(
+                response.status(),
+                StatusCode::SERVICE_UNAVAILABLE,
+                "{kind} detail"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_patch_meili_mode_resolves_review_comment_alias() {
+        use radicle::crypto::{Seed, Signer, SigningKey};
+        use radicle::identity::RepoId;
+        use radicle::patch::cache::Patches as _;
+        use std::str::FromStr;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mut ctx = crate::test::seed_meili(tmp.path());
+        let reviewer = SigningKey::from_seed(Seed::new([0xee; 32]));
+        let rid = RepoId::from_str(RID).unwrap();
+        let patch_id = radicle::git::Oid::from_str(PATCH_ID).unwrap();
+        let profile = ctx.profile().clone();
+        let repo = profile.storage.repository(rid).unwrap();
+        profile
+            .cobs_db_mut()
+            .unwrap()
+            .migrate(radicle::cob::cache::migrate::ignore)
+            .unwrap();
+        {
+            let mut patches = profile.patches_mut(&repo, &reviewer).unwrap();
+            patches.write(&patch_id.into()).unwrap();
+            let mut patch = patches.get_mut(&patch_id.into()).unwrap();
+            let (revision, _) = patch.latest();
+            patch
+                .review(
+                    revision,
+                    Some(radicle::patch::Verdict::Accept),
+                    None,
+                    vec![],
+                )
+                .unwrap();
+            let review = *patch.reviews_of(revision).next().unwrap().0;
+            patch
+                .review_comment(review, "Looks good", None, None, std::iter::empty())
+                .unwrap();
+        }
+        let reviewed = profile
+            .patches(&repo)
+            .unwrap()
+            .get(&patch_id.into())
+            .unwrap()
+            .unwrap();
+        crate::test::delete_sqlite_files(&profile);
+
+        let mut fake = match ctx.search() {
+            Some(crate::api::Backend::Fake(fake)) => fake.clone(),
+            _ => unreachable!("seed_meili installs a fake backend"),
+        };
+        fake.patches[0].cob = serde_json::to_string(&reviewed).unwrap();
+        fake.nodes.push(radicle_search::index::node::Document::new(
+            *reviewer.public_key(),
+            Some("reviewer".to_string()),
+            None,
+        ));
+        ctx.set_search_backend(crate::Source::Meilisearch, crate::api::Backend::Fake(fake));
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let body = get(&app, format!("/repos/{RID}/patches/{PATCH_ID}"))
+            .await
+            .json()
+            .await;
+        let comment = &body["revisions"][0]["reviews"][0]["comments"][0];
+        assert_eq!(comment["body"], json!("Looks good"));
+        assert_eq!(comment["author"]["alias"], json!("reviewer"));
+    }
+
+    #[tokio::test]
+    async fn test_patches_meili_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, format!("/repos/{RID}/patches")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.json().await,
+            json!([
+                {
+                    "id": PATCH_ID,
+                    "author": {
+                        "id": DID,
+                        "alias": CONTRIBUTOR_ALIAS,
+                    },
+                    "title": "A new `hello world`",
+                    "state": {
+                        "status": "open",
+                    },
+                    "target": "delegates",
+                    "labels": [],
+                    "merges": [],
+                    "assignees": [],
+                    "revisions": [
+                        {
+                            "id": PATCH_ID,
+                            "author": {
+                                "id": DID,
+                                "alias": CONTRIBUTOR_ALIAS,
+                            },
+                            "description": "change `hello world` in README to something else",
+                            "edits": [
+                                {
+                                    "author": {
+                                        "id": DID,
+                                        "alias": CONTRIBUTOR_ALIAS,
+                                    },
+                                    "body": "change `hello world` in README to something else",
+                                    "timestamp": TIMESTAMP,
+                                    "embeds": [],
+                                },
+                            ],
+                            "reactions": [],
+                            "base": "ee8d6a29304623a78ebfa5eeed5af674d0e58f83",
+                            "oid": "e8c676b9e3b42308dc9d218b70faa5408f8e58ca",
+                            "refs": [
+                                "refs/heads/master",
+                            ],
+                            "discussions": [],
+                            "timestamp": TIMESTAMP,
+                            "reviews": [],
+                        },
+                    ],
+                },
+                ]
+            )
+        );
+
+        let detail = get(&app, format!("/repos/{RID}/patches/{PATCH_ID}")).await;
+        assert_eq!(detail.status(), StatusCode::OK);
+        assert_eq!(
+            detail.json().await,
+            json!({
+                "id": PATCH_ID,
+                "author": {
+                    "id": DID,
+                    "alias": CONTRIBUTOR_ALIAS,
+                },
+                "title": "A new `hello world`",
+                "state": {
+                    "status": "open",
+                },
+                "target": "delegates",
+                "labels": [],
+                "merges": [],
+                "assignees": [],
+                "revisions": [
+                    {
+                        "id": PATCH_ID,
+                        "author": {
+                            "id": DID,
+                            "alias": CONTRIBUTOR_ALIAS,
+                        },
+                        "description": "change `hello world` in README to something else",
+                        "edits": [
+                            {
+                                "author": {
+                                    "id": DID,
+                                    "alias": CONTRIBUTOR_ALIAS,
+                                },
+                                "body": "change `hello world` in README to something else",
+                                "timestamp": TIMESTAMP,
+                                "embeds": [],
+                            },
+                        ],
+                        "reactions": [],
+                        "base": "ee8d6a29304623a78ebfa5eeed5af674d0e58f83",
+                        "oid": "e8c676b9e3b42308dc9d218b70faa5408f8e58ca",
+                        "refs": [
+                            "refs/heads/master",
+                        ],
+                        "discussions": [],
+                        "timestamp": TIMESTAMP,
+                        "reviews": [],
+                    },
+                ],
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn test_jobs_meili_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, format!("/repos/{RID}/jobs/{HEAD}")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.json().await, json!([]));
+    }
+
+    #[tokio::test]
     async fn test_repos_private() {
         let tmp = tempfile::tempdir().unwrap();
         let ctx = seed(tmp.path());
@@ -2808,6 +3863,33 @@ mod routes {
         }
 
         let response = get(&app, "/repos?show=pinned").await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let repos = response.json().await;
+        assert_eq!(repos.as_array().unwrap().len(), 1);
+        assert_eq!(repos[0]["rid"], json!(RID));
+    }
+
+    #[tokio::test]
+    async fn test_repos_pinned_meili_mode() {
+        use radicle::identity::RepoId;
+        use std::str::FromStr;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+
+        ctx.web_config()
+            .update(|c| {
+                c.pinned.repositories.insert(RepoId::from_str(RID).unwrap());
+                c.pinned
+                    .repositories
+                    .insert(RepoId::from_str("rad:z4GypKmh1gkEfmkXtarcYnkvtFUfE").unwrap());
+            })
+            .await;
+
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+        let response = get(&app, "/repos?show=pinned").await;
+
         assert_eq!(response.status(), StatusCode::OK);
         let repos = response.json().await;
         assert_eq!(repos.as_array().unwrap().len(), 1);

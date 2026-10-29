@@ -22,6 +22,8 @@ struct HttpdInfo {
     /// Reflects only configuration — `true` does not guarantee the
     /// backend is currently reachable.
     search_available: bool,
+    /// The data source this httpd reads derived state from.
+    source: &'static str,
 }
 
 #[derive(Serialize)]
@@ -39,6 +41,7 @@ async fn info_handler(State(ctx): State<Context>) -> impl IntoResponse {
     let node = node::build_response(&ctx).await?;
     let httpd = HttpdInfo {
         search_available: ctx.search().is_some(),
+        source: ctx.source().as_str(),
     };
     Ok::<_, Error>(cached_response(Info { node, httpd }, 600))
 }
@@ -66,5 +69,33 @@ mod routes {
         let body: Value = response.json().await;
         assert_eq!(body["httpd"]["searchAvailable"], false);
         assert!(body["node"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_info_reports_sqlite_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        let seed = seed(tmp.path());
+        let app = super::router(seed.clone())
+            .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+        let response = get(&app, "/info").await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: Value = response.json().await;
+        assert_eq!(body["httpd"]["source"], "sqlite");
+        assert_eq!(body["httpd"]["searchAvailable"], false);
+    }
+
+    #[tokio::test]
+    async fn test_info_meili_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili(tmp.path());
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+        let response = get(&app, "/info").await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: Value = response.json().await;
+        assert_eq!(body["httpd"]["source"], "meilisearch");
+        assert_eq!(body["httpd"]["searchAvailable"], true);
     }
 }

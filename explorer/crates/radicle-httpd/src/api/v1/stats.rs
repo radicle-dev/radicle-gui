@@ -18,13 +18,24 @@ pub fn router(ctx: Context) -> Router {
 /// Return the stats for the node.
 /// `GET /stats`
 async fn stats_handler(State(ctx): State<Context>) -> impl IntoResponse {
-    let total_seeded = crate::api::blocking(move || {
-        let db = ctx.profile.database()?;
-        let nid = ctx.profile.public_key;
+    let total_seeded = match ctx.source() {
+        crate::Source::Sqlite => {
+            crate::api::blocking(move || {
+                let db = ctx.profile.database()?;
+                let nid = ctx.profile.public_key;
 
-        Ok::<_, Error>(db.get_inventory(&nid)?.len())
-    })
-    .await?;
+                Ok::<_, Error>(db.get_inventory(&nid)?.len())
+            })
+            .await?
+        }
+        crate::Source::Meilisearch => ctx
+            .search()
+            .ok_or(Error::SearchUnavailable)?
+            .get_inventory(&ctx.profile.public_key)
+            .await?
+            .map(|r| r.len())
+            .unwrap_or_default(),
+    };
 
     Ok::<_, Error>(Json(json!({ "repos": { "total": total_seeded } })))
 }
@@ -44,5 +55,15 @@ mod routes {
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.json().await, json!({ "repos": { "total": 2 } }));
+    }
+
+    #[tokio::test]
+    async fn test_stats_meili_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = super::router(crate::test::seed_meili(tmp.path()));
+        let response = get(&app, "/stats").await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.json().await, json!({ "repos": { "total": 1 } }));
     }
 }

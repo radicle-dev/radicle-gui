@@ -170,7 +170,7 @@ pub async fn list_handler(
         Ok::<_, Error>(
             releases
                 .into_iter()
-                .skip(page * per_page)
+                .skip(page.saturating_mul(per_page))
                 .take(per_page)
                 .map(|(id, release)| {
                     release_json(

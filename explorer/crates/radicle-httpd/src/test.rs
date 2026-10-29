@@ -17,7 +17,9 @@ use radicle::crypto::ssh::Keystore;
 use radicle::crypto::{Seed, Signer, SigningKey};
 use radicle::git::fmt::RefString;
 use radicle::identity::{project, Visibility};
+use radicle::issue::cache::Issues as _;
 use radicle::node::{Features, Timestamp, UserAgent};
+use radicle::patch::cache::Patches as _;
 use radicle::profile::{env, Home};
 use radicle::storage::{
     ReadRepository, ReadStorage, SignRepository, WriteRepository, WriteStorage,
@@ -92,6 +94,131 @@ pub fn seed(dir: &Path) -> Context {
     crate::logger::init().ok();
 
     seed_with_signer(dir, profile, &signer)
+}
+
+pub fn seed_meili(dir: &Path) -> Context {
+    seed_meili_with(dir, |_fake, _doc| {})
+}
+
+/// Like [`seed_meili`], but lets the caller mutate the fake search backend
+/// (e.g. to add extra documents via `radicle_search::index::repo::Document::new`,
+/// using the fixture's own identity doc) before it's installed on the context.
+pub fn seed_meili_with(
+    dir: &Path,
+    customize: impl FnOnce(&mut crate::api::backend::fake::Fake, &radicle::identity::Doc),
+) -> Context {
+    use crate::api::backend::{fake::Fake, Backend};
+
+    let mut ctx = seed(dir);
+    let profile = ctx.profile().clone();
+
+    let rid = radicle::identity::RepoId::from_str(RID).unwrap();
+    let repo = profile.storage.repository(rid).unwrap();
+
+    let (issue_id, issue) = {
+        let issues = profile.issues(&repo).unwrap();
+        let mut all: Vec<_> = issues.list().unwrap().filter_map(|r| r.ok()).collect();
+        all.pop().unwrap()
+    };
+    let (patch_id, patch) = {
+        let patches = profile.patches(&repo).unwrap();
+        let mut all: Vec<_> = patches.list().unwrap().filter_map(|r| r.ok()).collect();
+        all.pop().unwrap()
+    };
+
+    let nid = profile.public_key;
+    let doc_at = radicle::storage::ReadRepository::identity_doc(&repo).unwrap();
+    let repo_doc = radicle_search::index::repo::Document::new(
+        rid,
+        &doc_at.doc,
+        radicle_search::index::repo::Activity {
+            head: repo.head().ok().map(|(_, h)| h),
+            head_committer_time: Some(TIMESTAMP as i64),
+            activity_timestamps: vec![],
+        },
+        1,
+        radicle_search::index::repo::IssueCounts { open: 1, closed: 0 },
+        radicle_search::index::repo::PatchCounts {
+            open: 1,
+            draft: 0,
+            archived: 0,
+            merged: 0,
+        },
+        0,
+    )
+    .unwrap();
+
+    let issue_doc = radicle_search::index::cob::Document {
+        v: radicle_search::index::SCHEMA_VERSION,
+        id: radicle_search::index::cob::doc_id(rid, issue_id),
+        rid,
+        cob_id: issue_id.to_string(),
+        state: issue.state().to_string(),
+        timestamp: issue.timestamp().as_secs() as i64,
+        title: issue.title().to_string(),
+        description: issue.description().to_string(),
+        comments: vec![],
+        dids: vec![radicle::identity::Did::from(nid)],
+        author_did: radicle::identity::Did::from(nid),
+        assignee_dids: vec![],
+        labels: vec![],
+        cob: serde_json::to_string(&issue).unwrap(),
+    };
+    let patch_doc = radicle_search::index::cob::Document {
+        v: radicle_search::index::SCHEMA_VERSION,
+        id: radicle_search::index::cob::doc_id(rid, patch_id),
+        rid,
+        cob_id: patch_id.to_string(),
+        state: "open".to_string(),
+        timestamp: patch.timestamp().as_secs() as i64,
+        title: patch.title().to_string(),
+        description: patch.description().to_string(),
+        comments: vec![],
+        dids: vec![radicle::identity::Did::from(nid)],
+        author_did: radicle::identity::Did::from(nid),
+        assignee_dids: vec![],
+        labels: vec![],
+        cob: serde_json::to_string(&patch).unwrap(),
+    };
+    let node_doc =
+        radicle_search::index::node::Document::new(nid, Some(CONTRIBUTOR_ALIAS.to_string()), None);
+
+    let mut fake = Fake {
+        repos: vec![repo_doc],
+        issues: vec![issue_doc],
+        patches: vec![patch_doc],
+        nodes: vec![node_doc],
+        policies: vec![(
+            rid,
+            radicle::node::policy::SeedingPolicy::Allow {
+                scope: radicle::node::policy::Scope::All,
+            },
+        )],
+        inventory: std::collections::HashMap::from([(nid, vec![rid])]),
+    };
+    customize(&mut fake, &doc_at.doc);
+
+    delete_sqlite_files(&profile);
+    ctx.set_search_backend(crate::Source::Meilisearch, Backend::Fake(fake));
+    ctx
+}
+
+/// Remove every SQLite database from the profile so any stray read in
+/// Meilisearch mode fails loudly instead of silently using SQLite.
+pub(crate) fn delete_sqlite_files(profile: &radicle::Profile) {
+    let node_dir = profile.home.node();
+    let cobs_dir = profile.home.cobs();
+    for dir in [node_dir, cobs_dir] {
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if name.ends_with(".db") || name.contains(".db-") {
+                    std::fs::remove_file(entry.path()).ok();
+                }
+            }
+        }
+    }
 }
 
 fn seed_with_signer(dir: &Path, profile: radicle::Profile, signer: &SigningKey) -> Context {
@@ -327,6 +454,7 @@ fn seed_with_signer(dir: &Path, profile: radicle::Profile, signer: &SigningKey) 
         listen: axum_listener::DualAddr::Tcp(std::net::SocketAddr::from(([0, 0, 0, 0], 8080))),
         cache: Some(crate::DEFAULT_CACHE_SIZE),
         search: None,
+        source: crate::Source::Sqlite,
     };
 
     let web_config = crate::api::WebConfig::from_profile(&profile);
@@ -631,6 +759,7 @@ pub fn seed_merge(dir: &Path) -> MergeFixture {
         listen: axum_listener::DualAddr::Tcp(std::net::SocketAddr::from(([0, 0, 0, 0], 8080))),
         cache: Some(crate::DEFAULT_CACHE_SIZE),
         search: None,
+        source: crate::Source::Sqlite,
     };
     let web_config = crate::api::WebConfig::from_profile(&profile);
     let ctx = Context::new(Arc::new(profile), web_config, &options)
@@ -643,6 +772,38 @@ pub fn seed_merge(dir: &Path) -> MergeFixture {
         head: head.into(),
         feature: feature.into(),
     }
+}
+
+#[test]
+fn seed_meili_leaves_no_sqlite_files() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ctx = seed_meili(tmp.path());
+    let home = ctx.profile().home.path().to_path_buf();
+
+    let mut db_files = Vec::new();
+    for entry in walkdir(&home) {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.ends_with(".db") || name.contains(".db-") {
+            db_files.push(entry.path().to_path_buf());
+        }
+    }
+    assert!(db_files.is_empty(), "SQLite files survive: {db_files:?}");
+}
+
+fn walkdir(dir: &Path) -> Vec<std::fs::DirEntry> {
+    let mut entries = Vec::new();
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return entries;
+    };
+    for entry in read.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            entries.extend(walkdir(&path));
+        } else {
+            entries.push(entry);
+        }
+    }
+    entries
 }
 
 pub async fn get(app: &Router, path: impl ToString) -> Response {

@@ -8,6 +8,15 @@
   are no longer lost. Rescans and batched reindexes also keep running while the
   event stream is down, and the catch-up rescan after a reconnect runs in the
   background instead of delaying the resubscription
+- **Meilisearch source mode**: `RADICLE_HTTPD_SOURCE=meilisearch` serves all
+  derived data (listings, search, issues, patches, aliases, policies, inventory,
+  stats) from the six Meilisearch indexes radicle-search publishes; SQLite is
+  never opened. Default remains `sqlite` (unchanged behavior). `/info` reports
+  the active source (`httpd.source`); API version 6.3.0
+- **Breaking (config)**: `RADICLE_SEARCH_INDEX_NAME` is replaced by
+  `RADICLE_SEARCH_INDEX_PREFIX` in both radicle-search and radicle-httpd
+- **radicle-search**: publishes six indexes (repos, issues, patches, nodes,
+  policies, inventory) with issue/patch full-text fields and participant DIDs
 
 ## radicle-httpd + radicle-search 0.30.0
 

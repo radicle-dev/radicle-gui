@@ -10,28 +10,32 @@ use radicle::identity::doc::PayloadId;
 use radicle::identity::{DocAt, RepoId};
 use radicle::issue::cache::Issues as _;
 use radicle::node::routing::Store;
+use radicle::node::{Alias, AliasStore as _, NodeId};
 use radicle::patch::cache::Patches as _;
 use radicle::storage::git::Repository;
 use radicle::storage::{ReadRepository, ReadStorage};
 use radicle::{git, web, Profile};
 #[cfg(feature = "artifacts")]
 use radicle_artifact::Releases;
+use radicle_search::index::repo as search_repo;
 use tokio::sync::RwLock;
 
+pub(crate) mod backend;
 mod error;
 mod json;
 pub(crate) mod query;
 mod v1;
 
+pub(crate) use backend::Backend;
 pub(crate) use radicle_search::query::SearchClient;
 
 use crate::api::error::Error;
 use crate::cache::Cache;
-use crate::Options;
+use crate::{Options, Source};
 
 pub const RADICLE_VERSION: &str = env!("RADICLE_VERSION");
 // This version has to be updated on every breaking change to the radicle-httpd API.
-pub const API_VERSION: &str = "6.2.0";
+pub const API_VERSION: &str = "6.3.0";
 
 /// Thread-safe wrapper around radicle's web configuration.
 ///
@@ -73,14 +77,44 @@ pub struct Context {
     profile: Arc<Profile>,
     cache: Option<Cache>,
     web_config: WebConfig,
-    /// Search backend client, present only when configured via
-    /// `RADICLE_SEARCH_URL`. When absent, listing and search fall back to
-    /// the storage walk.
-    search: Option<SearchClient>,
+    /// The data source this context reads derived state from.
+    source: Source,
+    /// Search backend, present when configured via `RADICLE_SEARCH_URL`. In
+    /// [`Source::Sqlite`] mode, absent means listing and search fall back to
+    /// the storage walk. In [`Source::Meilisearch`] mode this is always
+    /// `Some` — construction fails fatally otherwise.
+    search: Option<Backend>,
     /// The repo aliases configured via `--alias`, mapping each alias to its
     /// [`RepoId`]. Used to resolve alias path segments to a repo and to
     /// advertise a repo's short name in its info.
     repo_aliases: Arc<HashMap<String, RepoId>>,
+}
+
+/// Repo metadata hydrated separately from the repo doc: seeding count, cob
+/// counts, and delegate aliases. Assembled either from SQLite reads
+/// ([`Context::repo_meta_sqlite`]) or from a repo search doc
+/// ([`Context::repo_meta_meili`]).
+pub(crate) struct RepoMeta {
+    pub seeding: usize,
+    /// `None` when the cob cache failed to open or count, mirroring the
+    /// storage-walk behavior of dropping the whole `xyz.radicle.project`
+    /// payload entry rather than reporting fabricated zero counts.
+    pub issues: Option<search_repo::IssueCounts>,
+    pub patches: Option<search_repo::PatchCounts>,
+    pub aliases: HashMap<NodeId, Alias>,
+}
+
+/// Build [`RepoMeta`] from a repo search doc and its delegates' aliases.
+pub(crate) fn meta_from_doc(
+    doc: &search_repo::Document,
+    aliases: HashMap<NodeId, Alias>,
+) -> RepoMeta {
+    RepoMeta {
+        seeding: doc.seeding_count as usize,
+        issues: Some(doc.issue_counts),
+        patches: Some(doc.patch_counts),
+        aliases,
+    }
 }
 
 impl Context {
@@ -89,11 +123,8 @@ impl Context {
         web_config: WebConfig,
         options: &Options,
     ) -> anyhow::Result<Self> {
-        // Search is optional and resolved at runtime: build a client only
-        // when configured. A construction failure is non-fatal — httpd still
-        // starts and serves everything from the storage walk.
-        let search = match &options.search {
-            Some(cfg) => match SearchClient::new(
+        let search = match (&options.search, options.source) {
+            (Some(cfg), _) => match SearchClient::new(
                 &cfg.url,
                 cfg.api_key.as_deref(),
                 &cfg.index_prefix,
@@ -105,7 +136,10 @@ impl Context {
                         cfg.url,
                         cfg.index_prefix
                     );
-                    Some(client)
+                    Some(Backend::Meili(Box::new(client)))
+                }
+                Err(e) if options.source == Source::Meilisearch => {
+                    anyhow::bail!("failed to construct search backend client: {e:#}");
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -115,13 +149,19 @@ impl Context {
                     None
                 }
             },
-            None => None,
+            (None, Source::Meilisearch) => {
+                anyhow::bail!(
+                    "RADICLE_HTTPD_SOURCE=meilisearch requires a search backend to be configured"
+                );
+            }
+            (None, Source::Sqlite) => None,
         };
 
         Ok(Self {
             profile: profile.clone(),
             cache: options.cache.map(Cache::new),
             web_config,
+            source: options.source,
             search,
             repo_aliases: Arc::new(options.aliases.clone()),
         })
@@ -150,25 +190,123 @@ impl Context {
         self.repo_aliases = Arc::new(aliases);
     }
 
-    /// The search backend client, if one is configured and reachable at
-    /// startup. `None` means listing and search use the storage walk.
-    pub fn search(&self) -> Option<&SearchClient> {
+    /// The search backend, if one is configured and reachable at startup.
+    /// `None` means listing and search use the storage walk.
+    pub(crate) fn search(&self) -> Option<&Backend> {
         self.search.as_ref()
     }
 
+    /// The data source this context reads derived state from.
+    pub fn source(&self) -> Source {
+        self.source
+    }
+
+    #[cfg(test)]
+    pub fn set_search_backend(&mut self, source: Source, backend: Backend) {
+        self.source = source;
+        self.search = Some(backend);
+    }
+
     #[allow(clippy::result_large_err)]
-    pub fn repo_info(&self, repo: &Repository, doc: DocAt) -> Result<repo::Info, error::Error> {
+    pub(crate) fn repo_meta_sqlite(
+        &self,
+        repo: &Repository,
+        doc: &radicle::identity::Doc,
+    ) -> Result<RepoMeta, error::Error> {
+        let aliases = self.profile.aliases();
+        let alias_map: HashMap<NodeId, Alias> = doc
+            .delegates()
+            .iter()
+            .filter_map(|did| {
+                let nid = *did.as_key();
+                aliases.alias(&nid).map(|a| (nid, a))
+            })
+            .collect();
+        let db = &self.profile.database()?;
+        let seeding = db.count(&repo.id()).unwrap_or_default();
+        let issues = self
+            .profile
+            .issues(repo)
+            .ok()
+            .and_then(|i| i.counts().ok())
+            .map(|c| search_repo::IssueCounts {
+                open: c.open,
+                closed: c.closed,
+            });
+        let patches = self
+            .profile
+            .patches(repo)
+            .ok()
+            .and_then(|p| p.counts().ok())
+            .map(|c| search_repo::PatchCounts {
+                open: c.open,
+                draft: c.draft,
+                archived: c.archived,
+                merged: c.merged,
+            });
+        Ok(RepoMeta {
+            seeding,
+            issues,
+            patches,
+            aliases: alias_map,
+        })
+    }
+
+    pub(crate) async fn aliases_for(
+        &self,
+        nids: Vec<NodeId>,
+    ) -> Result<std::collections::HashMap<NodeId, radicle::node::Alias>, error::Error> {
+        match self.source() {
+            crate::Source::Meilisearch => Ok(self
+                .search()
+                .ok_or(error::Error::SearchUnavailable)?
+                .get_aliases(&nids)
+                .await?),
+            crate::Source::Sqlite => {
+                use radicle::node::AliasStore as _;
+                let ctx = self.clone();
+                blocking(move || {
+                    let aliases = ctx.profile.aliases();
+                    Ok(nids
+                        .into_iter()
+                        .filter_map(|nid| aliases.alias(&nid).map(|alias| (nid, alias)))
+                        .collect())
+                })
+                .await
+            }
+        }
+    }
+
+    pub(crate) async fn repo_meta_meili(
+        &self,
+        rid: RepoId,
+    ) -> Result<Option<RepoMeta>, error::Error> {
+        let Some(backend) = self.search() else {
+            return Err(error::Error::SearchUnavailable);
+        };
+        let Some(doc) = backend.get_repo_doc(rid).await? else {
+            return Ok(None);
+        };
+        let nids = unique_nids(doc.delegates.iter().map(|did| *did.as_key()));
+        let aliases = backend.get_aliases(&nids).await?;
+        Ok(Some(meta_from_doc(&doc, aliases)))
+    }
+
+    #[allow(clippy::result_large_err)]
+    pub fn repo_info(
+        &self,
+        repo: &Repository,
+        doc: DocAt,
+        meta: RepoMeta,
+    ) -> Result<repo::Info, error::Error> {
         let DocAt { doc, .. } = doc;
         let rid = repo.id();
 
-        let aliases = self.profile.aliases();
         let delegates = doc
             .delegates()
             .iter()
-            .map(|did| json::Author::new(did).as_json(&aliases))
+            .map(|did| json::Author::new(did).as_json(&meta.aliases))
             .collect::<Vec<_>>();
-        let db = &self.profile.database()?;
-        let seeding = db.count(&rid).unwrap_or_default();
 
         let payloads: BTreeMap<PayloadId, Value> = doc
             .payload()
@@ -176,22 +314,20 @@ impl Context {
             .filter_map(|(id, payload)| {
                 if id == &PayloadId::project() {
                     let (_, head) = repo.head().ok()?;
-                    let patches = self.profile.patches(repo).ok()?;
-                    let patches = patches.counts().ok()?;
-                    let issues = self.profile.issues(repo).ok()?;
-                    let issues = issues.counts().ok()?;
-                    let mut meta = json!({
+                    let issues = meta.issues?;
+                    let patches = meta.patches?;
+                    let mut project_meta = json!({
                         "head": head,
                         "issues": issues,
                         "patches": patches
                     });
-                    add_releases_meta(&mut meta, repo);
+                    add_releases_meta(&mut project_meta, repo);
 
                     Some((
                         id.clone(),
                         json!({
                             "data": payload,
-                            "meta": meta
+                            "meta": project_meta
                         }),
                     ))
                 } else {
@@ -210,7 +346,7 @@ impl Context {
             threshold: doc.threshold(),
             visibility: doc.visibility().clone(),
             rid,
-            seeding,
+            seeding: meta.seeding,
             refs,
             alias: self.repo_alias(&rid),
         })
@@ -256,6 +392,13 @@ fn add_releases_meta(meta: &mut Value, repo: &Repository) {
 /// Without artifact support there is no release store, so the key is omitted.
 #[cfg(not(feature = "artifacts"))]
 fn add_releases_meta(_meta: &mut Value, _repo: &Repository) {}
+
+pub(crate) fn unique_nids(nids: impl IntoIterator<Item = NodeId>) -> Vec<NodeId> {
+    nids.into_iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
 
 /// Run a blocking closure on the blocking thread pool.
 ///
@@ -559,6 +702,71 @@ mod repo {
 mod tests {
     use crate::test;
 
+    #[test]
+    fn meta_from_doc_maps_counts_and_seeding() {
+        use radicle::storage::{ReadRepository as _, ReadStorage as _};
+        use radicle_search::index::repo::{Activity, IssueCounts, PatchCounts};
+        use std::str::FromStr;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed(tmp.path());
+        let rid = radicle::identity::RepoId::from_str(crate::test::RID).unwrap();
+        let repo = ctx.profile().storage.repository(rid).unwrap();
+        let identity = repo.identity_doc().unwrap();
+
+        let doc = radicle_search::index::repo::Document::new(
+            rid,
+            &identity.doc,
+            Activity::empty(),
+            7,
+            IssueCounts { open: 2, closed: 1 },
+            PatchCounts {
+                open: 1,
+                draft: 0,
+                archived: 0,
+                merged: 3,
+            },
+            0,
+        )
+        .unwrap();
+
+        let meta = super::meta_from_doc(&doc, Default::default());
+
+        assert_eq!(meta.seeding, 7);
+        assert_eq!(meta.issues.unwrap().open, 2);
+        assert_eq!(meta.patches.unwrap().merged, 3);
+        assert!(meta.aliases.is_empty());
+    }
+
+    #[test]
+    fn repo_meta_sqlite_drops_project_payload_on_cob_cache_failure() {
+        use radicle::storage::{ReadRepository as _, ReadStorage as _};
+        use std::str::FromStr;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed(tmp.path());
+        let rid = radicle::identity::RepoId::from_str(crate::test::RID).unwrap();
+        let repo = ctx.profile().storage.repository(rid).unwrap();
+        let doc = repo.identity_doc().unwrap();
+
+        let cobs_dir = ctx.profile().home.cobs();
+        for entry in std::fs::read_dir(&cobs_dir).unwrap().flatten() {
+            let name = entry.file_name();
+            if name.to_string_lossy().ends_with(".db") {
+                std::fs::write(entry.path(), b"not a sqlite database").unwrap();
+            }
+        }
+
+        let meta = ctx.repo_meta_sqlite(&repo, &doc.doc).unwrap();
+        assert!(meta.issues.is_none());
+        assert!(meta.patches.is_none());
+
+        let info = ctx.repo_info(&repo, doc, meta).unwrap();
+        assert!(!info
+            .payloads
+            .contains_key(&radicle::identity::doc::PayloadId::project()));
+    }
+
     #[tokio::test]
     async fn test_web_config_accessor() {
         let tmp = tempfile::tempdir().unwrap();
@@ -727,7 +935,8 @@ mod tests {
             let rid = RepoId::from_str(test::RID).unwrap();
 
             let (repo, doc) = ctx.repo(rid).unwrap();
-            let info = ctx.repo_info(&repo, doc).unwrap();
+            let meta = ctx.repo_meta_sqlite(&repo, &doc.doc).unwrap();
+            let info = ctx.repo_info(&repo, doc, meta).unwrap();
 
             assert!(info.refs.tags.is_empty());
             assert!(info.refs.refs.contains_key(r("refs/heads/master")));
