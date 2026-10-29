@@ -65,6 +65,17 @@ pub struct ReleasesQuery {
     pub show_redacted: Option<bool>,
 }
 
+#[cfg(feature = "artifacts")]
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleasesSearchQuery {
+    pub q: Option<String>,
+    pub page: Option<usize>,
+    pub per_page: Option<usize>,
+    pub all_authors: Option<bool>,
+    pub show_redacted: Option<bool>,
+}
+
 #[derive(Default, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub enum IssueStatus {

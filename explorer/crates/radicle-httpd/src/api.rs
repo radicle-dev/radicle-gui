@@ -101,6 +101,7 @@ pub(crate) struct RepoMeta {
     /// payload entry rather than reporting fabricated zero counts.
     pub issues: Option<search_repo::IssueCounts>,
     pub patches: Option<search_repo::PatchCounts>,
+    pub releases: Option<usize>,
     pub aliases: HashMap<NodeId, Alias>,
 }
 
@@ -113,6 +114,7 @@ pub(crate) fn meta_from_doc(
         seeding: doc.seeding_count as usize,
         issues: Some(doc.issue_counts),
         patches: Some(doc.patch_counts),
+        releases: releases_meta(doc.release_count as usize),
         aliases,
     }
 }
@@ -248,6 +250,7 @@ impl Context {
             seeding,
             issues,
             patches,
+            releases: releases_meta(count_releases(repo)),
             aliases: alias_map,
         })
     }
@@ -321,7 +324,9 @@ impl Context {
                         "issues": issues,
                         "patches": patches
                     });
-                    add_releases_meta(&mut project_meta, repo);
+                    if let Some(releases) = meta.releases {
+                        project_meta["releases"] = json!(releases);
+                    }
 
                     Some((
                         id.clone(),
@@ -378,20 +383,28 @@ impl Context {
     }
 }
 
-/// Add the release count to a project payload's `meta` object.
 #[cfg(feature = "artifacts")]
-fn add_releases_meta(meta: &mut Value, repo: &Repository) {
-    let releases = Releases::open(repo)
-        .ok()
-        .and_then(|releases| releases.count().ok())
-        .unwrap_or_default();
-
-    meta["releases"] = json!(releases);
+fn releases_meta(count: usize) -> Option<usize> {
+    Some(count)
 }
 
-/// Without artifact support there is no release store, so the key is omitted.
 #[cfg(not(feature = "artifacts"))]
-fn add_releases_meta(_meta: &mut Value, _repo: &Repository) {}
+fn releases_meta(_count: usize) -> Option<usize> {
+    None
+}
+
+#[cfg(feature = "artifacts")]
+fn count_releases(repo: &Repository) -> usize {
+    Releases::open(repo)
+        .ok()
+        .and_then(|releases| releases.count().ok())
+        .unwrap_or_default()
+}
+
+#[cfg(not(feature = "artifacts"))]
+fn count_releases(_repo: &Repository) -> usize {
+    0
+}
 
 pub(crate) fn unique_nids(nids: impl IntoIterator<Item = NodeId>) -> Vec<NodeId> {
     nids.into_iter()

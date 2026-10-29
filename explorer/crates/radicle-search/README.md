@@ -165,13 +165,13 @@ All via environment variables:
 
 httpd reads a parallel set to decide, at runtime, whether to use the index:
 
-| Variable                      | Default  | Purpose                                                                                                                                                                                          |
-| ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `RADICLE_SEARCH_URL`          | _(none)_ | Meilisearch instance httpd queries. **Unset disables search** — httpd serves listings and search from its storage walk.                                                                          |
-| `RADICLE_SEARCH_KEY`          | _(none)_ | Meilisearch API key.                                                                                                                                                                             |
-| `RADICLE_SEARCH_INDEX_PREFIX` | _(none)_ | Prefix prepended to each index name (e.g. `prod-` → `prod-repos`); must match the daemon's prefix. When unset, index names are `repos`, `issues`, `patches`, etc.                                |
-| `RADICLE_SEARCH_TIMEOUT_MS`   | `500`    | Per-query timeout in milliseconds (must be a non-zero integer).                                                                                                                                  |
-| `RADICLE_HTTPD_SOURCE`        | `sqlite` | Data source for derived state: `sqlite` (default) or `meilisearch`. In meilisearch mode httpd reads only git storage and the six indexes; SQLite is never opened; requires `RADICLE_SEARCH_URL`. |
+| Variable                      | Default  | Purpose                                                                                                                                                                                            |
+| ----------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RADICLE_SEARCH_URL`          | _(none)_ | Meilisearch instance httpd queries. **Unset disables search** — httpd serves listings and search from its storage walk.                                                                            |
+| `RADICLE_SEARCH_KEY`          | _(none)_ | Meilisearch API key.                                                                                                                                                                               |
+| `RADICLE_SEARCH_INDEX_PREFIX` | _(none)_ | Prefix prepended to each index name (e.g. `prod-` → `prod-repos`); must match the daemon's prefix. When unset, index names are `repos`, `issues`, `patches`, etc.                                  |
+| `RADICLE_SEARCH_TIMEOUT_MS`   | `500`    | Per-query timeout in milliseconds (must be a non-zero integer).                                                                                                                                    |
+| `RADICLE_HTTPD_SOURCE`        | `sqlite` | Data source for derived state: `sqlite` (default) or `meilisearch`. In meilisearch mode httpd reads only git storage and the seven indexes; SQLite is never opened; requires `RADICLE_SEARCH_URL`. |
 
 Use the same URL and key in both processes. A single `radicle-httpd` binary
 handles both modes — no build-time feature flag is involved. In the default
@@ -184,7 +184,7 @@ the backend recovers.
 
 Earlier versions exposed a single `RADICLE_SEARCH_INDEX_NAME` variable for the
 repos index. That variable is now `RADICLE_SEARCH_INDEX_PREFIX`, and both
-`radicle-search` and `radicle-httpd` use it to reference all six indexes.
+`radicle-search` and `radicle-httpd` use it to reference all seven indexes.
 
 If you were running with a non-default index name (e.g.
 `RADICLE_SEARCH_INDEX_NAME=my-repos`), update as follows:

@@ -1,6 +1,6 @@
 mod job;
 #[cfg(feature = "artifacts")]
-mod releases;
+pub(crate) mod releases;
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -65,6 +65,10 @@ pub fn router(ctx: Context) -> Router {
     #[cfg(feature = "artifacts")]
     let router = router
         .route("/repos/{rid}/releases", get(releases::list_handler))
+        .route(
+            "/repos/{rid}/releases/search",
+            get(releases::search_handler),
+        )
         .route("/repos/{rid}/releases/{id}", get(releases::get_handler));
 
     router
@@ -1833,6 +1837,7 @@ mod routes {
 
     use crate::test::*;
 
+    #[cfg(feature = "artifacts")]
     #[tokio::test]
     async fn test_repos_root() {
         let tmp = tempfile::tempdir().unwrap();
@@ -2256,6 +2261,7 @@ mod routes {
         assert_eq!(body.as_array().unwrap().len(), 0);
     }
 
+    #[cfg(feature = "artifacts")]
     #[tokio::test]
     async fn test_repos() {
         let tmp = tempfile::tempdir().unwrap();
@@ -2306,6 +2312,7 @@ mod routes {
         );
     }
 
+    #[cfg(feature = "artifacts")]
     #[tokio::test]
     async fn test_repo_meili_mode_matches_sqlite_shape() {
         let tmp = tempfile::tempdir().unwrap();
@@ -2341,6 +2348,54 @@ mod routes {
               "seeding": 1,
               "refs": { "tags": {}, "refs": { "refs/heads/master": HEAD } }
             })
+        );
+    }
+
+    #[cfg(feature = "artifacts")]
+    #[tokio::test]
+    async fn test_repo_meili_mode_release_count_comes_from_the_doc() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = crate::test::seed_meili_with(tmp.path(), |fake, _doc| {
+            fake.repos[0].release_count = 3;
+        });
+        let app =
+            super::router(ctx).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 8080))));
+
+        let response = get(&app, format!("/repos/{RID}")).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.json().await;
+        assert_eq!(
+            body["payloads"]["xyz.radicle.project"]["meta"]["releases"],
+            json!(3)
+        );
+    }
+
+    #[cfg(feature = "artifacts")]
+    #[tokio::test]
+    async fn test_repo_sqlite_mode_release_count_counts_cobs() {
+        use radicle::crypto::{Seed, SigningKey};
+        use radicle::storage::WriteStorage as _;
+        use radicle_artifact::Releases;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = seed(tmp.path());
+        {
+            let signer = SigningKey::from_seed(Seed::new([0xff; 32]));
+            let rid: radicle::identity::RepoId = RID.parse().unwrap();
+            let repo = ctx.profile().storage.repository_mut(rid).unwrap();
+            let oid: radicle::git::Oid = HEAD.parse().unwrap();
+            let mut releases = Releases::open(&repo).unwrap();
+            releases.create(oid, None, &signer).unwrap();
+        }
+        let app = super::router(ctx);
+
+        let response = get(&app, format!("/repos/{RID}")).await;
+
+        let body = response.json().await;
+        assert_eq!(
+            body["payloads"]["xyz.radicle.project"]["meta"]["releases"],
+            json!(1)
         );
     }
 

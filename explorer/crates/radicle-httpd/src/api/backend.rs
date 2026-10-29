@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use radicle::identity::{Did, RepoId};
 use radicle::node::policy::{SeedPolicy, SeedingPolicy};
 use radicle::node::{Alias, NodeId};
-use radicle_search::index::{cob, node, repo};
-use radicle_search::query::{CobKind, SearchClient, SearchError, SortField};
+use radicle_search::index::{cob, node, release, repo};
+use radicle_search::query::{CobKind, ReleaseView, SearchClient, SearchError, SortField};
 
 /// The search backend httpd reads from. In production this is always the
 /// Meilisearch client; tests substitute an in-memory fake so handlers can
@@ -123,6 +123,54 @@ impl Backend {
         }
     }
 
+    #[cfg_attr(not(feature = "artifacts"), allow(dead_code))]
+    pub async fn list_releases(
+        &self,
+        rid: RepoId,
+        view: ReleaseView,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<release::Document>, SearchError> {
+        match self {
+            Self::Meili(c) => c.list_releases(rid, view, offset, limit).await,
+            #[cfg(test)]
+            Self::Fake(f) => Ok(f.list_releases(rid, view, offset, limit)),
+        }
+    }
+
+    #[cfg_attr(not(feature = "artifacts"), allow(dead_code))]
+    pub async fn get_release(
+        &self,
+        rid: RepoId,
+        oid: &str,
+    ) -> Result<Option<release::Document>, SearchError> {
+        match self {
+            Self::Meili(c) => c.get_release(rid, oid).await,
+            #[cfg(test)]
+            Self::Fake(f) => Ok(f
+                .releases
+                .iter()
+                .find(|d| d.rid == rid && d.cob_id == oid)
+                .cloned()),
+        }
+    }
+
+    #[cfg_attr(not(feature = "artifacts"), allow(dead_code))]
+    pub async fn search_releases(
+        &self,
+        rid: RepoId,
+        q: &str,
+        view: ReleaseView,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<release::Document>, SearchError> {
+        match self {
+            Self::Meili(c) => c.search_releases(rid, q, view, offset, limit).await,
+            #[cfg(test)]
+            Self::Fake(f) => Ok(f.search_releases(rid, q, view, offset, limit)),
+        }
+    }
+
     pub async fn get_policy(&self, rid: RepoId) -> Result<Option<SeedingPolicy>, SearchError> {
         match self {
             Self::Meili(c) => c.get_policy(rid).await,
@@ -184,6 +232,7 @@ pub(crate) mod fake {
         pub repos: Vec<repo::Document>,
         pub issues: Vec<cob::Document>,
         pub patches: Vec<cob::Document>,
+        pub releases: Vec<release::Document>,
         pub nodes: Vec<node::Document>,
         pub policies: Vec<(RepoId, SeedingPolicy)>,
         pub inventory: HashMap<NodeId, Vec<RepoId>>,
@@ -243,6 +292,161 @@ pub(crate) mod fake {
                 .collect();
             docs.sort_by_key(|d| std::cmp::Reverse(d.timestamp));
             docs.into_iter().skip(offset).take(limit).collect()
+        }
+
+        fn release_in_view(doc: &release::Document, view: ReleaseView) -> bool {
+            (view.all_authors || doc.creator_is_delegate) && (view.show_redacted || !doc.redacted)
+        }
+
+        fn release_text_fields(doc: &release::Document) -> Vec<String> {
+            let mut fields: Vec<String> = Vec::new();
+            fields.extend(doc.title.clone());
+            fields.extend(doc.tag_name.clone());
+            fields.push(doc.description.clone());
+            fields.extend(doc.artifact_names.iter().cloned());
+            fields.extend(doc.artifact_urls.iter().cloned());
+            fields.extend(doc.dids.iter().map(|did| did.to_string()));
+            fields
+        }
+
+        pub fn list_releases(
+            &self,
+            rid: RepoId,
+            view: ReleaseView,
+            offset: usize,
+            limit: usize,
+        ) -> Vec<release::Document> {
+            let mut docs: Vec<release::Document> = self
+                .releases
+                .iter()
+                .filter(|d| d.rid == rid && Self::release_in_view(d, view))
+                .cloned()
+                .collect();
+            docs.sort_by_key(|d| std::cmp::Reverse(d.timestamp));
+            docs.into_iter().skip(offset).take(limit).collect()
+        }
+
+        pub fn search_releases(
+            &self,
+            rid: RepoId,
+            q: &str,
+            view: ReleaseView,
+            offset: usize,
+            limit: usize,
+        ) -> Vec<release::Document> {
+            self.list_releases(rid, view, 0, usize::MAX)
+                .into_iter()
+                .filter(|d| {
+                    let fields = Self::release_text_fields(d);
+                    release::text_matches(q, fields.iter().map(String::as_str))
+                })
+                .skip(offset)
+                .take(limit)
+                .collect()
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::str::FromStr;
+
+        fn doc(
+            cob_id: &str,
+            timestamp: i64,
+            creator_is_delegate: bool,
+            redacted: bool,
+        ) -> release::Document {
+            let rid = RepoId::from_str("rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp").unwrap();
+            release::Document {
+                v: radicle_search::index::SCHEMA_VERSION,
+                id: radicle_search::index::cob::doc_id(rid, cob_id),
+                rid,
+                cob_id: cob_id.to_string(),
+                timestamp,
+                title: Some(format!("release {cob_id}")),
+                tag_name: None,
+                description: String::new(),
+                artifact_names: vec![format!("bin-{cob_id}")],
+                artifact_urls: vec![],
+                dids: vec![],
+                creator_is_delegate,
+                redacted,
+                cob: "{}".to_string(),
+            }
+        }
+
+        #[test]
+        fn fake_release_listing_applies_view_and_orders_newest_first() {
+            let rid = RepoId::from_str("rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp").unwrap();
+            let fake = Fake {
+                releases: vec![
+                    doc("aa", 1, true, false),
+                    doc("bb", 3, false, false),
+                    doc("cc", 2, true, true),
+                ],
+                ..Default::default()
+            };
+
+            let ids = |docs: Vec<release::Document>| {
+                docs.into_iter().map(|d| d.cob_id).collect::<Vec<_>>()
+            };
+            assert_eq!(
+                ids(fake.list_releases(rid, ReleaseView::default(), 0, 10)),
+                vec!["aa"]
+            );
+            assert_eq!(
+                ids(fake.list_releases(
+                    rid,
+                    ReleaseView {
+                        all_authors: true,
+                        show_redacted: false
+                    },
+                    0,
+                    10
+                )),
+                vec!["bb", "aa"]
+            );
+            assert_eq!(
+                ids(fake.list_releases(
+                    rid,
+                    ReleaseView {
+                        all_authors: true,
+                        show_redacted: true
+                    },
+                    0,
+                    10
+                )),
+                vec!["bb", "cc", "aa"]
+            );
+            assert_eq!(
+                ids(fake.list_releases(
+                    rid,
+                    ReleaseView {
+                        all_authors: true,
+                        show_redacted: true
+                    },
+                    1,
+                    1
+                )),
+                vec!["cc"]
+            );
+        }
+
+        #[test]
+        fn fake_release_search_matches_text_fields_within_the_view() {
+            let rid = RepoId::from_str("rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp").unwrap();
+            let fake = Fake {
+                releases: vec![doc("aa", 1, true, false), doc("bb", 2, false, false)],
+                ..Default::default()
+            };
+
+            let hits = fake.search_releases(rid, "BIN-AA", ReleaseView::default(), 0, 10);
+            assert_eq!(hits.len(), 1);
+            assert_eq!(hits[0].cob_id, "aa");
+            assert!(fake
+                .search_releases(rid, "bin-bb", ReleaseView::default(), 0, 10)
+                .is_empty());
         }
     }
 }

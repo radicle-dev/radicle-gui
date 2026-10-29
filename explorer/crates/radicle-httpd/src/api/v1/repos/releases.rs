@@ -5,48 +5,56 @@ use serde_json::{json, Value};
 
 use radicle::git::Oid;
 use radicle::identity::doc::Delegates;
+use radicle::identity::RepoId;
 use radicle::node::AliasStore;
 use radicle::storage::git::Repository;
 
-use radicle_artifact::display::{CommitTitle, TagName};
 use radicle_artifact::{cache_db_path, Artifact, Cid, Release, ReleaseId, Releases};
 use radicle_search::index::release;
+use radicle_search::query::ReleaseView;
 
 use crate::api;
 use crate::api::error::Error;
 use crate::api::json::Author;
-use crate::api::query::{ReleasesQuery, MAX_PER_PAGE};
+use crate::api::query::{ReleasesQuery, ReleasesSearchQuery, MAX_PER_PAGE, MAX_QUERY_LEN};
 use crate::api::Context;
 use crate::axum_extra::{Path, Query};
 
-/// Default number of releases returned per page.
-const DEFAULT_PER_PAGE: usize = 30;
+pub(crate) const DEFAULT_PER_PAGE: usize = 30;
 
-/// How far the caller widened the default, delegate-scoped release view.
-#[derive(Clone, Copy)]
-struct Filter {
-    /// Include releases and artifacts authored by non-delegates.
-    all_authors: bool,
-    /// Include artifacts redacted by their author or a delegate.
-    show_redacted: bool,
+fn view_from(all_authors: Option<bool>, show_redacted: Option<bool>) -> ReleaseView {
+    ReleaseView {
+        all_authors: all_authors.unwrap_or(false),
+        show_redacted: show_redacted.unwrap_or(false),
+    }
 }
 
-impl Filter {
-    /// Whether an artifact is shown under this view: authored by a delegate
-    /// (or `all_authors`), and not redacted by its author or a delegate (or
-    /// `show_redacted`).
-    fn show_artifact(&self, artifact: &Artifact, delegates: &Delegates) -> bool {
-        (self.all_authors || delegates.contains(artifact.author()))
-            && (self.show_redacted || !release::redacted_by_trusted(artifact, delegates))
-    }
+fn show_artifact(view: ReleaseView, artifact: &Artifact, delegates: &Delegates) -> bool {
+    (view.all_authors || delegates.contains(artifact.author()))
+        && (view.show_redacted || !release::redacted_by_trusted(artifact, delegates))
+}
 
-    /// Whether a release is shown under this view: created by a delegate (or
-    /// `all_authors`), and not left with all of its artifacts redacted by a
-    /// trusted party (or `show_redacted`).
-    fn show_release(&self, release: &Release, delegates: &Delegates) -> bool {
-        (self.all_authors || delegates.contains(release.creator()))
-            && (self.show_redacted || !release::fully_redacted(release, delegates))
-    }
+pub(crate) fn in_view(release: &Release, view: ReleaseView, delegates: &Delegates) -> bool {
+    (view.all_authors || delegates.contains(release.creator()))
+        && (view.show_redacted || !release::fully_redacted(release, delegates))
+}
+
+fn releases_in_view(
+    repo: &Repository,
+    cache: std::path::PathBuf,
+    view: ReleaseView,
+    delegates: &Delegates,
+) -> Result<Vec<(ReleaseId, Release)>, Error> {
+    let mut releases: Vec<(ReleaseId, Release)> = Releases::open_cached(repo, cache)?
+        .all()?
+        .into_iter()
+        .filter_map(|r| {
+            let (id, release) = r.ok()?;
+            in_view(&release, view, delegates).then_some((ReleaseId::from(id), release))
+        })
+        .collect();
+    releases.sort_by_key(|(_, release)| std::cmp::Reverse(release.timestamp()));
+    Ok(releases)
 }
 
 /// Serialize a single artifact. Locations are flattened across contributors
@@ -83,30 +91,19 @@ fn artifact_json(cid: &Cid, artifact: &Artifact, aliases: &impl AliasStore) -> V
     })
 }
 
-/// Serialize a release. The COB has no title field: it is resolved from the
-/// tag message when a tag is linked, otherwise the commit summary. `filter`
-/// omits the artifacts hidden under the current view; `None` keeps all of
-/// them, as a release fetched by id does.
-fn release_json(
+pub(crate) fn release_json(
     id: ReleaseId,
     release: &Release,
-    repo: &Repository,
+    title: Option<String>,
+    tag_name: Option<String>,
     aliases: &impl AliasStore,
     delegates: &Delegates,
-    filter: Option<Filter>,
+    view: Option<ReleaseView>,
 ) -> Value {
-    let title = release
-        .tag()
-        .and_then(|tag| repo.title(tag))
-        .or_else(|| repo.title(release.oid()));
-    let tag_name = release.tag().and_then(|tag| repo.tag_name(tag));
-
     let artifacts = release
         .artifacts()
         .iter()
-        .filter(|(_, artifact)| {
-            filter.is_none_or(|filter| filter.show_artifact(artifact, delegates))
-        })
+        .filter(|(_, artifact)| view.is_none_or(|view| show_artifact(view, artifact, delegates)))
         .map(|(cid, artifact)| artifact_json(cid, artifact, aliases))
         .collect::<Vec<_>>();
 
@@ -122,6 +119,53 @@ fn release_json(
     })
 }
 
+fn from_doc(doc: &release::Document) -> Result<(ReleaseId, Release), Error> {
+    let oid: Oid = doc.cob_id.parse().map_err(|e| {
+        tracing::error!(
+            "release {} has unparsable cob id {}: {e}",
+            doc.id,
+            doc.cob_id
+        );
+        Error::SearchUnavailable
+    })?;
+    let release: Release = serde_json::from_str(&doc.cob).map_err(|e| {
+        tracing::error!("release {} failed to deserialize: {e}", doc.id);
+        Error::SearchUnavailable
+    })?;
+    Ok((ReleaseId::from(oid), release))
+}
+
+pub(crate) async fn serialize_docs(
+    ctx: &Context,
+    rid: RepoId,
+    docs: Vec<release::Document>,
+    view: Option<ReleaseView>,
+) -> Result<Vec<Value>, Error> {
+    let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
+    let nids = api::unique_nids(
+        docs.iter()
+            .flat_map(|d| d.dids.iter().map(|did| *did.as_key())),
+    );
+    let aliases = backend.get_aliases(&nids).await?;
+    let delegates = {
+        let ctx = ctx.clone();
+        api::blocking(move || {
+            let (_, doc) = ctx.repo(rid)?;
+            Ok::<_, Error>(doc.delegates().clone())
+        })
+        .await?
+    };
+    Ok(docs
+        .into_iter()
+        .filter_map(|d| {
+            let (id, release) = from_doc(&d).ok()?;
+            Some(release_json(
+                id, &release, d.title, d.tag_name, &aliases, &delegates, view,
+            ))
+        })
+        .collect())
+}
+
 /// Get repo releases list, newest first.
 /// `GET /repos/:rid/releases`
 ///
@@ -129,95 +173,229 @@ fn release_json(
 /// delegate (hiding those redacted by a trusted party) unless widened with
 /// `allAuthors=true` / `showRedacted=true`. A release whose artifacts were all
 /// redacted is hidden with them.
-pub async fn list_handler(
+pub(super) async fn list_handler(
     State(ctx): State<Context>,
     Path(rid): Path<String>,
     Query(qs): Query<ReleasesQuery>,
 ) -> impl IntoResponse {
     let rid = ctx.resolve_repo(&rid)?;
-    let releases = api::blocking(move || {
-        let (repo, doc) = ctx.repo(rid)?;
-        let delegates = doc.delegates();
-        let aliases = ctx.profile.aliases();
-        let ReleasesQuery {
-            page,
-            per_page,
-            all_authors,
-            show_redacted,
-        } = qs;
-        let page = page.unwrap_or(0);
-        let per_page = per_page.unwrap_or(DEFAULT_PER_PAGE).min(MAX_PER_PAGE);
-        let filter = Filter {
-            all_authors: all_authors.unwrap_or(false),
-            show_redacted: show_redacted.unwrap_or(false),
-        };
+    let ReleasesQuery {
+        page,
+        per_page,
+        all_authors,
+        show_redacted,
+    } = qs;
+    let page = page.unwrap_or(0);
+    let per_page = per_page.unwrap_or(DEFAULT_PER_PAGE).min(MAX_PER_PAGE);
+    let view = view_from(all_authors, show_redacted);
 
-        // Read through the SQLite cache; it self-warms on read and is shared
-        // with other release reads on this node.
-        let cache = cache_db_path(ctx.profile.cobs());
-        let mut releases: Vec<_> = Releases::open_cached(&repo, cache)?
-            .all()?
-            .into_iter()
-            .filter_map(|r| {
-                let (id, release) = r.ok()?;
-                filter
-                    .show_release(&release, delegates)
-                    .then_some((id, release))
+    let releases = match ctx.source() {
+        crate::Source::Meilisearch => {
+            let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
+            let docs = backend
+                .list_releases(rid, view, page.saturating_mul(per_page), per_page)
+                .await?;
+            serialize_docs(&ctx, rid, docs, Some(view)).await?
+        }
+        crate::Source::Sqlite => {
+            api::blocking(move || {
+                let (repo, doc) = ctx.repo(rid)?;
+                let delegates = doc.delegates();
+                let aliases = ctx.profile.aliases();
+
+                // Read through the SQLite cache; it self-warms on read and is shared
+                // with other release reads on this node.
+                let cache = cache_db_path(ctx.profile.cobs());
+                let releases = releases_in_view(&repo, cache, view, delegates)?;
+
+                Ok::<_, Error>(
+                    releases
+                        .into_iter()
+                        .skip(page.saturating_mul(per_page))
+                        .take(per_page)
+                        .map(|(id, release)| {
+                            let text = release::text(&repo, &release);
+                            release_json(
+                                id,
+                                &release,
+                                text.title,
+                                text.tag_name,
+                                &aliases,
+                                delegates,
+                                Some(view),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                )
             })
-            .collect();
-        releases.sort_by_key(|(_, release)| std::cmp::Reverse(release.timestamp()));
+            .await?
+        }
+    };
 
-        Ok::<_, Error>(
-            releases
-                .into_iter()
-                .skip(page.saturating_mul(per_page))
-                .take(per_page)
-                .map(|(id, release)| {
-                    release_json(
-                        ReleaseId::from(id),
-                        &release,
-                        &repo,
-                        &aliases,
-                        delegates,
-                        Some(filter),
-                    )
-                })
-                .collect::<Vec<_>>(),
-        )
-    })
-    .await?;
-
-    Ok::<_, Error>(Json(releases))
+    Ok::<_, Error>(Json(json!(releases)))
 }
 
 /// Get a single repo release by id, with all its artifacts.
 /// `GET /repos/:rid/releases/:id`
-pub async fn get_handler(
+pub(super) async fn get_handler(
     State(ctx): State<Context>,
     Path((rid, release_id)): Path<(String, Oid)>,
 ) -> impl IntoResponse {
     let rid = ctx.resolve_repo(&rid)?;
-    let value = api::blocking(move || {
+
+    let value = match ctx.source() {
+        crate::Source::Meilisearch => {
+            let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
+            let doc = backend
+                .get_release(rid, &release_id.to_string())
+                .await?
+                .ok_or(Error::NotFound)?;
+            from_doc(&doc)?;
+            let mut releases = serialize_docs(&ctx, rid, vec![doc], None).await?;
+            releases.pop().ok_or(Error::NotFound)?
+        }
+        crate::Source::Sqlite => {
+            api::blocking(move || {
+                let (repo, doc) = ctx.repo(rid)?;
+                let delegates = doc.delegates();
+                let aliases = ctx.profile.aliases();
+                let cache = cache_db_path(ctx.profile.cobs());
+                let release = Releases::open_cached(&repo, cache)?
+                    .get(&ReleaseId::from(release_id))?
+                    .ok_or(Error::NotFound)?;
+                let text = release::text(&repo, &release);
+
+                Ok::<_, Error>(release_json(
+                    ReleaseId::from(release_id),
+                    &release,
+                    text.title,
+                    text.tag_name,
+                    &aliases,
+                    delegates,
+                    None,
+                ))
+            })
+            .await?
+        }
+    };
+
+    Ok::<_, Error>(Json(value))
+}
+
+/// Search a repo's releases.
+/// `GET /repos/:rid/releases/search`
+pub(super) async fn search_handler(
+    State(ctx): State<Context>,
+    Path(rid): Path<String>,
+    Query(qs): Query<ReleasesSearchQuery>,
+) -> impl IntoResponse {
+    let rid = ctx.resolve_repo(&rid)?;
+    let q: String =
+        qs.q.unwrap_or_default()
+            .chars()
+            .take(MAX_QUERY_LEN)
+            .collect();
+    let page = qs.page.unwrap_or(0);
+    let per_page = qs.per_page.unwrap_or(DEFAULT_PER_PAGE).min(MAX_PER_PAGE);
+    let view = view_from(qs.all_authors, qs.show_redacted);
+    let offset = page.saturating_mul(per_page);
+
+    let releases = match ctx.source() {
+        crate::Source::Meilisearch => {
+            let backend = ctx.search().ok_or(Error::SearchUnavailable)?;
+            let docs = backend
+                .search_releases(rid, &q, view, offset, per_page)
+                .await?;
+            serialize_docs(&ctx, rid, docs, Some(view)).await?
+        }
+        crate::Source::Sqlite => {
+            if let Some(backend) = ctx.search() {
+                match backend
+                    .search_releases(rid, &q, view, offset, per_page)
+                    .await
+                {
+                    Ok(docs) => match serialize_docs(&ctx, rid, docs, Some(view)).await {
+                        Ok(releases) => return Ok::<_, Error>(Json(json!(releases))),
+                        Err(e) => tracing::warn!(
+                            "release search backend failed, falling back to storage walk ({e:?})"
+                        ),
+                    },
+                    Err(e) => tracing::warn!(
+                        "release search backend failed, falling back to storage walk ({e:#})"
+                    ),
+                }
+            }
+            storage_search(ctx, rid, q, view, offset, per_page).await?
+        }
+    };
+    Ok::<_, Error>(Json(json!(releases)))
+}
+
+fn search_fields(release: &Release, text: &release::Text) -> Vec<String> {
+    let mut fields: Vec<String> = Vec::new();
+    fields.extend(text.title.clone());
+    fields.extend(text.tag_name.clone());
+    fields.push(text.description.clone());
+    for artifact in release.artifacts().values() {
+        fields.push(artifact.name().to_string());
+        fields.extend(
+            artifact
+                .locations()
+                .values()
+                .flatten()
+                .map(|u| u.to_string()),
+        );
+    }
+    fields.extend(
+        release::participants(release)
+            .iter()
+            .map(|did| did.to_string()),
+    );
+    fields
+}
+
+async fn storage_search(
+    ctx: Context,
+    rid: RepoId,
+    q: String,
+    view: ReleaseView,
+    offset: usize,
+    per_page: usize,
+) -> Result<Vec<Value>, Error> {
+    api::blocking(move || {
         let (repo, doc) = ctx.repo(rid)?;
         let delegates = doc.delegates();
         let aliases = ctx.profile.aliases();
         let cache = cache_db_path(ctx.profile.cobs());
-        let release = Releases::open_cached(&repo, cache)?
-            .get(&ReleaseId::from(release_id))?
-            .ok_or(Error::NotFound)?;
 
-        Ok::<_, Error>(release_json(
-            ReleaseId::from(release_id),
-            &release,
-            &repo,
-            &aliases,
-            delegates,
-            None,
-        ))
+        Ok::<_, Error>(
+            releases_in_view(&repo, cache, view, delegates)?
+                .into_iter()
+                .map(|(id, release)| {
+                    let text = release::text(&repo, &release);
+                    (id, release, text)
+                })
+                .filter(|(_, release, text)| {
+                    let fields = search_fields(release, text);
+                    release::text_matches(&q, fields.iter().map(String::as_str))
+                })
+                .skip(offset)
+                .take(per_page)
+                .map(|(id, release, text)| {
+                    release_json(
+                        id,
+                        &release,
+                        text.title,
+                        text.tag_name,
+                        &aliases,
+                        delegates,
+                        Some(view),
+                    )
+                })
+                .collect(),
+        )
     })
-    .await?;
-
-    Ok::<_, Error>(Json(value))
+    .await
 }
 
 #[cfg(test)]
@@ -231,14 +409,17 @@ mod routes {
     use pretty_assertions::assert_eq;
     use serde_json::json;
 
+    use radicle::cob::ObjectId;
     use radicle::crypto::{Seed, SigningKey};
     use radicle::git::Oid;
     use radicle::identity::RepoId;
-    use radicle::storage::WriteStorage;
+    use radicle::storage::{ReadStorage, WriteStorage};
 
     use radicle_artifact::{Cid, Releases};
+    use radicle_search::index::release;
     use url::Url;
 
+    use crate::api::backend::Backend;
     use crate::api::Context;
     use crate::test::{get, seed, DID, HEAD, RID};
 
@@ -277,6 +458,155 @@ mod routes {
             .unwrap();
 
         release.id().oid().to_string()
+    }
+
+    fn create_release_entry(
+        ctx: &Context,
+        signer_seed: [u8; 32],
+    ) -> (ObjectId, radicle_artifact::Release) {
+        let id = create_release(ctx, signer_seed);
+        let rid = RepoId::from_str(RID).unwrap();
+        let repo = ctx.profile().storage.repository(rid).unwrap();
+        let oid = Oid::from_str(&id).unwrap();
+        let release = Releases::open(&repo)
+            .unwrap()
+            .get(&radicle_artifact::ReleaseId::from(oid))
+            .unwrap()
+            .unwrap();
+        (ObjectId::from(oid), release)
+    }
+
+    fn release_doc(
+        ctx: &Context,
+        id: &ObjectId,
+        release: &radicle_artifact::Release,
+    ) -> release::Document {
+        let rid = RepoId::from_str(RID).unwrap();
+        let repo = ctx.profile().storage.repository(rid).unwrap();
+        let doc_at = radicle::storage::ReadRepository::identity_doc(&repo).unwrap();
+        release::Document::new(
+            rid,
+            id,
+            release,
+            release::text(&repo, release),
+            doc_at.delegates(),
+        )
+        .unwrap()
+    }
+
+    fn seed_meili_releases(dir: &std::path::Path, seeds: &[[u8; 32]]) -> (Context, Vec<String>) {
+        let mut ctx = crate::test::seed_meili(dir);
+        let mut ids = Vec::new();
+        let mut fake = match ctx.search() {
+            Some(Backend::Fake(fake)) => fake.clone(),
+            _ => unreachable!("seed_meili installs a fake backend"),
+        };
+        for seed in seeds {
+            let (id, release) = create_release_entry(&ctx, *seed);
+            fake.releases.push(release_doc(&ctx, &id, &release));
+            ids.push(id.to_string());
+        }
+        fake.repos[0].release_count = seeds.len() as u64;
+        ctx.set_search_backend(crate::Source::Meilisearch, Backend::Fake(fake));
+        (ctx, ids)
+    }
+
+    #[tokio::test]
+    async fn test_meili_releases_list_matches_sqlite_shape() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, ids) = seed_meili_releases(tmp.path(), &[DELEGATE_SEED]);
+        let app = app(ctx);
+
+        let response = get(&app, format!("/repos/{RID}/releases")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let mut body = response.json().await;
+        assert!(body[0]["createdAt"].as_u64().unwrap() > 0);
+        body[0]["createdAt"].take();
+
+        assert_eq!(
+            body,
+            json!([{
+                "id": ids[0],
+                "oid": HEAD,
+                "tag": null,
+                "tagName": null,
+                "title": "Add another folder",
+                "createdAt": null,
+                "creator": { "id": DID, "alias": "seed" },
+                "artifacts": [{
+                    "cid": CID,
+                    "name": "linux-amd64",
+                    "author": { "id": DID, "alias": "seed" },
+                    "locations": [
+                        { "user": { "id": DID, "alias": "seed" }, "url": LOCATION }
+                    ],
+                    "attestations": [],
+                    "redactions": [],
+                    "metadata": {},
+                }],
+            }])
+        );
+    }
+
+    #[tokio::test]
+    async fn test_meili_releases_list_applies_view_flags() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, _) = seed_meili_releases(tmp.path(), &[NON_DELEGATE_SEED]);
+        let app = app(ctx);
+
+        let response = get(&app, format!("/repos/{RID}/releases")).await;
+        assert_eq!(response.json().await, json!([]));
+
+        let response = get(&app, format!("/repos/{RID}/releases?allAuthors=true")).await;
+        assert_eq!(response.json().await.as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_meili_release_by_id_and_not_found() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, ids) = seed_meili_releases(tmp.path(), &[DELEGATE_SEED]);
+        let app = app(ctx);
+
+        let response = get(&app, format!("/repos/{RID}/releases/{}", ids[0])).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.json().await;
+        assert_eq!(body["id"], json!(ids[0]));
+        assert_eq!(body["title"], json!("Add another folder"));
+        assert_eq!(body["artifacts"][0]["cid"], json!(CID));
+
+        let response = get(
+            &app,
+            format!("/repos/{RID}/releases/ffffffffffffffffffffffffffffffffffffffff"),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_meili_release_corrupt_doc_is_skipped_in_lists_and_503_by_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (mut ctx, ids) = seed_meili_releases(tmp.path(), &[DELEGATE_SEED, NON_DELEGATE_SEED]);
+        let mut fake = match ctx.search() {
+            Some(Backend::Fake(fake)) => fake.clone(),
+            _ => unreachable!("seed_meili_releases installs a fake backend"),
+        };
+        fake.releases[1].cob = "not json".to_string();
+        ctx.set_search_backend(crate::Source::Meilisearch, Backend::Fake(fake));
+        let app = app(ctx);
+
+        let response = get(&app, format!("/repos/{RID}/releases?allAuthors=true")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.json().await;
+        let listed: Vec<&str> = body
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|release| release["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(listed, vec![ids[0].as_str()]);
+
+        let response = get(&app, format!("/repos/{RID}/releases/{}", ids[1])).await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]
@@ -496,5 +826,74 @@ mod routes {
         assert_eq!(response.status(), StatusCode::OK);
         let len = response.json().await.as_array().unwrap().len();
         assert!(len <= crate::api::query::MAX_PER_PAGE);
+    }
+
+    #[tokio::test]
+    async fn test_meili_release_search_hits_text_and_dids() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, ids) = seed_meili_releases(tmp.path(), &[DELEGATE_SEED]);
+        let app = app(ctx);
+
+        for q in ["amd64", "another%20folder", "example.com", DID] {
+            let response = get(&app, format!("/repos/{RID}/releases/search?q={q}")).await;
+            assert_eq!(response.status(), StatusCode::OK, "query {q}");
+            let body = response.json().await;
+            assert_eq!(body.as_array().unwrap().len(), 1, "query {q}");
+            assert_eq!(body[0]["id"], json!(ids[0]), "query {q}");
+        }
+
+        let response = get(&app, format!("/repos/{RID}/releases/search?q=windows")).await;
+        assert_eq!(response.json().await, json!([]));
+    }
+
+    #[tokio::test]
+    async fn test_meili_release_search_respects_the_view() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (ctx, _) = seed_meili_releases(tmp.path(), &[NON_DELEGATE_SEED]);
+        let app = app(ctx);
+
+        let response = get(&app, format!("/repos/{RID}/releases/search?q=amd64")).await;
+        assert_eq!(response.json().await, json!([]));
+
+        let response = get(
+            &app,
+            format!("/repos/{RID}/releases/search?q=amd64&allAuthors=true"),
+        )
+        .await;
+        assert_eq!(response.json().await.as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_release_search_walks_storage() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = seed(tmp.path());
+        let id = create_release(&ctx, DELEGATE_SEED);
+        let app = app(ctx);
+
+        for q in ["AMD64", "another folder", DID] {
+            let response = get(
+                &app,
+                format!("/repos/{RID}/releases/search?q={}", q.replace(' ', "%20")),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::OK, "query {q}");
+            let body = response.json().await;
+            assert_eq!(body.as_array().unwrap().len(), 1, "query {q}");
+            assert_eq!(body[0]["id"], json!(id), "query {q}");
+        }
+
+        let response = get(&app, format!("/repos/{RID}/releases/search?q=windows")).await;
+        assert_eq!(response.json().await, json!([]));
+    }
+
+    #[tokio::test]
+    async fn test_release_search_route_wins_over_release_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = app(seed(tmp.path()));
+
+        let response = get(&app, format!("/repos/{RID}/releases/search")).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.json().await, json!([]));
     }
 }

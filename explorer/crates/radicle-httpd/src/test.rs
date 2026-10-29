@@ -187,6 +187,7 @@ pub fn seed_meili_with(
         repos: vec![repo_doc],
         issues: vec![issue_doc],
         patches: vec![patch_doc],
+        releases: vec![],
         nodes: vec![node_doc],
         policies: vec![(
             rid,

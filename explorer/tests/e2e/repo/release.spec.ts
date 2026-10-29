@@ -5,6 +5,8 @@ import {
   radArtifact,
   registerArtifact,
   syncFrom,
+  waitForRelease,
+  waitForRepoMeta,
 } from "@tests/support/repo.js";
 import { releaseApiOnlyLocal, useLocalHttpd } from "@tests/support/support.js";
 
@@ -22,6 +24,7 @@ test.describe(() => {
       name: "binary",
     });
 
+    await waitForRepoMeta(peer, rid, meta => meta.releases === 1);
     await page.goto(`${peer.uiUrl()}/${rid}/releases`);
     await page.locator(".release-teaser").getByText("initial commit").click();
 
@@ -52,6 +55,7 @@ test.describe(() => {
       revision: tagOid,
     });
 
+    await waitForRepoMeta(peer, rid, meta => meta.releases === 1);
     await page.goto(`${peer.uiUrl()}/${rid}/releases/${releaseId}`);
     await expect(page.locator(".title")).toContainText("Version 1.0");
     await expect(
@@ -101,6 +105,7 @@ test.describe(() => {
       release: releaseId,
     });
 
+    await waitForRelease(peer, rid, releaseId, r => r.artifacts.length === 3);
     await page.goto(`${peer.uiUrl()}/${rid}/releases/${releaseId}`);
 
     const webArtifact = page
@@ -152,6 +157,11 @@ test.describe(() => {
       "Built from the wrong toolchain",
     ]);
 
+    await waitForRelease(peer, rid, releaseId, r =>
+      r.artifacts.some(
+        a => a.name === "flagged-artifact" && a.redactions.length === 1,
+      ),
+    );
     await page.goto(`${peer.uiUrl()}/${rid}/releases/${releaseId}`);
     await expect(page.getByText("good-artifact")).toBeVisible();
     await expect(page.getByText("flagged-artifact")).toBeHidden();
@@ -181,6 +191,7 @@ test.describe(() => {
     });
     await syncFrom(peer, repoFolder);
 
+    await waitForRelease(peer, rid, releaseId, r => r.artifacts.length === 2);
     await page.goto(`${peer.uiUrl()}/${rid}/releases/${releaseId}`);
     await expect(page.getByText("delegate-artifact")).toBeVisible();
     await expect(page.getByText("eve-artifact")).toBeHidden();

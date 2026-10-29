@@ -5,6 +5,8 @@ import {
   radArtifact,
   registerArtifact,
   syncFrom,
+  waitForRelease,
+  waitForRepoMeta,
 } from "@tests/support/repo.js";
 import { releaseApiOnlyLocal, useLocalHttpd } from "@tests/support/support.js";
 
@@ -20,6 +22,7 @@ test.describe(() => {
     });
     await registerArtifact(peer, repoFolder, { name: "binary" });
 
+    await waitForRepoMeta(peer, rid, meta => meta.releases === 1);
     await page.goto(`${peer.uiUrl()}/${rid}`);
     await page.getByRole("link", { name: "Releases 1" }).click();
     await expect(page).toHaveURL(`${peer.uiUrl()}/${rid}/releases`);
@@ -56,6 +59,7 @@ test.describe(() => {
     });
     await syncFrom(peer, repoFolder);
 
+    await waitForRepoMeta(peer, rid, meta => meta.releases === 2);
     await page.goto(`${peer.uiUrl()}/${rid}/releases`);
     await expect(page.locator(".release-teaser")).toHaveCount(1);
     await expect(page.getByText("eve commit")).toBeHidden();
@@ -96,6 +100,12 @@ test.describe(() => {
       "Compromised build",
     ]);
 
+    await waitForRelease(
+      peer,
+      rid,
+      releaseId,
+      r => r.artifacts[0]?.redactions.length === 1,
+    );
     await page.goto(`${peer.uiUrl()}/${rid}/releases`);
     await expect(page.getByText("No releases", { exact: true })).toBeVisible();
 

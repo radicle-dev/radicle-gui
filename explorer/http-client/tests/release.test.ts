@@ -60,4 +60,46 @@ describe("release", () => {
       expect(release.artifacts.length).toBe(1);
     },
   );
+
+  testFixture.skipIf(!useLocalHttpd)(
+    "#searchReleases(rid, { q })",
+    async ({ httpd: { api, peer } }) => {
+      const { rid, repoFolder } = await createRepo(peer, {
+        name: "release-search",
+        defaultBranch: "main",
+      });
+      const { stdout: head } = await peer.git(["rev-parse", "HEAD"], {
+        cwd: repoFolder,
+      });
+      const artifactPath = Path.join(repoFolder, "artifact.bin");
+      await Fs.writeFile(artifactPath, "hello release\n");
+      const { stdout: receipt } = await peer.spawn(
+        "rad-artifact",
+        ["--no-announce", "--no-input", "create", head, "--json"],
+        { cwd: repoFolder },
+      );
+      const { releaseId } = JSON.parse(receipt);
+      await peer.spawn(
+        "rad-artifact",
+        [
+          "--no-announce",
+          "--no-input",
+          "register",
+          artifactPath,
+          "--release",
+          releaseId,
+          "--name",
+          "search-binary",
+        ],
+        { cwd: repoFolder },
+      );
+
+      const hits = await api.repo.searchReleases(rid, { q: "search-binary" });
+      expect(hits).toHaveLength(1);
+      expect(hits[0].id).toBe(releaseId);
+
+      const misses = await api.repo.searchReleases(rid, { q: "windows" });
+      expect(misses).toHaveLength(0);
+    },
+  );
 });

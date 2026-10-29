@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import type { PeerManager, RadiclePeer } from "@tests/support/peerManager";
 import type { Repo } from "@http-client";
+import type { Release } from "@http-client/lib/repo/release.js";
 
 import * as Fs from "node:fs/promises";
 import * as Path from "node:path";
@@ -181,6 +182,35 @@ export async function waitForRepoMeta(
     }
     if (Date.now() > deadline) {
       throw new Error(`Timed out waiting for ${rid} meta at ${url}`);
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+}
+
+export async function waitForRelease(
+  peer: RadiclePeer,
+  rid: string,
+  releaseId: string,
+  predicate: (release: Release) => boolean,
+  timeoutMs = 10_000,
+): Promise<void> {
+  if (e2eSource !== "meilisearch") {
+    return;
+  }
+  const { hostname, port } = peer.httpdBaseUrl;
+  const url = `http://${hostname}:${port}/api/v1/repos/${rid}/releases/${releaseId}`;
+  const deadline = Date.now() + timeoutMs;
+
+  while (true) {
+    const response = await fetch(url).catch(() => undefined);
+    if (response?.ok) {
+      const release = (await response.json()) as Release;
+      if (predicate(release)) {
+        return;
+      }
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`Timed out waiting for release ${releaseId} at ${url}`);
     }
     await new Promise(resolve => setTimeout(resolve, 100));
   }

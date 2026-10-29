@@ -10,13 +10,19 @@
   background instead of delaying the resubscription
 - **Meilisearch source mode**: `RADICLE_HTTPD_SOURCE=meilisearch` serves all
   derived data (listings, search, issues, patches, aliases, policies, inventory,
-  stats) from the six Meilisearch indexes radicle-search publishes; SQLite is
+  stats) from the seven Meilisearch indexes radicle-search publishes; SQLite is
   never opened. Default remains `sqlite` (unchanged behavior). `/info` reports
   the active source (`httpd.source`); API version 6.3.0
 - **Breaking (config)**: `RADICLE_SEARCH_INDEX_NAME` is replaced by
   `RADICLE_SEARCH_INDEX_PREFIX` in both radicle-search and radicle-httpd
 - **radicle-search**: publishes six indexes (repos, issues, patches, nodes,
   policies, inventory) with issue/patch full-text fields and participant DIDs
+- **Releases in Meilisearch mode**: radicle-search publishes a seventh index,
+  `releases` (release COBs with tag/commit text, artifact names and URLs,
+  participant DIDs, and delegate/redaction view flags); the release count,
+  `/repos/{rid}/releases` and `/repos/{rid}/releases/{id}` are served from it in
+  Meilisearch mode, and a new `GET /repos/{rid}/releases/search?q=` searches one
+  repo's releases (index-backed, with a storage-walk fallback in SQLite mode)
 
 ## radicle-httpd + radicle-search 0.30.0
 

@@ -615,4 +615,26 @@ export class Client {
       releasesSchema,
     );
   }
+
+  public async searchReleases(
+    rid: string,
+    query: {
+      q: string;
+      page?: number;
+      perPage?: number;
+      allAuthors?: boolean;
+      showRedacted?: boolean;
+    },
+    options?: RequestOptions,
+  ): Promise<Release[]> {
+    return this.#fetcher.fetchOk(
+      {
+        method: "GET",
+        path: `repos/${rid}/releases/search`,
+        query,
+        options,
+      },
+      releasesSchema,
+    );
+  }
 }
