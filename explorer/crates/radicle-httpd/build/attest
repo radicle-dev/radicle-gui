@@ -1,0 +1,66 @@
+#!/bin/sh
+set -e
+
+# Attests the registered archives of `releases/httpd/<version>` after checking
+# that your own build in `artifacts/` gives the same CIDs. Run `build` first.
+
+outdir="$(dirname "$0")/artifacts"
+version="$("$(dirname "$0")/version")"
+tag="releases/httpd/$version"
+
+for tool in rad rad-artifact jq; do
+  if ! command -v "$tool" >/dev/null; then
+    echo "fatal: $tool is not installed" >&2
+    exit 1
+  fi
+done
+
+release="$(rad-artifact show "$tag" --json)"
+me="$(rad self --did)"
+
+# Registering already counts as the author's attestation.
+if echo "$release" | jq -e --arg me "$me" 'any(.[].artifacts[]; .author == $me)' >/dev/null; then
+  echo "fatal: you registered $tag, so another delegate has to attest it" >&2
+  exit 1
+fi
+
+cids=""
+mismatch=false
+
+for target in $(cat "$(dirname "$0")/TARGETS"); do
+  for bin in radicle-httpd radicle-search; do
+    filename="$bin-$version-$target.tar.xz"
+    filepath="$outdir/$filename"
+
+    if [ ! -f "$filepath" ]; then
+      echo "fatal: $filepath is missing, run build first" >&2
+      exit 1
+    fi
+
+    cid="$(rad-artifact cid "$filepath")"
+    registered="$(echo "$release" | jq -r --arg name "$filename" \
+      '[.[].artifacts[] | select(.name == $name) | .cid] | first // empty')"
+
+    if [ "$cid" = "$registered" ]; then
+      echo "✓ $filename $cid"
+      cids="$cids $cid"
+    else
+      echo "✗ $filename: your build is $cid, the release has ${registered:-nothing}" >&2
+      mismatch=true
+    fi
+  done
+done
+
+if [ "$mismatch" = true ]; then
+  echo "fatal: your build differs from the release; nothing was attested" >&2
+  echo "If the release is wrong, withdraw it with 'rad-artifact redact $tag --cid <cid> -m <reason>'" >&2
+  exit 1
+fi
+
+rad auth
+for cid in $cids; do
+  rad-artifact --no-announce --no-input attest "$tag" --cid "$cid"
+done
+
+rad sync --announce
+echo "Attestation successful."
