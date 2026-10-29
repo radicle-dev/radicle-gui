@@ -12,14 +12,46 @@ function remote(props: Partial<Remote> = {}): Remote {
   return { id: "z6Mk", delegate: false, branches: {}, tags: {}, ...props };
 }
 
-test("sortedTags lists the newest first, then by name descending", () => {
+test("sortedTags sorts by version, newest first", () => {
   const sorted = sortedTags({
-    "v1.0": tag(1),
-    "v1.2": tag(2),
-    "v1.1": tag(2),
+    "v0.1.0": tag(1),
+    "v0.10.0": tag(4),
+    "v0.2.0": tag(2),
+    "v1.0.0-rc.10": tag(6),
+    "v1.0.0": tag(7),
+    "v1.0.0-rc.2": tag(5),
+    "v0.10.1": tag(3),
   });
 
-  expect(sorted.map(([name]) => name)).toEqual(["v1.2", "v1.1", "v1.0"]);
+  expect(sorted.map(([name]) => name)).toEqual([
+    "v1.0.0",
+    "v1.0.0-rc.10",
+    "v1.0.0-rc.2",
+    "v0.10.1",
+    "v0.10.0",
+    "v0.2.0",
+    "v0.1.0",
+  ]);
+});
+
+test("sortedTags keeps namespaces together, most recent first", () => {
+  const sorted = sortedTags({
+    "releases/0.29.0": tag(3),
+    "releases/0.9.0": tag(1),
+    "releases/desktop/0.16.0": tag(3),
+    "releases/desktop/0.17.0": tag(4),
+    "releases/httpd/0.29.0": tag(3),
+    "releases/httpd/0.30.0": tag(5),
+  });
+
+  expect(sorted.map(([name]) => name)).toEqual([
+    "releases/httpd/0.30.0",
+    "releases/httpd/0.29.0",
+    "releases/desktop/0.17.0",
+    "releases/desktop/0.16.0",
+    "releases/0.29.0",
+    "releases/0.9.0",
+  ]);
 });
 
 test("sortRemotes puts delegates first, then aliased peers by alias, then by NID", () => {

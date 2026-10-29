@@ -4,11 +4,28 @@ import type { Tag } from "@bindings/repo/Tag";
 
 import orderBy from "lodash/orderBy";
 
+export function compareTagNames(a: string, b: string): number {
+  if (b.startsWith(`${a}-`)) return -1;
+  if (a.startsWith(`${b}-`)) return 1;
+  return b.localeCompare(a, undefined, { numeric: true });
+}
+
 export function sortedTags(tags: Record<string, Tag>): [string, Tag][] {
-  return Object.entries(tags).sort(([nameA, a], [nameB, b]) => {
-    if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;
-    return nameB.localeCompare(nameA);
-  });
+  const groups = new Map<string, { tags: [string, Tag][]; newest: number }>();
+  for (const entry of Object.entries(tags)) {
+    const slash = entry[0].lastIndexOf("/");
+    const namespace = slash === -1 ? "" : entry[0].slice(0, slash);
+    const group = groups.get(namespace) ?? { tags: [], newest: 0 };
+    group.tags.push(entry);
+    group.newest = Math.max(group.newest, entry[1].timestamp);
+    groups.set(namespace, group);
+  }
+
+  return [...groups.entries()]
+    .sort(([nsA, a], [nsB, b]) => b.newest - a.newest || nsA.localeCompare(nsB))
+    .flatMap(([, group]) =>
+      group.tags.sort(([a], [b]) => compareTagNames(a, b)),
+    );
 }
 
 // Delegates first; within each (delegate / non-delegate) group, peers with
