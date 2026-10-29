@@ -83,6 +83,8 @@ main() {
   # Copy build artifacts to output folder.
   outdir="$(dirname "$0")/artifacts"
   mkdir -p "$outdir"
+  # These archives are not from a CI build, see `fetch`.
+  rm -f "$outdir/build-url"
   $engine cp "$container:/builds/." "$outdir/"
 
   for target in $(cat "$(dirname "$0")/TARGETS"); do

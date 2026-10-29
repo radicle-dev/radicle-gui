@@ -15,7 +15,9 @@ The release tooling lives in [`crates/radicle-httpd/build/`][build].
 Releases cover **only** the `radicle-httpd` and `radicle-search` binaries. The
 web front-end (`radicle-explorer`) is not released this way: it is deployed
 continuously (rolling release) and must always remain compatible with the latest
-`radicle-httpd`/`radicle-search` release.
+`radicle-httpd`/`radicle-search` release. A release also registers the
+frontend bundle of the tagged commit with radicle-artifact, see
+[Publish](#publish).
 
 ## Versioning
 
@@ -35,8 +37,11 @@ for which releases explorer supports.
   git config set user.signingKey "$(rad self --ssh-key)"
   ```
 - Working `podman` setup (see [Podman Setup](#podman-setup) below), or Docker
-- Required tools: `podman` or `docker`, `rad`, `sha256sum`, `curl`, `jq`,
-  `ssh`, `scp`, `ssh-keygen`
+- Required tools: `podman` or `docker`, `rad`, `rad-artifact`, `sha256sum`,
+  `curl`, `jq`, `ssh`, `scp`, `ssh-keygen`, `node`, `npm`. Install `rad-artifact` with:
+  ```sh
+  curl -sSf https://files.radicle.dev/releases/radicle-artifact/install | sh
+  ```
 - To download the CI build: a Buildkite API token with `read_builds` and
   `read_artifacts`
 
@@ -84,6 +89,13 @@ Normal patches add their highlights to `## Unreleased` in
    ```sh
    git push rad master refs/tags/releases/httpd/<version>
    rad sync --announce
+   ```
+
+5. Optional: create the release in radicle-artifact now, so that it is visible
+   before its archives are registered. `register` creates it otherwise:
+
+   ```sh
+   rad-artifact create releases/httpd/<version>
    ```
 
 ## Build
@@ -154,6 +166,35 @@ the archives.
 
    > **Warning:** Uploading immediately publishes the release.
 
+3. Register the archives with radicle-artifact, in the release of the tag. This
+   records each archive's files.radicle.dev URL and `sha256`. If you publish the
+   archives that `fetch` downloaded into `artifacts/`, it also records their
+   Buildkite build. It also builds the explorer frontend bundle from the
+   checked out tag with `config/default.json`, registers it as the collection
+   `radicle-explorer` and seeds it from your local artifact node. This needs
+   `node` and `npm`, in the version of `.nvmrc`, and no untracked files in
+   `config/`, such as `local.json`. Running it again changes nothing:
+
+   ```sh
+   crates/radicle-httpd/build/register
+   ```
+
+## Attest (recommended)
+
+Other delegates check the release by building it themselves. `attest` compares
+the CIDs of your build with the registered ones, and attests them only if all
+match:
+
+```sh
+git switch --detach releases/httpd/<version>
+crates/radicle-httpd/build/build
+crates/radicle-httpd/build/attest
+```
+
+If your build differs, find out why before anyone uses the release. If the
+release is wrong, withdraw its archives with
+`rad-artifact redact releases/httpd/<version> --cid <cid> -m <reason>`.
+
 ## Announce
 
 1. Mark the previous release as resolved in Zulip `#Announcements`
@@ -180,6 +221,10 @@ the archives.
    - https://files.radicle.dev/releases/radicle-search/<version>
    - https://radicle.dev/download
 
+   Check a download with
+   `rad-artifact verify --repo rad:z4V1sjrXqjvFdnCUbxPFqd5p4DtH5 <archive>`,
+   after `rad seed rad:z4V1sjrXqjvFdnCUbxPFqd5p4DtH5`.
+
    ## Changelog
 
    <copy the <version> section from CHANGELOG.md>
@@ -190,8 +235,8 @@ the archives.
    <copy output from crates/radicle-httpd/build/checksums>
    ```
 
-   :info: This release was built on <platform>. Build reproducibility across
-   platforms is unsupported; checksums may differ if rebuilt elsewhere.
+   Attested by: <the DIDs in `rad-artifact show releases/httpd/<version>`, if
+   any>
    ````
 
 ## Notes

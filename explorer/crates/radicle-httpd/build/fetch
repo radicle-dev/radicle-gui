@@ -78,4 +78,6 @@ for target in $(cat "$(dirname "$0")/TARGETS"); do
   done
 done
 
+# `register` records the CI build of these archives.
+echo "$web_url" >"$outdir/build-url"
 echo "Fetch successful."
