@@ -24,19 +24,28 @@ pub(crate) fn document(
     rid: RepoId,
     doc: &Doc,
 ) -> Result<Option<repo::Document>> {
-    let storage = &profile.storage;
-    let repo = storage
-        .repository(rid)
-        .context(format!("opening {rid} from storage failed"))?;
-    let seeding_count = db.count(&rid).unwrap_or_default() as u64;
-
-    let activity = match repo_activity(&repo) {
+    document_with(profile, db, rid, doc, |repo| match repo_activity(repo) {
         Ok(activity) => activity,
         Err(e) => {
             tracing::debug!("{rid}: head/activity unavailable ({e:#})");
             repo::Activity::empty()
         }
-    };
+    })
+}
+
+pub(crate) fn document_with(
+    profile: &Profile,
+    db: &radicle::node::Database,
+    rid: RepoId,
+    doc: &Doc,
+    activity: impl FnOnce(&radicle::storage::git::Repository) -> repo::Activity,
+) -> Result<Option<repo::Document>> {
+    let storage = &profile.storage;
+    let repo = storage
+        .repository(rid)
+        .context(format!("opening {rid} from storage failed"))?;
+    let seeding_count = db.count(&rid).unwrap_or_default() as u64;
+    let activity = activity(&repo);
 
     let (issue_counts, patch_counts) = match cob_counts(profile, &repo) {
         Ok(counts) => counts,
@@ -285,6 +294,10 @@ fn cob_counts(
             merged: patches.merged,
         },
     ))
+}
+
+pub(crate) fn head(repo: &radicle::storage::git::Repository) -> Result<String> {
+    Ok(SurfRepository::open(repo.path())?.head()?.to_string())
 }
 
 fn repo_activity(repo: &radicle::storage::git::Repository) -> Result<repo::Activity> {

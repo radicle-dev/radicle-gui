@@ -23,6 +23,7 @@ const EVENT_CHANNEL_CAPACITY: usize = 1024;
 
 struct BootstrapPayload {
     repo_docs: Vec<repo::Document>,
+    kept_activity_docs: Vec<serde_json::Value>,
     seeded: HashSet<repo::DocumentKey>,
     issue_docs: Vec<cob::Document>,
     patch_docs: Vec<cob::Document>,
@@ -99,8 +100,18 @@ impl Indexer {
         let previous_seeded = self.seeded.as_inner().await;
 
         let handler = bootstrap::Bootstrap::new(previous_seeded.clone());
+        let stored_heads = self
+            .indexes
+            .repos
+            .list_repo_heads()
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!("reading stored heads failed: {e:#}; walking every history");
+                Default::default()
+            });
         let BootstrapPayload {
             repo_docs,
+            kept_activity_docs,
             seeded,
             issue_docs,
             patch_docs,
@@ -139,6 +150,7 @@ impl Indexer {
             let plan = handler.plan(seeds);
 
             let mut docs = Vec::with_capacity(plan.to_index.len());
+            let mut kept_activity_docs: Vec<serde_json::Value> = Vec::new();
             let mut issue_docs: Vec<cob::Document> = Vec::new();
             let mut patch_docs: Vec<cob::Document> = Vec::new();
             let mut release_docs: Vec<release::Document> = Vec::new();
@@ -147,7 +159,23 @@ impl Indexer {
                 .iter()
                 .filter(|info| plan.to_index.contains(&info.rid))
             {
-                match build::document(&profile, &db, info.rid, &info.doc) {
+                let stored_head = stored_heads.get(&repo::DocumentKey::new(info.rid).to_string());
+                let head_unchanged = stored_head.is_some_and(|stored| {
+                    profile
+                        .storage
+                        .repository(info.rid)
+                        .ok()
+                        .and_then(|repo| build::head(&repo).ok())
+                        .is_some_and(|current| &current == stored)
+                });
+                let built = if head_unchanged {
+                    build::document_with(&profile, &db, info.rid, &info.doc, |_| {
+                        repo::Activity::empty()
+                    })
+                } else {
+                    build::document(&profile, &db, info.rid, &info.doc)
+                };
+                match built {
                     Ok(Some(mut doc)) => {
                         let repo = match profile.storage.repository(info.rid) {
                             Ok(r) => r,
@@ -181,7 +209,14 @@ impl Indexer {
                         issue_docs.extend(cob_docs.issues);
                         patch_docs.extend(cob_docs.patches);
                         release_docs.extend(cob_docs.releases);
-                        docs.push(doc);
+                        if head_unchanged {
+                            match without_activity(&doc) {
+                                Ok(partial) => kept_activity_docs.push(partial),
+                                Err(e) => tracing::warn!("skipping {}: {e:#}", info.rid),
+                            }
+                        } else {
+                            docs.push(doc);
+                        }
                     }
                     Ok(None) => {}
                     Err(e) => tracing::warn!("skipping {}: {e:#}", info.rid),
@@ -194,6 +229,7 @@ impl Indexer {
 
             Ok(BootstrapPayload {
                 repo_docs: docs,
+                kept_activity_docs,
                 seeded: plan.seeded,
                 issue_docs,
                 patch_docs,
@@ -206,8 +242,9 @@ impl Indexer {
         .await
         .context("bootstrap blocking task panicked")??;
 
-        let total = repo_docs.len();
-        tracing::info!("indexing {total} repositories");
+        let kept_activity = kept_activity_docs.len();
+        let total = repo_docs.len() + kept_activity;
+        tracing::info!("indexing {total} repositories ({kept_activity} with an unchanged head)");
         upsert_all(
             "repositories",
             &self.indexes.repos,
@@ -215,6 +252,20 @@ impl Indexer {
             repo::Document::PRIMARY_KEY,
         )
         .await;
+        for chunk in kept_activity_docs.chunks(UPSERT_BATCH) {
+            if let Err(e) = self
+                .indexes
+                .repos
+                .update(chunk, repo::Document::PRIMARY_KEY)
+                .await
+            {
+                tracing::warn!(
+                    "indexing a batch of {} repositories failed: {e:#}; \
+                     skipping it (next rescan will reconcile)",
+                    chunk.len()
+                );
+            }
+        }
 
         let issue_ids: HashSet<String> = issue_docs.iter().map(|d| d.id.clone()).collect();
         let patch_ids: HashSet<String> = patch_docs.iter().map(|d| d.id.clone()).collect();
@@ -645,6 +696,16 @@ async fn read_events(
         }
         resubscribing = true;
     }
+}
+
+fn without_activity(doc: &repo::Document) -> Result<serde_json::Value> {
+    let mut value = serde_json::to_value(doc)?;
+    if let Some(fields) = value.as_object_mut() {
+        for field in ["head", "headCommitterTime", "activityTimestamps"] {
+            fields.remove(field);
+        }
+    }
+    Ok(value)
 }
 
 struct CobDocs {

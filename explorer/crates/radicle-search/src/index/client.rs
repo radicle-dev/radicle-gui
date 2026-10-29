@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -178,6 +178,42 @@ impl Index {
             offset += PAGE;
         }
         Ok(ids)
+    }
+
+    pub async fn list_repo_heads(&self) -> Result<HashMap<String, String>> {
+        const PAGE: usize = 1000;
+
+        #[derive(Deserialize)]
+        struct IdHead {
+            id: String,
+            head: Option<String>,
+        }
+
+        let mut heads = HashMap::new();
+        let mut offset = 0;
+        loop {
+            let mut query = DocumentsQuery::new(&self.index);
+            query
+                .with_limit(PAGE)
+                .with_offset(offset)
+                .with_fields(["id", "head"]);
+            let page: DocumentsResults<IdHead> = self
+                .index
+                .get_documents_with(&query)
+                .await
+                .context("get_documents failed")?;
+            let done = page.results.len() < PAGE;
+            heads.extend(
+                page.results
+                    .into_iter()
+                    .filter_map(|d| d.head.map(|head| (d.id, head))),
+            );
+            if done {
+                break;
+            }
+            offset += PAGE;
+        }
+        Ok(heads)
     }
 }
 
