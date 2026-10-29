@@ -1,25 +1,38 @@
 #!/bin/sh
 set -e
 
+# The container engine: `podman` (default) or `docker`.
+CONTAINER=${CONTAINER:-podman}
+
 main() {
   # Use UTC time for everything.
   export TZ=UTC0
   # Set minimal locale.
   export LC_ALL=C
   # Set source date. This is honored by `asciidoctor` and other tools.
-  export SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
-  # Define user OS for podman
-  export OS=$(uname)
-  # Define architecture for podman
-  export ARCH=$(arch)
+  SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
+  export SOURCE_DATE_EPOCH
 
-  if ! command -v rad >/dev/null; then
-    echo "fatal: rad is not installed" >&2
+  case "$CONTAINER" in
+  podman)
+    # Rootless podman on Linux needs cgroupfs.
+    if [ "$(uname)" = Linux ]; then
+      engine="podman --cgroup-manager=cgroupfs"
+    else
+      engine=podman
+    fi
+    ;;
+  docker)
+    engine=docker
+    ;;
+  *)
+    echo "fatal: CONTAINER must be podman or docker, not '$CONTAINER'" >&2
     exit 1
-  fi
+    ;;
+  esac
 
-  if ! command -v podman >/dev/null; then
-    echo "fatal: podman is not installed" >&2
+  if ! command -v "$CONTAINER" >/dev/null; then
+    echo "fatal: $CONTAINER is not installed" >&2
     exit 1
   fi
 
@@ -28,20 +41,14 @@ main() {
     exit 1
   fi
 
-  rev="$(git rev-parse --short HEAD)"
+  # Use a fixed length: the default of `--short` depends on the clone.
+  rev="$(git rev-parse HEAD | cut -c1-8)"
   tempdir="$(mktemp -d)"
   context="$tempdir/heartwood-$rev"
-  keypath="$(rad path)/keys/radicle.pub"
   version="$("$(dirname "$0")/version")"
   image=radicle-build-$version
+  container=radicle-build-container
   rust_version="$(cat "$(dirname "$0")/../../../rust-toolchain")"
-
-  if [ ! -f "$keypath" ]; then
-    echo "fatal: no key found at $keypath" >&2
-    exit 1
-  fi
-  # Authenticate user for signing
-  rad auth
 
   echo "Building Radicle $version.."
   echo "Exporting repository at $rev to $context.."
@@ -52,67 +59,49 @@ main() {
   mkdir "$context"
   git -C "$(git rev-parse --show-toplevel)" archive HEAD:explorer | tar -x -C "$context"
 
-  echo "Building image ($image).."
+  echo "Building image ($image) with $CONTAINER.."
 
-  case "$OS" in
-  Darwin)
-    podman build \
-      --build-arg "RUST_VERSION=$rust_version" \
-      --build-arg SOURCE_DATE_EPOCH \
-      --build-arg TZ \
-      --build-arg LC_ALL \
-      --build-arg RADICLE_HTTPD_VERSION=$version \
-      --build-arg GIT_HEAD=$rev \
-      --arch $ARCH --tag $image -f "$(dirname "$0")/Dockerfile" "$context"
+  # Build on linux/arm64 on every host, so that builds on different hosts
+  # give the same bytes. Apple silicon runs it natively; amd64 hosts run it
+  # under emulation.
+  $engine build \
+    --build-arg "RUST_VERSION=$rust_version" \
+    --build-arg SOURCE_DATE_EPOCH \
+    --build-arg TZ \
+    --build-arg LC_ALL \
+    --build-arg "RADICLE_HTTPD_VERSION=$version" \
+    --build-arg "GIT_HEAD=$rev" \
+    --platform linux/arm64 --tag "$image" -f "$(dirname "$0")/Dockerfile" "$context"
 
-    echo "Creating container (radicle-build-container).."
-    podman create --ulimit=host --replace --name radicle-build-container $image
-    ;;
-  *)
-    podman --cgroup-manager=cgroupfs build \
-      --build-arg "RUST_VERSION=$rust_version" \
-      --build-arg SOURCE_DATE_EPOCH \
-      --build-arg TZ \
-      --build-arg LC_ALL \
-      --build-arg GIT_HEAD=$rev \
-      --build-arg RADICLE_HTTPD_VERSION=$version \
-      --arch $ARCH --tag $image -f "$(dirname "$0")/Dockerfile" "$context"
-
-    echo "Creating container (radicle-build-container).."
-    podman --cgroup-manager=cgroupfs create --ulimit=host --replace --name radicle-build-container $image
-    ;;
-  esac
+  echo "Creating container ($container).."
+  $engine rm --force "$container" >/dev/null 2>&1 || true
+  $engine create --name "$container" "$image" >/dev/null
 
   # Copy build artifacts to output folder.
   outdir="$(dirname "$0")/artifacts"
-  mkdir -p $outdir
-  podman cp --overwrite radicle-build-container:/builds/. $outdir/
+  mkdir -p "$outdir"
+  $engine cp "$container:/builds/." "$outdir/"
 
   for target in $(cat "$(dirname "$0")/TARGETS"); do
     # `radicle-httpd` and `radicle-search` are released together: each ships as
     # its own per-target archive.
     for bin in radicle-httpd radicle-search; do
-      echo "Signing $bin artifacts for $target.."
-
       filename="$bin-$version-$target.tar.xz"
       filepath="$outdir/$filename"
 
       # Output SHA256 digest of archive.
-      checksum="$(cd $outdir && sha256sum $filename)"
+      checksum="$(cd "$outdir" && sha256sum "$filename")"
       echo "Checksum of $filepath is $(echo "$checksum" | cut -d' ' -f1)"
-      echo "$checksum" >$filepath.sha256
-
-      # Sign archive and verify archive.
-      rm -f $filepath.sig # Delete existing signature
-      ssh-keygen -Y sign -n file -f $keypath $filepath
-      ssh-keygen -Y check-novalidate -n file -s $filepath.sig <$filepath
+      echo "$checksum" >"$filepath.sha256"
+      # A signature from an earlier build no longer matches.
+      rm -f "$filepath.sig"
     done
   done
 
   # Remove build artifacts that aren't needed anymore.
   rm -rf "$tempdir"
-  podman rm radicle-build-container >/dev/null
-  podman rmi --ignore localhost/$image
+  $engine rm "$container" >/dev/null
+  $engine rmi "$image" >/dev/null || true
 }
 
 # Run build.

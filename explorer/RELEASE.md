@@ -93,8 +93,9 @@ Do these steps after the tag is canonical.
    git switch --detach releases/httpd/<version>
    ```
 
-2. Run the reproducible build (Linux x86_64 or macOS). A single run compiles the
-   workspace and packages **both** binaries, one archive per binary per target:
+2. Run the reproducible build. A single run compiles the workspace and packages
+   **both** binaries, one archive per binary per target. It uses podman; set
+   `CONTAINER=docker` to use Docker:
 
    ```sh
    crates/radicle-httpd/build/build
@@ -104,9 +105,16 @@ Do these steps after the tag is canonical.
    - `radicle-httpd-<version>-<target>.tar.xz` (binary + man page)
    - `radicle-search-<version>-<target>.tar.xz` (binary)
 
-   each with a `.sig` and `.sha256` alongside.
+   each with a `.sha256` alongside.
 
-3. Upload. This publishes each binary into its own sibling folder on
+3. Sign the archives with your Radicle key. This checks each archive against its
+   `.sha256` and writes a `.sig` alongside:
+
+   ```sh
+   crates/radicle-httpd/build/sign
+   ```
+
+4. Upload. This publishes each binary into its own sibling folder on
    [files.radicle.dev][files] and creates the version-less and `latest` symlinks
    for both:
 
@@ -120,7 +128,10 @@ Do these steps after the tag is canonical.
 
 1. Mark the previous release as resolved in Zulip `#Announcements`
 
-2. Create a new announcement with the following template:
+2. Create a new announcement with the following template. `<commit>` is the
+   8-character ID of the tagged commit, which the build also writes to
+   `radicle-httpd.json`:
+   `git rev-parse --short=8 'releases/httpd/<version>^{commit}'`
 
    **Topic:** `radicle-httpd + radicle-search <version>`
 
@@ -129,7 +140,7 @@ Do these steps after the tag is canonical.
    ````markdown
    # 👾 radicle-httpd + radicle-search <version>
 
-   `radicle-httpd` and `radicle-search` <version> (<build-id>) are released.
+   `radicle-httpd` and `radicle-search` <version> (<commit>) are released.
 
    ## Installation
 
@@ -158,7 +169,9 @@ Do these steps after the tag is canonical.
 > **Important:**
 >
 > - macOS binaries are unsigned and not notarized; download via CLI only
-> - Build reproducibility across platforms is not guaranteed
+> - The build always runs in a `linux/arm64` container, with the base images and
+>   zig pinned, so that builds on different hosts give the same bytes. It runs
+>   natively on Apple silicon, and under emulation on amd64 hosts
 
 ## Podman Setup
 

@@ -1,0 +1,50 @@
+#!/bin/sh
+set -e
+
+# Signs the archives in `artifacts/` with the delegate's Radicle key, whether
+# `build` or `fetch` put them there.
+
+outdir="$(dirname "$0")/artifacts"
+version="$("$(dirname "$0")/version")"
+
+if ! command -v rad >/dev/null; then
+  echo "fatal: rad is not installed" >&2
+  exit 1
+fi
+
+if ! command -v sha256sum >/dev/null; then
+  echo "fatal: sha256sum is not installed" >&2
+  exit 1
+fi
+
+keypath="$(rad path)/keys/radicle.pub"
+
+if [ ! -f "$keypath" ]; then
+  echo "fatal: no key found at $keypath" >&2
+  exit 1
+fi
+# Authenticate user for signing
+rad auth
+
+for target in $(cat "$(dirname "$0")/TARGETS"); do
+  for bin in radicle-httpd radicle-search; do
+    filename="$bin-$version-$target.tar.xz"
+    filepath="$outdir/$filename"
+
+    if [ ! -f "$filepath" ]; then
+      echo "fatal: $filepath is missing" >&2
+      exit 1
+    fi
+
+    echo "Signing $filename.."
+
+    # Never sign an archive that differs from its checksum.
+    (cd "$outdir" && sha256sum --check --quiet "$filename.sha256")
+
+    rm -f "$filepath.sig"
+    ssh-keygen -Y sign -n file -f "$keypath" "$filepath"
+    ssh-keygen -Y check-novalidate -n file -s "$filepath.sig" <"$filepath"
+  done
+done
+
+echo "Signing successful."

@@ -1,9 +1,27 @@
 # Builds release binaries for Radicle.
+#
+# Base images and zig are pinned by digest, so that builds on different hosts
+# and days give the same bytes. When you bump `rust-toolchain`, also update the
+# digest of the `rust` image: the digest wins over the tag.
 ARG RUST_VERSION="1.97.1"
 ARG ALPINE_VERSION="3.21"
-FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION} as builder
+FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION}@sha256:7bae7c67364dad5ebbd4060923b34d734fbed66d7c1cf3af72aa2f062af93eb6 AS builder
 LABEL maintainer="Radicle Team <team@radicle.xyz>"
 WORKDIR /src
+
+ARG RUST_VERSION
+# Fail if the pinned image does not match `rust-toolchain`. Check before
+# copying the source: with `rust-toolchain` in place, rustup installs the
+# version it names, and the check always passes.
+RUN test "$(rustc --version | cut -d' ' -f2)" = "$RUST_VERSION"
+
+# Install dependencies for cross-compiling to macOS.
+# We use Zig as the linker to perform the compilation from a Linux host.
+# Compilation is done via `cargo-zigbuild` which is a wrapper around `zig`.
+# Install it before copying the source, so that `rust-toolchain` does not
+# override the default toolchain and the layer stays cached.
+RUN cargo install cargo-zigbuild@0.23.4 --locked
+
 COPY . .
 
 ARG TZ
@@ -15,7 +33,16 @@ ARG GIT_HEAD
 # Copy cargo configuration we're going to use to specify compiler options.
 RUN mkdir -p .cargo && cp crates/radicle-httpd/build/config.toml .cargo/config.toml
 # Install dependencies.
-RUN apk update && apk add --no-cache git musl-dev xz asciidoctor zig
+RUN apk update && apk add --no-cache git musl-dev xz asciidoctor
+# Install a pinned zig, since the version in apk changes over time.
+ARG ZIG_VERSION="0.17.0"
+ARG ZIG_SHA256="9e8d11661d4ae3bd57702a3832781e23ad151dde5798e16a5ccd503f65234ff8"
+RUN wget -q -O /tmp/zig.tar.xz \
+    "https://ziglang.org/download/${ZIG_VERSION}/zig-aarch64-linux-${ZIG_VERSION}.tar.xz" && \
+    echo "${ZIG_SHA256}  /tmp/zig.tar.xz" | sha256sum -c - && \
+    mkdir /opt/zig && tar -xJf /tmp/zig.tar.xz -C /opt/zig --strip-components=1 && \
+    rm /tmp/zig.tar.xz
+ENV PATH="/opt/zig:${PATH}"
 # Build man pages and strip metadata. Removes all comments, since they include
 # non-reproducible information, such as version numbers.
 RUN asciidoctor --doctype manpage --backend manpage --destination-dir . \
@@ -30,17 +57,11 @@ RUN rustup target add \
     x86_64-apple-darwin \
     aarch64-apple-darwin
 
-# Install dependencies for cross-compiling to macOS.
-# We use Zig as the linker to perform the compilation from a Linux host.
-# Compilation is done via `cargo-zigbuild` which is a wrapper around `zig`.
-RUN cargo install cargo-zigbuild@0.20.0 --locked
-
-
 # Parts of the macOS SDK are required to build Radicle, we make these available
 # here. So far only `CoreFoundation` and `Security` frameworks are needed.
 RUN xz -d -c crates/radicle-httpd/build/macos-sdk-11.3.tar.xz | tar -x
 # This env var is used by `cargo-zigbuild` to find the SDK.
-ENV SDKROOT /src/macos-sdk-11.3
+ENV SDKROOT=/src/macos-sdk-11.3
 
 # Build binaries.
 RUN cargo zigbuild --locked --release \
@@ -53,7 +74,7 @@ RUN cargo zigbuild --locked --release \
 
 # Now copy the files to a new image without all the intermediary artifacts to
 # save some space.
-FROM alpine:3.21 as packager
+FROM alpine:3.21@sha256:ee16d92f96db08d9d2d07da48555a27f3a69d8f0759021dbc601195ed0d2b5bd AS packager
 
 ARG RADICLE_HTTPD_VERSION
 ARG SOURCE_DATE_EPOCH
