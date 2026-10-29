@@ -48,10 +48,15 @@ export const meilisearchBinaryPath = Path.join(
   meilisearchRelease,
 );
 
+export const searchBinaryPath = Path.join(tmpDir, "bin", "search", "local");
+
 export const useLocalHttpd = process.env.USE_LOCAL_HTTPD === "true";
 
 export const releaseApiOnlyLocal =
   "the release read API only exists in the local httpd build";
+
+export const e2eSource: "sqlite" | "meilisearch" =
+  process.env.E2E_SOURCE === "meilisearch" ? "meilisearch" : "sqlite";
 
 // Assert that binaries are installed and are the correct version.
 export async function assertBinariesInstalled(

@@ -1,8 +1,11 @@
 import type { Page } from "@playwright/test";
 import type { PeerManager, RadiclePeer } from "@tests/support/peerManager";
+import type { Repo } from "@http-client";
 
 import * as Fs from "node:fs/promises";
 import * as Path from "node:path";
+import waitOn from "wait-on";
+import { e2eSource } from "@tests/support/support.js";
 
 import { defaultConfig, gitOptions } from "@tests/support/fixtures.js";
 
@@ -62,6 +65,14 @@ export async function createRepo(
   const { stdout: rid } = await peer.rad(["inspect"], {
     cwd: repoFolder,
   });
+
+  if (e2eSource === "meilisearch") {
+    const { hostname, port } = peer.httpdBaseUrl;
+    await waitOn({
+      resources: [`http-get://${hostname}:${port}/api/v1/repos/${rid}`],
+      timeout: 10_000,
+    });
+  }
 
   return { rid, repoFolder, defaultBranch };
 }
@@ -141,6 +152,38 @@ export async function registerArtifact(
   ]);
 
   return JSON.parse(stdout);
+}
+
+type RepoMeta = Repo["payloads"]["xyz.radicle.project"]["meta"];
+
+export async function waitForRepoMeta(
+  peer: RadiclePeer,
+  rid: string,
+  predicate: (meta: RepoMeta) => boolean,
+  timeoutMs = 10_000,
+): Promise<void> {
+  if (e2eSource !== "meilisearch") {
+    return;
+  }
+  const { hostname, port } = peer.httpdBaseUrl;
+  const url = `http://${hostname}:${port}/api/v1/repos/${rid}`;
+  const deadline = Date.now() + timeoutMs;
+
+  while (true) {
+    const response = await fetch(url).catch(() => undefined);
+    if (response?.ok) {
+      const repo = await response.json();
+      const meta = repo.payloads?.["xyz.radicle.project"]?.meta as
+        RepoMeta | undefined;
+      if (meta && predicate(meta)) {
+        return;
+      }
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`Timed out waiting for ${rid} meta at ${url}`);
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
 }
 
 export function extractPatchId(cmdOutput: { stderr: string }) {

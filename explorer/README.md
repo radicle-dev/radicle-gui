@@ -201,10 +201,18 @@ When changing `radicle-httpd`, `npm run test:e2e:local` compiles it from
 `crates/radicle-httpd/` and runs the suite against that build instead of the
 released binary.
 
+When changing `radicle-search`, `npm run test:e2e:meili` also installs
+Meilisearch, compiles radicle-httpd and radicle-search from source, and runs the
+suite with a private Meilisearch instance per test peer. The e2e suite needs a
+POSIX-coherent filesystem: shared or network mounts (VirtualBox vboxsf, NFS)
+break the peers' git fetch finalization, so run it from a native-disk checkout
+or worktree (e.g. under `/tmp` or `$HOME`).
+
 If Playwright's browsers don't support your OS, `scripts/test-e2e-docker` runs
 the suite in a container (Docker with the Compose plugin). It forwards its
-arguments and `SKIP_SETUP` to `npm run test:e2e`, and `--local` tests against
-httpd built from source. The first run downloads Chromium and is slow.
+arguments and `SKIP_SETUP` to `npm run test:e2e`, `--local` tests against httpd
+built from source, and `--meili` is the equivalent of `npm run test:e2e:meili`.
+The first run downloads Chromium and is slow.
 
 ## Contributing
 

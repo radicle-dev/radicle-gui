@@ -1,4 +1,5 @@
 import { expect, test } from "@tests/support/fixtures.js";
+import { e2eSource } from "@tests/support/support.js";
 
 const unreachableSeed = {
   hostname: "this.node.does.not.exist.xyz",
@@ -9,6 +10,11 @@ const unreachableSeed = {
 test("explore repos page lists all repos and hides sort without a search backend", async ({
   page,
 }) => {
+  test.skip(
+    e2eSource === "meilisearch",
+    "this seed has a search backend, so sort is offered",
+  );
+
   await page.goto("/explore/repos");
 
   // Breadcrumb and subtitle. Without a search backend the listing is forced

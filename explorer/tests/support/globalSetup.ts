@@ -2,23 +2,56 @@ import * as Fs from "node:fs";
 import * as Path from "node:path";
 import {
   assertBinariesInstalled,
+  e2eSource,
   heartwoodRelease,
+  meilisearchBinaryPath,
+  meilisearchRelease,
   radicleArtifactRelease,
   radicleHttpdRelease,
   removeWorkspace,
+  searchBinaryPath,
   tmpDir,
   useLocalHttpd,
 } from "@tests/support/support.js";
 import {
+  cobRid,
+  commitsRid,
   defaultConfig,
   createCobsFixture,
   createCommitsFixture,
   createMarkdownFixture,
   createSourceBrowsingFixture,
   gitOptions,
+  markdownRid,
+  sourceBrowsingRid,
 } from "@tests/support/fixtures.js";
+import { waitForRepoMeta } from "@tests/support/repo.js";
 import config from "@tests/support/config.js";
-import { createPeerManager } from "@tests/support/peerManager.js";
+import {
+  createPeerManager,
+  type RadiclePeer,
+} from "@tests/support/peerManager.js";
+
+const cobsFixtureIssueCount = 3;
+const cobsFixturePatchCount = 5;
+
+async function waitForFixturesIndexed(palm: RadiclePeer): Promise<void> {
+  await waitForRepoMeta(
+    palm,
+    cobRid,
+    meta =>
+      meta.issues.open + meta.issues.closed === cobsFixtureIssueCount &&
+      meta.patches.open +
+        meta.patches.draft +
+        meta.patches.archived +
+        meta.patches.merged ===
+        cobsFixturePatchCount,
+    30_000,
+  );
+  for (const rid of [sourceBrowsingRid, markdownRid, commitsRid]) {
+    await waitForRepoMeta(palm, rid, () => true, 30_000);
+  }
+}
 
 const heartwoodBinaryPath = Path.join(
   tmpDir,
@@ -36,12 +69,17 @@ const httpdBinaryPath = useLocalHttpd
   ? Path.join(tmpDir, "bin", "httpd", "local").trim()
   : Path.join(tmpDir, "bin", "httpd", radicleHttpdRelease).trim();
 
-process.env.PATH = [
-  heartwoodBinaryPath,
-  httpdBinaryPath,
-  artifactBinaryPath,
-  process.env.PATH,
-].join(Path.delimiter);
+const pathEntries = [heartwoodBinaryPath, httpdBinaryPath, artifactBinaryPath];
+if (e2eSource === "meilisearch") {
+  pathEntries.push(meilisearchBinaryPath, searchBinaryPath);
+}
+
+process.env.PATH = [...pathEntries, process.env.PATH].join(Path.delimiter);
+
+async function assertSearchBinaryInstalled(): Promise<void> {
+  const binary = Path.join(searchBinaryPath, "radicle-search");
+  await Fs.promises.access(binary, Fs.constants.X_OK);
+}
 
 export default async function globalSetup(): Promise<() => void> {
   try {
@@ -56,6 +94,14 @@ export default async function globalSetup(): Promise<() => void> {
       radicleArtifactRelease,
       artifactBinaryPath,
     );
+    if (e2eSource === "meilisearch") {
+      await assertBinariesInstalled(
+        "meilisearch",
+        meilisearchRelease.replace(/^v/, ""),
+        meilisearchBinaryPath,
+      );
+      await assertSearchBinaryInstalled();
+    }
   } catch (error) {
     console.error(error);
     console.log("");
@@ -65,6 +111,11 @@ export default async function globalSetup(): Promise<() => void> {
       console.log("");
       console.log("To compile local radicle-httpd binary, run:");
       console.log(" 👉 ./scripts/compile-local-httpd");
+    }
+    if (e2eSource === "meilisearch") {
+      console.log("To install/compile the meilisearch e2e binaries, run:");
+      console.log(" 👉 ./scripts/install-binaries");
+      console.log(" 👉 ./scripts/compile-local-search");
     }
     console.log("");
     process.exit(1);
@@ -151,6 +202,7 @@ export default async function globalSetup(): Promise<() => void> {
         await createCobsFixture(peerManager, palm);
         console.log("      Creating commits fixture");
         await createCommitsFixture(palm);
+        await waitForFixturesIndexed(palm);
         console.log("  🗂️  All fixtures created");
       } catch (error) {
         console.log("");

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -e
+
+echo "🔨 Compiling local radicle-search..."
+
+cargo build -p radicle-search
+
+BIN="target/debug/radicle-search"
+if [ ! -f "$BIN" ]; then
+  echo "❌ Compilation failed - binary not found"
+  exit 1
+fi
+
+mkdir -p tests/tmp/bin/search/local
+
+cp "$BIN" tests/tmp/bin/search/local/radicle-search
+
+echo "✅ Local radicle-search compiled and ready at tests/tmp/bin/search/local/radicle-search"

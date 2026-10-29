@@ -8,6 +8,8 @@
 #   scripts/test-e2e-docker --project chromium -g "some test"
 #   scripts/test-e2e-docker --local                  # build radicle-httpd from
 #                                                    # source and test against it
+#   scripts/test-e2e-docker --meili                  # local httpd + local
+#                                                    # radicle-search, meilisearch mode
 #
 # Any non-flag arguments are forwarded to the test command. When none are
 # given, defaults to `--project chromium`.
@@ -18,22 +20,26 @@ cd "$REPO_ROOT"
 
 COMPOSE="docker compose -f docker-compose.e2e.yml"
 
-# Strip our own --local flag; forward everything else to Playwright.
+# Strip our own --local/--meili flags; forward everything else to Playwright.
 LOCAL=false
+MEILI=false
 ARGS=()
 for arg in "$@"; do
-  if [ "$arg" = "--local" ]; then
-    LOCAL=true
-  else
-    ARGS+=("$arg")
-  fi
+  case "$arg" in
+  --local) LOCAL=true ;;
+  --meili) MEILI=true ;;
+  *) ARGS+=("$arg") ;;
+  esac
 done
 
 SERVICE=e2e
 EXTRA_ENV=()
-if $LOCAL; then
+if $LOCAL || $MEILI; then
   SERVICE=e2e-local
   EXTRA_ENV=(-e USE_LOCAL_HTTPD=true)
+fi
+if $MEILI; then
+  EXTRA_ENV+=(-e E2E_SOURCE=meilisearch)
 fi
 
 $COMPOSE build "$SERVICE"

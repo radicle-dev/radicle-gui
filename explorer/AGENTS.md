@@ -38,6 +38,9 @@ full run.
 SKIP_SETUP=true npm run test:e2e -- --project chromium
 ```
 
+To test against meilisearch instead of the default sqlite search backend, use
+`npm run test:e2e:meili -- --project chromium`.
+
 ## Rust backend (`crates/`)
 
 The same commands CI runs:
@@ -77,7 +80,8 @@ they're absent.
 `npm run check:ci` runs the checks, unit, http-client, e2e and build smoke tests
 from the GitHub workflows, and stops at the first failure. It logs each step's
 output, duration and exit code to `tests/tmp/check-ci.log`. If Rust code
-changed, also run the Rust commands and the `:local` variants above.
+changed, also run the Rust commands, the `:local` variants above, and
+`npm run test:e2e:meili -- --project chromium`.
 
 ## Svelte components
 

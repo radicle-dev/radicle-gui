@@ -1,5 +1,5 @@
 import { test, cobUrl, expect } from "@tests/support/fixtures.js";
-import { createRepo } from "@tests/support/repo";
+import { createRepo, waitForRepoMeta } from "@tests/support/repo";
 
 test("navigate issue listing", async ({ page }) => {
   await page.goto(cobUrl);
@@ -38,6 +38,7 @@ test("issue counters", async ({ page, peer }) => {
     ],
     { cwd: repoFolder },
   );
+  await waitForRepoMeta(peer, rid, meta => meta.issues.open === 2);
   await page.getByRole("link", { name: "Open" }).first().click();
   await expect(page.getByRole("button", { name: "Issues 2" })).toBeVisible();
   await expect(page.locator(".issue-teaser")).toHaveCount(2);

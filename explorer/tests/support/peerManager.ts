@@ -15,7 +15,7 @@ import { configSchema } from "@http-client/lib/shared.js";
 import { defaultConfig } from "@tests/support/fixtures.js";
 import { execa } from "execa";
 import { logPrefix } from "@tests/support/logPrefix.js";
-import { randomTag } from "@tests/support/support.js";
+import { e2eSource, randomTag } from "@tests/support/support.js";
 import { sleep } from "@app/lib/sleep.js";
 
 export type RefsUpdate =
@@ -239,10 +239,48 @@ export class RadiclePeer {
       port,
       scheme: "http",
     };
-    void this.spawn("radicle-httpd", [
-      "--listen",
-      `${this.#httpdBaseUrl.hostname}:${this.#httpdBaseUrl.port}`,
-    ]);
+
+    let httpdEnv: Record<string, string> | undefined;
+    let meiliUrl: string | undefined;
+    if (e2eSource === "meilisearch") {
+      const meiliPort = await getPort();
+      meiliUrl = `http://127.0.0.1:${meiliPort}`;
+      const meiliDir = Path.join(Path.dirname(this.#radHome), "meilisearch");
+      void this.spawn("meilisearch", [
+        "--http-addr",
+        `127.0.0.1:${meiliPort}`,
+        "--db-path",
+        Path.join(meiliDir, "db"),
+        "--dump-dir",
+        Path.join(meiliDir, "dumps"),
+        "--snapshot-dir",
+        Path.join(meiliDir, "snapshots"),
+        "--no-analytics",
+      ]);
+      await waitOn({
+        resources: [`tcp:127.0.0.1:${meiliPort}`],
+        timeout: 10_000,
+      });
+
+      void this.spawn("radicle-search", [], {
+        env: {
+          RADICLE_SEARCH_MEILI_URL: meiliUrl,
+          RADICLE_SEARCH_RESCAN_SECS: "1",
+        },
+      });
+
+      httpdEnv = {
+        RADICLE_HTTPD_SOURCE: "meilisearch",
+        RADICLE_SEARCH_URL: meiliUrl,
+        RADICLE_SEARCH_TIMEOUT_MS: "3000",
+      };
+    }
+
+    void this.spawn(
+      "radicle-httpd",
+      ["--listen", `${this.#httpdBaseUrl.hostname}:${this.#httpdBaseUrl.port}`],
+      httpdEnv ? { env: httpdEnv } : undefined,
+    );
 
     await waitOn({
       resources: [
@@ -250,6 +288,17 @@ export class RadiclePeer {
       ],
       timeout: 2000,
     });
+
+    if (meiliUrl) {
+      await waitOn({
+        resources: [
+          `http-get://${meiliUrl.replace(/^http:\/\//, "")}/health`,
+          `http-get://${this.#httpdBaseUrl.hostname}:${this.#httpdBaseUrl.port}/api/v1/repos?show=all`,
+          `http-get://${this.#httpdBaseUrl.hostname}:${this.#httpdBaseUrl.port}/api/v1/stats`,
+        ],
+        timeout: 10_000,
+      });
+    }
   }
 
   public async startNode(config: Partial<Config> = defaultConfig) {

@@ -5,7 +5,9 @@
 # arguments are forwarded to the test command.
 #
 # When USE_LOCAL_HTTPD=true, runs test:e2e:local (compiles radicle-httpd from
-# source and tests the frontend against it) instead of test:e2e.
+# source and tests the frontend against it) instead of test:e2e. When
+# E2E_SOURCE=meilisearch, radicle-search is also compiled from source and
+# tests run against meilisearch instead of sqlite.
 set -euo pipefail
 
 cd /work
@@ -41,6 +43,11 @@ NPM_SCRIPT="test:e2e"
 if [ "${USE_LOCAL_HTTPD:-}" = "true" ]; then
   NPM_SCRIPT="test:e2e:local"
   echo "🦀 Local httpd mode: radicle-httpd will be compiled from source."
+fi
+
+if [ "${E2E_SOURCE:-}" = "meilisearch" ]; then
+  echo "🔍 Meilisearch mode: radicle-search will be compiled from source."
+  ./scripts/compile-local-search
 fi
 
 echo "🧪 Running e2e tests ($NPM_SCRIPT)..."

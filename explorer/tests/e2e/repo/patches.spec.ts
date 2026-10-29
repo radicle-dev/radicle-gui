@@ -1,5 +1,5 @@
 import { test, cobUrl, expect } from "@tests/support/fixtures.js";
-import { createRepo } from "@tests/support/repo";
+import { createRepo, waitForRepoMeta } from "@tests/support/repo";
 
 test("navigate patch listing", async ({ page }) => {
   await page.goto(cobUrl);
@@ -39,6 +39,7 @@ test("patches counters", async ({ page, peer }) => {
   await peer.git(["push", "rad", "HEAD:refs/patches"], {
     cwd: repoFolder,
   });
+  await waitForRepoMeta(peer, rid, meta => meta.patches.open === 2);
   await page.getByRole("link", { name: "Open" }).first().click();
   await expect(page.getByRole("button", { name: "Patches 2" })).toBeVisible();
   await expect(page.locator(".patch-teaser")).toHaveCount(2);

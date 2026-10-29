@@ -14,6 +14,7 @@
     "test:unit": "TZ='UTC' vitest run",
     "test:e2e": "NODE_CONFIG_ENV='test' TZ='UTC' playwright test",
     "test:e2e:local": "scripts/compile-local-httpd && USE_LOCAL_HTTPD=true NODE_CONFIG_ENV='test' TZ='UTC' playwright test",
+    "test:e2e:meili": "scripts/install-binaries && scripts/compile-local-httpd && scripts/compile-local-search && USE_LOCAL_HTTPD=true E2E_SOURCE=meilisearch NODE_CONFIG_ENV='test' TZ='UTC' playwright test",
     "test:http-client:unit": "NODE_CONFIG_ENV='test' TZ='UTC' vitest run --config http-client/vite.config.ts --reporter verbose",
     "test:http-client:unit:local": "scripts/compile-local-httpd && USE_LOCAL_HTTPD=true NODE_CONFIG_ENV='test' TZ='UTC' vitest run --config http-client/vite.config.ts --reporter verbose",
     "test:radicle-httpd": "cargo test --all-features",
