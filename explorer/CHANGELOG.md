@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+This release defines a backward compatibility policy in Radicle Explorer for
+radicle-httpd in [ADR 0001](docs/adr/0001-expand-and-contract-api-changes.md).
+Starting this release, explorer maintains backward compatibility with at least
+one major version of radicle-httpd. When interacting with an unsupported
+radicle-httpd version, a warning will be shown and functionality may degrade.
+[docs/api-changes.md](docs/api-changes.md) tracks each change and when its
+fallbacks can go.
+
+### radicle-httpd
+
+- **API at `/api`**: The api moves from `/api/v1` -> `/api`.
+- **`apiVersion` removed**: The API root no longer reports it. Explorer never
+  read it.
+- **Repo facts outside the project payload**: Repo responses add top-level
+  `cobs` counts and `defaultBranch`, so repos without a `xyz.radicle.project`
+  payload get counts and a default branch. A count httpd cannot determine is
+  left out instead of reported as 0, and one unreadable canonical ref no longer
+  drops the default branch tip
+- **Release scopes**: The releases endpoint takes `scope=trusted|untrusted`, and
+  `meta.releases` counts delegate and other releases, on single-repo responses
+  only. `allAuthors` stays for older clients
+- **Release support in `/info`**: `httpd.releases` tells whether httpd was built
+  with release support
+- **Build version variable**: Set `RADICLE_HTTPD_VERSION`, not
+  `RADICLE_VERSION`, when building httpd
+- Updated `radicle-artifact` to 0.23
+
+### radicle-search
+
 - **Event subscription kept during rescans**: radicle-search keeps reading node
   events while it rescans or reindexes, so the node no longer drops its
   subscription during every periodic rescan, and the events emitted meanwhile
