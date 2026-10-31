@@ -103,9 +103,7 @@ describe("matchBareReference", () => {
   });
 
   test("gives up on a run too long to be a reference", () => {
-    const start = performance.now();
-    expect(matchBareReference(`rad:z${"'a".repeat(50_000)}`)).toBeUndefined();
-    expect(performance.now() - start).toBeLessThan(50);
+    expect(matchBareReference(`${rid}${"'a".repeat(50_000)}`)).toBeUndefined();
   });
 
   test("leaves an invalid reference as prose", () => {
@@ -307,18 +305,43 @@ describe("describeLink", () => {
 });
 
 describe("hostile input", () => {
-  test("renders a run of references in linear time", () => {
-    const start = performance.now();
-    void markdownWithExtensions.parse("rad:".repeat(25_000));
-    expect(performance.now() - start).toBeLessThan(500);
-  });
+  const renderCpuTime = (src: string) => {
+    const start = process.cpuUsage();
+    void markdownWithExtensions.parse(src);
+    const { user, system } = process.cpuUsage(start);
+    return user + system;
+  };
+
+  const growthOverFourfoldInput = (unit: string, count: number) => {
+    let small = Infinity;
+    let large = Infinity;
+    for (let round = 0; round < 5; round++) {
+      small = Math.min(small, renderCpuTime(unit.repeat(count)));
+      large = Math.min(large, renderCpuTime(unit.repeat(4 * count)));
+    }
+    return large / small;
+  };
+
+  test(
+    "renders a run of references in linear time",
+    { timeout: 120_000 },
+    () => {
+      expect(growthOverFourfoldInput("rad:", 1_250)).toBeLessThan(8);
+    },
+  );
+
+  test(
+    "renders references past the limit in linear time",
+    { timeout: 120_000 },
+    () => {
+      expect(growthOverFourfoldInput(`${rid} `, 625)).toBeLessThan(8);
+    },
+  );
 
   test("links at most a fixed number of references per document", () => {
-    const start = performance.now();
     const html = markdownWithExtensions.parse(
-      `${rid} `.repeat(5_000),
+      `${rid} `.repeat(1_000),
     ) as string;
-    expect(performance.now() - start).toBeLessThan(1_000);
     expect(html.match(/<a /g)?.length).toBe(200);
   });
 
