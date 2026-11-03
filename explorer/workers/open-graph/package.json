@@ -8,5 +8,11 @@
   },
   "devDependencies": {
     "wrangler": "^4"
+  },
+  "allowScripts": {
+    "esbuild": false,
+    "fsevents": false,
+    "sharp": false,
+    "workerd": false
   }
 }
