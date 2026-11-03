@@ -54,6 +54,23 @@
     display: block;
     margin-bottom: 0.75rem;
   }
+  .download {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: var(--button-regular-height);
+    margin-bottom: 1rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--border-radius-sm);
+    font: var(--txt-body-m-semibold);
+    color: var(--color-text-primary);
+    text-decoration: none;
+  }
+  .download:hover {
+    background-color: var(--color-surface-subtle);
+    border-color: var(--color-border-mid);
+  }
 </style>
 
 <Popover popoverPositionTop="2.5rem" popoverPositionRight="0">
@@ -123,18 +140,16 @@
       {:then supported}
         {#if supported}
           <div>
-            <label for="git-clone-url">
-              If you don’t have Radicle installed, you can still download an
-              archive of the repository.
+            <label for="archive-download">
+              Download the source code as a compressed archive (does not include
+              issues, patches or Git history).
             </label>
-            <Command
-              command={`curl -OJ ${archiveUrl}`}
-              downloadHref={archiveUrl} />
-            <div style:margin-top="1.5rem">
-              Note that a compressed archive of the source code does not include
-              any of the social artifacts such as issues or patches nor the git
-              history.
-            </div>
+            <a class="download" href={archiveUrl} download>
+              <Icon name="download" />
+              Download archive
+            </a>
+            <label for="archive-curl">Or from a terminal:</label>
+            <Command fullWidth command={`curl -OJ ${archiveUrl}`} />
           </div>
         {:else}
           {archiveUnsupportedMessage}
