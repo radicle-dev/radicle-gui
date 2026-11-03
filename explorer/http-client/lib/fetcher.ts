@@ -3,7 +3,6 @@
 
 import type { ZodIssue, ZodType, TypeOf } from "zod";
 
-import config from "@app/lib/config";
 import {
   isOutdated,
   minimumSupportedVersion,
@@ -68,11 +67,8 @@ export class ResponseParseError extends Error {
         ? ` It runs radicle-httpd ${releaseNumber(nodeVersion)}, but explorer needs ${minimumSupportedVersion} or newer. Its operator should upgrade it.`
         : "";
     this.description =
-      `${node} sent a response that radicle-explorer can’t parse.${outdated}`.concat(
-        config.deploymentId
-          ? ""
-          : " If you are self-hosting radicle-explorer, try to clear the browser’s localStorage and the cache.",
-      );
+      `${node} sent a response that radicle-explorer can’t parse.${outdated}` +
+      " If you are self-hosting radicle-explorer, try to clear the browser’s localStorage and the cache.";
 
     this.method = method;
     this.path = path;
@@ -115,11 +111,6 @@ export class Fetcher {
     params: FetchParams,
     schema: T,
   ): Promise<TypeOf<T>> {
-    if (config.deploymentId) {
-      params.query ||= {};
-      params.query["deployment_id"] = config.deploymentId;
-    }
-
     const response = await this.fetch(params);
 
     if (!response.ok) {

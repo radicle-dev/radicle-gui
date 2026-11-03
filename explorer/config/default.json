@@ -10,7 +10,6 @@
     "commitsPerPage": 30
   },
   "supportWebsite": "https://radicle.zulipchat.com",
-  "deploymentId": null,
   "preferredSeeds": [
     {
       "hostname": "rosa.radicle.network",

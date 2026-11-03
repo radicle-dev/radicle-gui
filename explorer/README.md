@@ -42,10 +42,10 @@ There are several ways to deploy the UI publicly. Here are two common options:
    `explorer/` to create a build for deployment
 2. Configure your web server to serve the contents of the `/build` directory
 
-**Using Vercel (or similar static file hosting):**
+**Using static file hosting:**
 
 1. Fork this repository to create your own version
-2. Configure your Vercel account to deploy the forked repository
+2. Configure your hosting provider to deploy the forked repository
 
 **Add Rewrite Rules for Client-Side Routing**
 
@@ -74,20 +74,11 @@ There are two ways to configure the UI: **at build time** and **at run time**.
 
 ### Build-Time Configuration
 
-This method is recommended when deploying to static hosting platforms such as
-Vercel.
-
-#### Option 1: Create a `local.json` file
+This method is recommended when deploying to static hosting platforms.
 
 1. Copy [`default.json`][def] to a new file in the same directory called
    `local.json`.
 2. Modify the properties in `local.json` to suit your setup.
-
-#### Option 2: Use environment variables
-
-1. Refer to [`custom-environment-variables.json`][env] for a list of supported
-   environment variables.
-2. Set the desired variables in your environment before building the UI.
 
 > For advanced configuration options, refer to the [`node-config`][nco]
 > documentation.
@@ -230,7 +221,6 @@ The UI is distributed under the terms of GPLv3. See [LICENSE][lic] for details.
 [app]: https://radicle.network
 [con]: ../CONTRIBUTING.md
 [def]: ./config/default.json
-[env]: ./config/custom-environment-variables.json
 [iss]:
   https://radicle.network/nodes/iris.radicle.network/rad:z4V1sjrXqjvFdnCUbxPFqd5p4DtH5/issues
 [lic]: ./LICENSE
