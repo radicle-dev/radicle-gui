@@ -1,0 +1,24 @@
+# Builds the radicle-httpd and radicle-search release archives from a
+# `releases/httpd/<version>` tag, and keeps them as Buildkite artifacts. A
+# delegate downloads them with explorer/crates/radicle-httpd/build/fetch, then
+# signs and uploads them, see explorer/RELEASE.md.
+#
+# garden-broker builds a tag push like a branch push: BUILDKITE_BRANCH is the
+# tag name and BUILDKITE_COMMIT the tag object. build/ci checks that the build
+# really is of an annotated tag with that name.
+#
+# The step runs on the agent rather than in a container, since the build itself
+# runs in Docker.
+
+steps:
+  - label: "📦 httpd release build"
+    key: httpd-release-build
+    if: build.branch =~ /^releases\/httpd\//
+    # The build runs on linux/arm64, see explorer/crates/radicle-httpd/build/build.
+    agents:
+      queue: large_linux_arm
+    timeout_in_minutes: 90
+    artifact_paths:
+      - "explorer/crates/radicle-httpd/build/artifacts/*"
+    commands:
+      - explorer/crates/radicle-httpd/build/ci

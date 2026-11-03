@@ -34,8 +34,11 @@ for which releases explorer supports.
   git config set gpg.format ssh
   git config set user.signingKey "$(rad self --ssh-key)"
   ```
-- Working `podman` setup (see [Podman Setup](#podman-setup) below)
-- Required tools: `podman`, `rad`, `sha256sum`
+- Working `podman` setup (see [Podman Setup](#podman-setup) below), or Docker
+- Required tools: `podman` or `docker`, `rad`, `sha256sum`, `curl`, `jq`,
+  `ssh`, `scp`, `ssh-keygen`
+- To download the CI build: a Buildkite API token with `read_builds` and
+  `read_artifacts`
 
 ## Prepare
 
@@ -83,38 +86,65 @@ Normal patches add their highlights to `## Unreleased` in
    rad sync --announce
    ```
 
-## Build and upload
+## Build
 
-Do these steps after the tag is canonical.
+Pushing the tag starts the `📦 httpd release build` step in Buildkite. It builds
+the archives in Docker and keeps them as build artifacts. You can also build
+them locally. Either way, one build is enough to publish, but a second build in
+another environment is recommended: it shows that neither environment changed
+the archives.
 
-1. Check out the tag. The build reads the version from it with `git describe`:
+1. Check out the tag. The scripts read the version from it with `git describe`:
 
    ```sh
    git switch --detach releases/httpd/<version>
    ```
 
-2. Run the reproducible build. A single run compiles the workspace and packages
-   **both** binaries, one archive per binary per target. It uses podman; set
-   `CONTAINER=docker` to use Docker:
+2. Get the archives in one of these ways:
+   - Download the CI build. This needs a Buildkite API token with `read_builds`
+     and `read_artifacts`:
 
-   ```sh
-   crates/radicle-httpd/build/build
-   ```
+     ```sh
+     export BUILDKITE_API_TOKEN=<token> BUILDKITE_ORG=<org> BUILDKITE_PIPELINE=<pipeline>
+     crates/radicle-httpd/build/fetch <version>
+     ```
 
-   This writes to `crates/radicle-httpd/build/artifacts/`:
+   - Build locally. A single run compiles the workspace and packages **both**
+     binaries, one archive per binary per target. It uses podman; set
+     `CONTAINER=docker` to use Docker:
+
+     ```sh
+     crates/radicle-httpd/build/build
+     ```
+
+   Both write to `crates/radicle-httpd/build/artifacts/`:
    - `radicle-httpd-<version>-<target>.tar.xz` (binary + man page)
    - `radicle-search-<version>-<target>.tar.xz` (binary)
 
    each with a `.sha256` alongside.
 
-3. Sign the archives with your Radicle key. This checks each archive against its
+3. Recommended: compare a local build with the CI build. `build` overwrites
+   `artifacts/`, so build first, then fetch the CI build into another folder:
+
+   ```sh
+   crates/radicle-httpd/build/build
+   crates/radicle-httpd/build/fetch -o crates/radicle-httpd/build/artifacts-ci <version>
+   crates/radicle-httpd/build/compare crates/radicle-httpd/build/artifacts-ci
+   ```
+
+   Do not publish if the archives differ. `compare` takes any folder of archives
+   with their `.sha256`, so the build of another delegate works too.
+
+## Publish
+
+1. Sign the archives with your Radicle key. This checks each archive against its
    `.sha256` and writes a `.sig` alongside:
 
    ```sh
    crates/radicle-httpd/build/sign
    ```
 
-4. Upload. This publishes each binary into its own sibling folder on
+2. Upload. This publishes each binary into its own sibling folder on
    [files.radicle.dev][files] and creates the version-less and `latest` symlinks
    for both:
 
@@ -171,7 +201,8 @@ Do these steps after the tag is canonical.
 > - macOS binaries are unsigned and not notarized; download via CLI only
 > - The build always runs in a `linux/arm64` container, with the base images and
 >   zig pinned, so that builds on different hosts give the same bytes. It runs
->   natively on Apple silicon, and under emulation on amd64 hosts
+>   natively on Apple silicon and on the `large_linux_arm` Buildkite queue, and
+>   under emulation on amd64 hosts
 
 ## Podman Setup
 

@@ -1,0 +1,81 @@
+#!/bin/sh
+set -e
+
+# Downloads the release archives that Buildkite built from the tag
+# `releases/httpd/<version>`, see .buildkite/explorer-release.yml.
+
+usage() {
+  echo "Usage: $0 [-o <dir>] <version>" >&2
+  exit 1
+}
+
+outdir="$(dirname "$0")/artifacts"
+while getopts o: opt; do
+  case "$opt" in
+  o) outdir="$OPTARG" ;;
+  *) usage ;;
+  esac
+done
+shift $((OPTIND - 1))
+[ $# -eq 1 ] || usage
+version="$1"
+
+for tool in curl jq sha256sum; do
+  if ! command -v "$tool" >/dev/null; then
+    echo "fatal: $tool is not installed" >&2
+    exit 1
+  fi
+done
+
+for var in BUILDKITE_API_TOKEN BUILDKITE_ORG BUILDKITE_PIPELINE; do
+  if eval "[ -z \"\$$var\" ]"; then
+    echo "fatal: set $var; the token needs read_builds and read_artifacts" >&2
+    exit 1
+  fi
+done
+
+api="https://api.buildkite.com/v2/organizations/$BUILDKITE_ORG/pipelines/$BUILDKITE_PIPELINE"
+
+get() {
+  curl -sSf -H "Authorization: Bearer $BUILDKITE_API_TOKEN" "$@"
+}
+
+# The other suites run on the tag too, so look for a passed release job rather
+# than a passed build: a flaky test elsewhere must not hide the archives.
+match="$(get "$api/builds?branch=releases/httpd/$version" | jq -c '
+  first(.[] | . as $build | .jobs[]?
+    | select(.step_key == "httpd-release-build" and .state == "passed")
+    | {number: $build.number, web_url: $build.web_url, job: .id}) // empty')"
+if [ -z "$match" ]; then
+  echo "fatal: no passed httpd-release-build job for releases/httpd/$version" >&2
+  exit 1
+fi
+number="$(echo "$match" | jq -r .number)"
+web_url="$(echo "$match" | jq -r .web_url)"
+job="$(echo "$match" | jq -r .job)"
+
+echo "Downloading the archives of $web_url into $outdir.."
+mkdir -p "$outdir"
+
+get "$api/builds/$number/jobs/$job/artifacts?per_page=100" |
+  jq -r '.[] | select(.path | startswith("explorer/crates/radicle-httpd/build/artifacts/")) | "\(.filename) \(.download_url)"' |
+  while read -r filename url; do
+    echo "$filename"
+    # The API redirects to storage that rejects the token, so follow the
+    # redirect without it.
+    location="$(get -o /dev/null -w '%{redirect_url}' "$url")"
+    curl -sSf -o "$outdir/$filename" "$location"
+  done
+
+for target in $(cat "$(dirname "$0")/TARGETS"); do
+  for bin in radicle-httpd radicle-search; do
+    filename="$bin-$version-$target.tar.xz"
+    if [ ! -f "$outdir/$filename" ]; then
+      echo "fatal: the build has no $filename" >&2
+      exit 1
+    fi
+    (cd "$outdir" && sha256sum --check --quiet "$filename.sha256")
+  done
+done
+
+echo "Fetch successful."

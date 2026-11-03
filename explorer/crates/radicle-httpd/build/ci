@@ -1,0 +1,45 @@
+#!/bin/sh
+set -e
+
+# Builds the release archives in Buildkite, from a `releases/httpd/<version>`
+# tag. garden-broker passes the tag name as BUILDKITE_BRANCH and the tag object
+# as BUILDKITE_COMMIT; Buildkite sets no BUILDKITE_TAG.
+
+tag="$BUILDKITE_BRANCH"
+
+case "$tag" in
+releases/httpd/*) ;;
+*)
+  echo "fatal: '$tag' is not a releases/httpd/<version> tag" >&2
+  exit 1
+  ;;
+esac
+
+# Reject a branch that only has the name of a release tag.
+if [ "$(git cat-file -t "$BUILDKITE_COMMIT")" != tag ]; then
+  echo "fatal: $BUILDKITE_COMMIT is not an annotated tag" >&2
+  exit 1
+fi
+name="$(git cat-file tag "$BUILDKITE_COMMIT" | sed -n 's/^tag //p')"
+if [ "$name" != "$tag" ]; then
+  echo "fatal: tag object $BUILDKITE_COMMIT is named '$name', not '$tag'" >&2
+  exit 1
+fi
+
+version="${tag#releases/httpd/}"
+if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+  echo "fatal: '$version' is not a MAJOR.MINOR.PATCH version" >&2
+  exit 1
+fi
+export RADICLE_HTTPD_VERSION="$version"
+
+CONTAINER=docker "$(dirname "$0")/build"
+
+checksums="$("$(dirname "$0")/checksums" | sort -k2)"
+buildkite-agent annotate --style info --context httpd-release <<EOF
+radicle-httpd + radicle-search $version
+
+\`\`\`
+$checksums
+\`\`\`
+EOF

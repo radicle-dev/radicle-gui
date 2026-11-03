@@ -1,0 +1,38 @@
+#!/bin/sh
+set -e
+
+# Compares the checksums of the archives in `artifacts/` with the ones in
+# another folder, for example a CI build from `fetch -o`, or a build of
+# another delegate.
+
+if [ $# -ne 1 ]; then
+  echo "Usage: $0 <dir>" >&2
+  exit 1
+fi
+
+ours="$(dirname "$0")/artifacts"
+theirs="$1"
+
+sums() {
+  if ! ls "$1"/*.tar.xz.sha256 >/dev/null 2>&1; then
+    echo "fatal: no checksums in $1" >&2
+    exit 1
+  fi
+  cat "$1"/*.tar.xz.sha256 | sort -k2
+}
+
+a="$(sums "$ours")"
+b="$(sums "$theirs")"
+
+if [ "$a" = "$b" ]; then
+  echo "$a"
+  echo
+  echo "The archives in $ours and $theirs are the same."
+else
+  echo "fatal: the archives differ ('<' $ours, '>' $theirs):" >&2
+  printf '%s\n' "$a" >"${TMPDIR:-/tmp}/compare.$$.a"
+  printf '%s\n' "$b" >"${TMPDIR:-/tmp}/compare.$$.b"
+  diff "${TMPDIR:-/tmp}/compare.$$.a" "${TMPDIR:-/tmp}/compare.$$.b" >&2 || true
+  rm -f "${TMPDIR:-/tmp}/compare.$$.a" "${TMPDIR:-/tmp}/compare.$$.b"
+  exit 1
+fi

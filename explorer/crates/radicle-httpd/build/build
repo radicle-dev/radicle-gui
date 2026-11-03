@@ -24,6 +24,9 @@ main() {
     ;;
   docker)
     engine=docker
+    # A remote builder, as in Buildkite, only keeps the image in its cache
+    # unless asked to load it into Docker.
+    load=--load
     ;;
   *)
     echo "fatal: CONTAINER must be podman or docker, not '$CONTAINER'" >&2
@@ -62,9 +65,9 @@ main() {
   echo "Building image ($image) with $CONTAINER.."
 
   # Build on linux/arm64 on every host, so that builds on different hosts
-  # give the same bytes. Apple silicon runs it natively; amd64 hosts run it
-  # under emulation.
-  $engine build \
+  # give the same bytes. Apple silicon and the Buildkite release queue run it
+  # natively; amd64 hosts run it under emulation.
+  $engine build $load \
     --build-arg "RUST_VERSION=$rust_version" \
     --build-arg SOURCE_DATE_EPOCH \
     --build-arg TZ \

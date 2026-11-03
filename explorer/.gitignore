@@ -5,6 +5,7 @@ node_modules/
 NOTES
 config/local*
 crates/radicle-httpd/build/artifacts
+crates/radicle-httpd/build/artifacts-ci
 target
 target-docker
 

@@ -13,6 +13,10 @@
 # on the `explorer-check` key defined there, and Buildkite rejects a step whose
 # dependency is not yet part of the build.
 #
+# A push of a `releases/httpd/<version>` tag also starts a build, with the tag
+# name as the branch. explorer-release.yml only runs then; the other suites run
+# too, against the tagged commit.
+#
 # Superseded builds are not cancelled. Buildkite has no YAML equivalent of the
 # GitHub Actions cancel-in-progress.
 
@@ -23,3 +27,4 @@ steps:
       - buildkite-agent pipeline upload .buildkite/explorer-e2e.yml
       - buildkite-agent pipeline upload .buildkite/explorer-visual.yml
       - buildkite-agent pipeline upload .buildkite/explorer-rust.yml
+      - buildkite-agent pipeline upload .buildkite/explorer-release.yml
