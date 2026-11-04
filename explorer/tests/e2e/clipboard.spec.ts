@@ -41,7 +41,7 @@ test("copy to clipboard", async ({ page, browserName, context }) => {
     await page.getByRole("button", { name: "Clone" }).first().click();
     await page
       .locator(".cmd:has-text('rad clone')")
-      .locator(".clipboard")
+      .getByRole("button", { name: "Copy" })
       .first()
       .click();
     await expectClipboard(`rad clone ${sourceBrowsingRid}`);
@@ -52,7 +52,7 @@ test("copy to clipboard", async ({ page, browserName, context }) => {
     await page.getByRole("button", { name: "Git" }).click();
     await page
       .locator(".cmd:has-text('git clone')")
-      .locator(".clipboard")
+      .getByRole("button", { name: "Copy" })
       .first()
       .click();
     await expectClipboard(

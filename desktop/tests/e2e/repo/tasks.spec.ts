@@ -427,6 +427,9 @@ test("ticking a task in a revision keeps its subject", async ({
 
 test("ticking a task on the changes tab is saved", async ({ page, peer }) => {
   await openTaskPatch(page, peer, "?view=changes");
+  // The diff moves the description into place when it first renders, and a
+  // click that lands during the move is dropped.
+  await expect(page.locator("[data-line-type]").first()).toBeVisible();
 
   const reader = page.getByRole("checkbox", { name: "Ask a reader" });
   await waitForCommand(page, "edit_patch", () => reader.click());
