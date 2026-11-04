@@ -37,12 +37,18 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # Cached browser builds and snapshots are specific to the OS release, so
+      # key the caches on it and never restore them on a different runner image.
+      - name: Get runner OS release
+        id: os
+        run: echo "release=$(. /etc/os-release && echo "$ID-$VERSION_ID")" >> $GITHUB_OUTPUT
+
       - name: Evict playwright snapshot cache when pushing to master
         run: |
           if [ ${{ github.ref }} = "refs/heads/master" ]; then
-            echo "Deleting ${{ runner.os }}-snapshots cache"
+            echo "Deleting ${{ steps.os.outputs.release }}-snapshots cache"
             gh extension install actions/gh-actions-cache
-            gh actions-cache delete ${{ runner.os }}-snapshots --confirm || true
+            gh actions-cache delete ${{ steps.os.outputs.release }}-snapshots --confirm || true
             echo "Done"
           fi
         env:
@@ -64,14 +70,14 @@ jobs:
         id: playwright-dep-cache
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
+          key: ${{ steps.os.outputs.release }}-playwright-${{ steps.playwright-version.outputs.version }}
 
       - name: Cache Playwright visual snapshots
         uses: actions/cache@v5
         id: playwright-snapshot-cache
         with:
           path: explorer/tests/visual/snapshots/**/*
-          key: ${{ runner.os }}-snapshots
+          key: ${{ steps.os.outputs.release }}-snapshots
 
       - name: Install Playwright browsers
         if: steps.playwright-dep-cache.outputs.cache-hit != 'true'
