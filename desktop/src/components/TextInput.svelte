@@ -12,6 +12,7 @@
     disabled?: boolean;
     keyShortcuts?: string;
     left?: Snippet;
+    maxlength?: number;
     // Lets shortcuts with Mod through while focused, for fields like filters
     // that hold nothing worth protecting.
     modShortcuts?: boolean;
@@ -37,6 +38,7 @@
     disabled = false,
     keyShortcuts,
     left,
+    maxlength,
     modShortcuts = false,
     name,
     onDismiss,
@@ -157,6 +159,7 @@
     {type}
     {name}
     {placeholder}
+    {maxlength}
     {disabled}
     bind:value
     autocomplete="off"
