@@ -4635,6 +4635,7 @@ dependencies = [
  "radicle",
  "serde",
  "serde_json",
+ "sqlite",
  "thiserror 2.0.19",
 ]
 

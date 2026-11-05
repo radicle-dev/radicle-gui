@@ -9,7 +9,8 @@ use radicle::node::{Handle, Node};
 use radicle::patch::cache::Patches as _;
 use radicle::storage::{ReadRepository, ReadStorage};
 use radicle_board::{
-    Boards as BoardStore, MAX_COLUMN_ID_LEN, MAX_NAME_LEN, MAX_POSITION_LEN, position,
+    Boards as BoardStore, MAX_COLUMN_ID_LEN, MAX_NAME_LEN, MAX_POSITION_LEN, cache_db_path,
+    position,
 };
 
 use crate::cobs;
@@ -22,7 +23,7 @@ pub trait Boards: Profile {
         let profile = self.profile();
         let repo = profile.storage.repository(rid)?;
         let aliases = profile.aliases();
-        let boards = BoardStore::open(&repo, ReadOnly)?;
+        let boards = BoardStore::open_cached(&repo, ReadOnly, cache_db_path(profile.cobs()))?;
 
         let mut boards = boards
             .list()?
@@ -55,7 +56,8 @@ pub trait Boards: Profile {
         }
         let signer = profile.signer()?;
         let aliases = profile.aliases();
-        let mut boards = BoardStore::open(&repo, WriteAs::new(&signer))?;
+        let mut boards =
+            BoardStore::open_cached(&repo, WriteAs::new(&signer), cache_db_path(profile.cobs()))?;
         let (id, board) = boards.create(name)?;
         announce(&profile, rid, &opts);
 
@@ -79,7 +81,8 @@ pub trait Boards: Profile {
         let aliases = profile.aliases();
         let me = profile.public_key;
 
-        let mut boards = BoardStore::open(&repo, WriteAs::new(&signer))?;
+        let mut boards =
+            BoardStore::open_cached(&repo, WriteAs::new(&signer), cache_db_path(profile.cobs()))?;
         let current = boards
             .get(&board)?
             .ok_or(Error::Board("the board doesn't exist"))?;
@@ -189,7 +192,8 @@ pub trait Boards: Profile {
         let repo = profile.storage.repository(rid)?;
         let signer = profile.signer()?;
         let aliases = profile.aliases();
-        let mut boards = BoardStore::open(&repo, WriteAs::new(&signer))?;
+        let mut boards =
+            BoardStore::open_cached(&repo, WriteAs::new(&signer), cache_db_path(profile.cobs()))?;
         let current = boards
             .get(&board)?
             .ok_or(Error::Board("the board doesn't exist"))?;
@@ -222,7 +226,8 @@ pub trait Boards: Profile {
         let repo = profile.storage.repository(rid)?;
         let signer = profile.signer()?;
         let aliases = profile.aliases();
-        let mut boards = BoardStore::open(&repo, WriteAs::new(&signer))?;
+        let mut boards =
+            BoardStore::open_cached(&repo, WriteAs::new(&signer), cache_db_path(profile.cobs()))?;
         let current = boards
             .get(&board)?
             .ok_or(Error::Board("the board doesn't exist"))?;
@@ -304,7 +309,7 @@ fn announce(profile: &radicle::Profile, rid: RepoId, opts: &cobs::CobOptions) {
 mod test {
     use radicle::cob::cache::NoCache;
     use radicle::cob::issue::Issues;
-    use radicle::cob::store::access::WriteAs;
+    use radicle::cob::store::access::{ReadOnly, WriteAs};
     use radicle::cob::{ObjectId, Title};
     use radicle::crypto::{Seed, Signer as _, SigningKey};
     use radicle::identity::{Did, RepoId, Visibility};
@@ -623,5 +628,66 @@ mod test {
         assert_eq!(links.len(), 1);
         assert_eq!(links[0].patch, patch);
         assert_eq!(links[0].issues, vec![issue]);
+    }
+
+    #[test]
+    fn boards_are_read_through_the_cache() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, rid) = setup(tmp.path(), Network::Test);
+        let a = open_issue(&state, rid, "Mine");
+        let bobs = open_issue_as(&state, rid, "Bob's", OTHER_SEED);
+        let board = state.create_board(rid, "Roadmap".into(), quiet()).unwrap();
+        let db = radicle_board::cache_db_path(state.profile.cobs());
+        assert!(db.exists());
+
+        let update = state
+            .update_board(rid, board.id, vec![moved(&a, "todo", "V")], vec![], quiet())
+            .unwrap();
+        let listed = state.list_boards(rid).unwrap();
+        assert_eq!(listed, vec![update.board.clone()]);
+
+        // A row with the current token is served as is.
+        let repo = state.profile.storage.repository(rid).unwrap();
+        let tips: Vec<radicle::git::Oid> = repo
+            .backend
+            .references_glob(&radicle_board::REFS)
+            .unwrap()
+            .map(|r| r.unwrap().target().unwrap().into())
+            .collect();
+        let mut tampered = serde_json::to_value(
+            radicle_board::Boards::open(&repo, ReadOnly)
+                .unwrap()
+                .get(&board.id)
+                .unwrap(),
+        )
+        .unwrap();
+        tampered["name"] = "Tampered".into();
+        radicle_board::cache::Store::open(&db)
+            .unwrap()
+            .update(
+                &rid,
+                &board.id,
+                &radicle_board::cache::head_token(&tips),
+                &serde_json::from_value(tampered).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(state.list_boards(rid).unwrap()[0].name, "Tampered");
+
+        // Bob's move arrives in his namespace, as after a fetch.
+        let bob = SigningKey::from_seed(Seed::new(OTHER_SEED));
+        let mut boards = radicle_board::Boards::open(&repo, WriteAs::new(&bob)).unwrap();
+        let action = boards.move_action(bobs.clone().into(), "todo".into(), "W".into(), None);
+        boards
+            .update(&state.profile.storage, &board.id, vec![action])
+            .unwrap();
+
+        let listed = state.list_boards(rid).unwrap();
+        assert_eq!(listed[0].name, "Roadmap");
+        assert_eq!(listed[0].cards.len(), 2);
+        assert_eq!(listed[0].cards[1].card, bobs);
+        let renamed = state
+            .rename_board(rid, board.id, "Plan".into(), quiet())
+            .unwrap();
+        assert_eq!(state.list_boards(rid).unwrap(), vec![renamed]);
     }
 }

@@ -119,7 +119,27 @@ other tools can read it.
 `radicle`. The type name is `works.monadic.board`; the op manifest carries the
 format version, and ops in a newer format are ignored.
 
-**Changes are batched.** The app waits until nothing has changed for 2.5 seconds
+**Evaluated boards are cached.** Heartwood caches only its own object types, so
+without a cache every read replays every board's history. The app keeps
+evaluated boards in `cobs/boards.db` in the profile, next to heartwood's caches.
+The cache is:
+
+- **Never stale.** Each row is keyed by the board's tips across all namespaces
+  and the format versions. Every read compares them with the references in git,
+  so ops the node fetched in the background are picked up on the next read.
+- **Exact.** A board's state depends only on its tips, because an op's commit
+  has everything it checks (identity document, the card's first op, the proof)
+  as parents. A row with matching tips is the board.
+- **Rebuilt whole, never patched.** A fetched op can be concurrent with ones
+  already applied and sort before them, so a stale board is evaluated again from
+  the start.
+- **Disposable.** Boards whose references are gone are pruned, our own writes
+  store their result, and on any cache error the app evaluates from git.
+
+**Changes are batched and debounced.** Every op is a signed commit that every
+peer fetches and keeps, and that every evaluation replays, so one op per drop
+would grow the board's history with every small rearrangement, including moves
+undone a moment later. The app waits until nothing has changed for 2.5 seconds
 and writes all pending changes as one op, dropping changes that cancel out.
 Pending changes are written when leaving or switching boards, and on quitting,
 which writes without announcing: peers learn of those changes with the

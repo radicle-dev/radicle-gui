@@ -11,8 +11,9 @@
 //! issue's own rules: only a delegate or the author moves an issue into or
 //! out of one, and patches never enter one.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ops::Deref;
+use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::LazyLock;
 
@@ -20,17 +21,29 @@ use radicle::cob::store::{self, CobAction, CobWithType, access};
 use radicle::cob::{self, ActorId, Evaluate, ObjectId, Op, Timestamp, TypeName};
 use radicle::crypto;
 use radicle::git::Oid;
+use radicle::git::fmt::RefString;
 use radicle::identity::{Did, DocAt, RepoId};
 use radicle::node::NodeId;
+use radicle::storage::git::Repository;
 use radicle::storage::{
     ReadRepository, ReadStorage, RepositoryError, SignRepository, WriteRepository,
 };
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "sqlite")]
+pub mod cache;
 pub mod position;
+
+#[cfg(feature = "sqlite")]
+pub use cache::db_path as cache_db_path;
 
 pub static TYPENAME: LazyLock<TypeName> =
     LazyLock::new(|| FromStr::from_str("works.monadic.board").expect("type name is valid"));
+
+/// A glob of every board's references, across all namespaces. It has two
+/// wildcards, so it is for git rather than heartwood's reference patterns.
+pub static REFS: LazyLock<String> =
+    LazyLock::new(|| format!("refs/namespaces/*/refs/cobs/{}/*", TYPENAME.as_str()));
 
 /// The newest format version this crate reads. Heartwood writes every
 /// operation as version 1 and gives writers no way to choose, so raising this
@@ -188,7 +201,76 @@ pub struct Board {
     name: String,
     created_at: Timestamp,
     columns: Vec<Column>,
+    #[serde(with = "cards")]
     cards: BTreeMap<Card, Placement>,
+}
+
+/// Cards as a list of `[card, placement]` pairs, since JSON keys are strings.
+mod cards {
+    use std::collections::BTreeMap;
+
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    use super::{Card, Placement};
+
+    pub fn serialize<S: Serializer>(
+        cards: &BTreeMap<Card, Placement>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(cards)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<BTreeMap<Card, Placement>, D::Error> {
+        Vec::<(Card, Placement)>::deserialize(deserializer).map(|cards| cards.into_iter().collect())
+    }
+}
+
+/// What one evaluation has loaded so far. An identity document is pinned by
+/// its commit and a card's root by its id, so neither can read differently
+/// later in the same evaluation.
+#[derive(Default)]
+struct Memo {
+    docs: HashMap<Oid, Option<Rc<DocAt>>>,
+    roots: HashMap<ObjectId, Option<(ActorId, TypeName)>>,
+}
+
+impl Memo {
+    fn doc<R: ReadRepository>(&mut self, head: Oid, repo: &R) -> Option<Rc<DocAt>> {
+        self.docs
+            .entry(head)
+            .or_insert_with(|| match repo.identity_doc_at(head) {
+                Ok(doc) => Some(Rc::new(doc)),
+                Err(e) => {
+                    log::warn!(target: "board", "Ignoring operations with identity {head} that doesn't load: {e}");
+                    None
+                }
+            })
+            .clone()
+    }
+
+    /// The author and type of `oid` if it is a verified root operation.
+    fn root<R>(&mut self, oid: ObjectId, repo: &R) -> Option<(ActorId, TypeName)>
+    where
+        R: cob::change::Storage<
+                ObjectId = Oid,
+                Parent = Oid,
+                PublicKey = crypto::PublicKey,
+                Signature = crypto::Signature,
+            >,
+    {
+        self.roots
+            .entry(oid)
+            .or_insert_with(|| {
+                let root = cob::change::Storage::load(repo, *oid).ok()?;
+                if !root.valid_signatures() || !root.parents.is_empty() {
+                    return None;
+                }
+                Some((*root.author(), root.manifest.type_name.clone()))
+            })
+            .clone()
+    }
 }
 
 impl Board {
@@ -308,6 +390,7 @@ fn authorized<R>(
     parents: &[Oid],
     doc: &DocAt,
     repo: &R,
+    memo: &mut Memo,
 ) -> bool
 where
     R: ReadRepository
@@ -347,16 +430,13 @@ where
         return false;
     }
 
-    let Ok(root) = cob::change::Storage::load(repo, *card.oid) else {
+    let Some((root_author, type_name)) = memo.root(card.oid, repo) else {
         return false;
     };
-    if !root.valid_signatures()
-        || root.manifest.type_name != card.type_name
-        || !root.parents.is_empty()
-    {
+    if type_name != card.type_name {
         return false;
     }
-    if delegate || *root.author() == *author {
+    if delegate || root_author == *author {
         return true;
     }
 
@@ -368,7 +448,9 @@ where
     }
 
     // The proof, too, has to travel with the op.
-    proof.is_some_and(|proof| parents.contains(&proof) && assigned(&card.oid, &proof, author, repo))
+    proof.is_some_and(|proof| {
+        parents.contains(&proof) && assigned(&card.oid, &proof, author, repo, memo)
+    })
 }
 
 /// The identity commit that `op` names, if it's one of the op's git parents.
@@ -383,7 +465,7 @@ fn linked_identity<R: ReadRepository>(op: Oid, identity: Option<Oid>, repo: &R) 
 
 /// Whether `proof` is an operation of `issue` in which a delegate assigned
 /// `author`.
-fn assigned<R>(issue: &Oid, proof: &Oid, author: &ActorId, repo: &R) -> bool
+fn assigned<R>(issue: &Oid, proof: &Oid, author: &ActorId, repo: &R, memo: &mut Memo) -> bool
 where
     R: ReadRepository
         + cob::change::Storage<
@@ -405,10 +487,9 @@ where
     if proof != issue && !matches!(repo.is_ancestor_of(*issue, *proof), Ok(true)) {
         return false;
     }
-    if linked_identity(*proof, op.identity, repo).is_none() {
-        return false;
-    }
-    let Ok(Some(doc)) = op.identity_doc(repo) else {
+    let Some(doc) =
+        linked_identity(*proof, op.identity, repo).and_then(|head| memo.doc(head, repo))
+    else {
         return false;
     };
     if !doc.is_delegate(&Did::from(op.author)) {
@@ -437,6 +518,23 @@ impl store::Cob for Board {
             return Err(Error::MissingIdentity);
         }
         let doc = op.identity_doc(repo)?.ok_or(Error::MissingIdentity)?;
+        Board::init(op, &doc)
+    }
+
+    fn op<'a, R: ReadRepository, I: IntoIterator<Item = &'a cob::Entry>>(
+        &mut self,
+        _op: Op<Action>,
+        _concurrent: I,
+        _repo: &R,
+    ) -> Result<(), Error> {
+        // Never called: `store::Store` requires `Cob`, but boards are evaluated
+        // through `Evaluate`, whose repository can load the linked objects.
+        Err(Error::Invalid("boards are evaluated through `Evaluate`"))
+    }
+}
+
+impl Board {
+    fn init(op: Op<Action>, doc: &DocAt) -> Result<Self, Error> {
         if !doc.is_delegate(&Did::from(op.author)) {
             return Err(Error::NotDelegate);
         }
@@ -461,45 +559,16 @@ impl store::Cob for Board {
         Ok(board)
     }
 
-    fn op<'a, R: ReadRepository, I: IntoIterator<Item = &'a cob::Entry>>(
-        &mut self,
-        _op: Op<Action>,
-        _concurrent: I,
-        _repo: &R,
-    ) -> Result<(), Error> {
-        // Never called: `store::Store` requires `Cob`, but boards are evaluated
-        // through `Evaluate`, whose repository can load the linked objects.
-        Err(Error::Invalid("boards are evaluated through `Evaluate`"))
-    }
-}
-
-impl<R> Evaluate<R> for Board
-where
-    R: ReadRepository
-        + cob::change::Storage<
-            ObjectId = Oid,
-            Parent = Oid,
-            PublicKey = crypto::PublicKey,
-            Signature = crypto::Signature,
-        >,
-{
-    type Error = Error;
-
-    fn init(entry: &cob::Entry, repo: &R) -> Result<Self, Error> {
-        // Checked before decoding, as a newer format's actions may not decode.
-        if !supported(entry.manifest.version) {
-            return Err(Error::Version(entry.manifest.version.into()));
-        }
-        let op = Op::try_from(entry)?;
-        <Board as store::Cob>::from_root(op, repo)
-    }
-
-    fn apply<'a, I: Iterator<Item = (&'a cob::EntryId, &'a cob::Entry)>>(
-        &mut self,
-        entry: &cob::Entry,
-        _concurrent: I,
-        repo: &R,
-    ) -> Result<(), Error> {
+    fn apply_entry<R>(&mut self, entry: &cob::Entry, repo: &R, memo: &mut Memo) -> Result<(), Error>
+    where
+        R: ReadRepository
+            + cob::change::Storage<
+                ObjectId = Oid,
+                Parent = Oid,
+                PublicKey = crypto::PublicKey,
+                Signature = crypto::Signature,
+            >,
+    {
         if !supported(entry.manifest.version) {
             log::debug!(target: "board", "Ignoring operation {} in a newer format", entry.id);
             return Ok(());
@@ -520,19 +589,15 @@ where
                 return Ok(());
             }
         };
-        if !op.identity.is_some_and(|head| parents.contains(&head)) {
+        let Some(doc) = op
+            .identity
+            .filter(|head| parents.contains(head))
+            .and_then(|head| memo.doc(head, repo))
+        else {
             return Ok(());
-        }
-        let doc = match op.identity_doc(repo) {
-            Ok(Some(doc)) => doc,
-            Ok(None) => return Ok(()),
-            Err(e) => {
-                log::warn!(target: "board", "Ignoring operation {} without an identity: {e}", op.id);
-                return Ok(());
-            }
         };
         for action in op.actions {
-            if authorized(self, &action, &op.author, &parents, &doc, repo) {
+            if authorized(self, &action, &op.author, &parents, &doc, repo, memo) {
                 self.apply_action(action, op.author, op.timestamp);
             } else {
                 log::debug!(target: "board", "Ignoring unauthorized action in {}", op.id);
@@ -543,8 +608,122 @@ where
     }
 }
 
+fn init_entry<R: ReadRepository>(entry: &cob::Entry, repo: &R) -> Result<(Board, DocAt), Error> {
+    // Checked before decoding, as a newer format's actions may not decode.
+    if !supported(entry.manifest.version) {
+        return Err(Error::Version(entry.manifest.version.into()));
+    }
+    let op = Op::try_from(entry)?;
+    if linked_identity(op.id, op.identity, repo).is_none() {
+        return Err(Error::MissingIdentity);
+    }
+    let doc = op.identity_doc(repo)?.ok_or(Error::MissingIdentity)?;
+    let board = Board::init(op, &doc)?;
+
+    Ok((board, doc))
+}
+
+/// The evaluator heartwood uses when it writes an operation. It loads every
+/// linked object afresh; reads go through [`Memoised`].
+impl<R> Evaluate<R> for Board
+where
+    R: ReadRepository
+        + cob::change::Storage<
+            ObjectId = Oid,
+            Parent = Oid,
+            PublicKey = crypto::PublicKey,
+            Signature = crypto::Signature,
+        >,
+{
+    type Error = Error;
+
+    fn init(entry: &cob::Entry, repo: &R) -> Result<Self, Error> {
+        init_entry(entry, repo).map(|(board, _)| board)
+    }
+
+    fn apply<'a, I: Iterator<Item = (&'a cob::EntryId, &'a cob::Entry)>>(
+        &mut self,
+        entry: &cob::Entry,
+        _concurrent: I,
+        repo: &R,
+    ) -> Result<(), Error> {
+        self.apply_entry(entry, repo, &mut Memo::default())
+    }
+}
+
+/// A board under evaluation, loading each identity document and card root
+/// once. It reaches the same state as [`Board`]'s own evaluation.
+struct Memoised {
+    board: Board,
+    memo: Memo,
+}
+
+impl<R> Evaluate<R> for Memoised
+where
+    R: ReadRepository
+        + cob::change::Storage<
+            ObjectId = Oid,
+            Parent = Oid,
+            PublicKey = crypto::PublicKey,
+            Signature = crypto::Signature,
+        >,
+{
+    type Error = Error;
+
+    fn init(entry: &cob::Entry, repo: &R) -> Result<Self, Error> {
+        let (board, doc) = init_entry(entry, repo)?;
+        let mut memo = Memo::default();
+        memo.docs.insert(doc.commit, Some(Rc::new(doc)));
+
+        Ok(Self { board, memo })
+    }
+
+    fn apply<'a, I: Iterator<Item = (&'a cob::EntryId, &'a cob::Entry)>>(
+        &mut self,
+        entry: &cob::Entry,
+        _concurrent: I,
+        repo: &R,
+    ) -> Result<(), Error> {
+        self.board.apply_entry(entry, repo, &mut self.memo)
+    }
+}
+
+/// The tips of every board's references, by board.
+fn tips<R: AsRef<Repository>>(repo: &R) -> Result<BTreeMap<BoardId, Vec<Oid>>, store::Error> {
+    let mut tips: BTreeMap<BoardId, Vec<Oid>> = BTreeMap::new();
+    let refs = repo
+        .as_ref()
+        .backend
+        .references_glob(&REFS)
+        .map_err(store::Error::Git)?;
+    for reference in refs {
+        let reference = reference.map_err(store::Error::Git)?;
+        let (Ok(name), Some(oid)) = (reference.name(), reference.target()) else {
+            continue;
+        };
+        let Ok(name) = RefString::try_from(name) else {
+            continue;
+        };
+        if let Some((_, id)) = cob::object::parse_refstr(&name) {
+            tips.entry(id).or_default().push(oid.into());
+        }
+    }
+
+    Ok(tips)
+}
+
+#[cfg(feature = "sqlite")]
+fn tips_of<R: ReadRepository>(repo: &R, id: &BoardId) -> Result<Vec<Oid>, store::Error> {
+    let pattern = radicle::git::refs::storage::cobs(&TYPENAME, id);
+    let refs = repo.references_glob(&pattern).map_err(store::Error::Git)?;
+
+    Ok(refs.into_iter().map(|(_, oid)| oid).collect())
+}
+
 pub struct Boards<'a, R, A> {
     raw: store::Store<'a, Board, R, A>,
+    #[cfg(feature = "sqlite")]
+    cache: Option<cache::Store>,
 }
 
 impl<'a, R, A> Deref for Boards<'a, R, A> {
@@ -564,7 +743,11 @@ where
         let identity = repository.identity_head()?;
         let raw = store::Store::open_for(&TYPENAME, repository, access)?.identity(identity);
 
-        Ok(Self { raw })
+        Ok(Self {
+            raw,
+            #[cfg(feature = "sqlite")]
+            cache: None,
+        })
     }
 
     /// Whether `card` may go on this repository's boards. A move writes the
@@ -586,11 +769,30 @@ where
         }
         Ok(())
     }
+
+    /// Opens the boards with a cache of evaluated boards at `path`, which
+    /// serves reads whose board hasn't changed and takes our own writes. If
+    /// the cache can't be opened, reads evaluate from git.
+    #[cfg(feature = "sqlite")]
+    pub fn open_cached(
+        repository: &'a R,
+        access: A,
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<Self, RepositoryError> {
+        let mut boards = Self::open(repository, access)?;
+        match cache::Store::open(path) {
+            Ok(cache) => boards.cache = Some(cache),
+            Err(e) => log::warn!(target: "board", "Board cache disabled: {e}"),
+        }
+
+        Ok(boards)
+    }
 }
 
 impl<'a, R, A> Boards<'a, R, A>
 where
     R: ReadRepository
+        + AsRef<Repository>
         + cob::Store<Namespace = NodeId>
         + cob::change::Storage<
             ObjectId = Oid,
@@ -601,11 +803,56 @@ where
     A: access::Access + 'a,
 {
     pub fn get(&self, id: &BoardId) -> Result<Option<Board>, store::Error> {
-        self.raw.get(id)
+        #[cfg(feature = "sqlite")]
+        if let Some(cache) = &self.cache {
+            match self.cached_get(cache, id) {
+                Ok(board) => return Ok(board),
+                Err(CacheError::Store(e)) => return Err(e),
+                Err(CacheError::Cache(e)) => {
+                    log::warn!(target: "board", "Board cache failed, evaluating from git: {e}");
+                }
+            }
+        }
+        self.evaluate(id)
     }
 
     pub fn list(&self) -> Result<Vec<(BoardId, Board)>, store::Error> {
-        self.raw.all()?.collect()
+        #[cfg(feature = "sqlite")]
+        if let Some(cache) = &self.cache {
+            match self.cached_list(cache) {
+                Ok(boards) => return Ok(boards),
+                Err(CacheError::Store(e)) => return Err(e),
+                Err(CacheError::Cache(e)) => {
+                    log::warn!(target: "board", "Board cache failed, evaluating from git: {e}");
+                }
+            }
+        }
+        let mut boards = Vec::new();
+        for id in tips(self.raw.as_ref())?.keys() {
+            if let Some(board) = self.evaluate_or_skip(id) {
+                boards.push((*id, board));
+            }
+        }
+
+        Ok(boards)
+    }
+
+    fn evaluate(&self, id: &BoardId) -> Result<Option<Board>, store::Error> {
+        let cob = cob::get::<Memoised, _>(self.raw.as_ref(), &TYPENAME, id)?;
+
+        Ok(cob.map(|cob| cob.object.board))
+    }
+
+    /// A board that fails to evaluate is left out, as heartwood's listing
+    /// leaves out such objects.
+    fn evaluate_or_skip(&self, id: &BoardId) -> Option<Board> {
+        match self.evaluate(id) {
+            Ok(board) => board,
+            Err(e) => {
+                log::debug!(target: "board", "Leaving out board {id} that doesn't evaluate: {e}");
+                None
+            }
+        }
     }
 
     /// Whether `author` may carry out `action` on `board` as of the
@@ -626,6 +873,7 @@ where
             &action.parents(),
             &doc,
             repo,
+            &mut Memo::default(),
         ))
     }
 
@@ -649,10 +897,125 @@ where
     }
 }
 
+#[cfg(feature = "sqlite")]
+enum CacheError {
+    Store(store::Error),
+    Cache(cache::Error),
+}
+
+#[cfg(feature = "sqlite")]
+impl From<cache::Error> for CacheError {
+    fn from(e: cache::Error) -> Self {
+        Self::Cache(e)
+    }
+}
+
+/// The board of a cached row that is current and reads.
+#[cfg(feature = "sqlite")]
+fn fresh(row: Option<cache::Row>, token: &str) -> Option<Board> {
+    let row = row?;
+    if row.head != token {
+        return None;
+    }
+    serde_json::from_str(&row.board).ok()
+}
+
+#[cfg(feature = "sqlite")]
+impl<'a, R, A> Boards<'a, R, A>
+where
+    R: ReadRepository
+        + AsRef<Repository>
+        + cob::Store<Namespace = NodeId>
+        + cob::change::Storage<
+            ObjectId = Oid,
+            Parent = Oid,
+            PublicKey = crypto::PublicKey,
+            Signature = crypto::Signature,
+        >,
+    A: access::Access + 'a,
+{
+    fn cached_get(&self, cache: &cache::Store, id: &BoardId) -> Result<Option<Board>, CacheError> {
+        let repo = self.raw.as_ref();
+        let rid = repo.id();
+        let tips = tips_of(repo, id).map_err(CacheError::Store)?;
+        if tips.is_empty() {
+            cache.remove(&rid, id)?;
+            return Ok(None);
+        }
+        let token = cache::head_token(&tips);
+        if let Some(board) = fresh(cache.get(&rid, id)?, &token) {
+            return Ok(Some(board));
+        }
+        let board = self.evaluate(id).map_err(CacheError::Store)?;
+        match &board {
+            Some(board) => cache.update(&rid, id, &token, board)?,
+            None => cache.remove(&rid, id)?,
+        }
+
+        Ok(board)
+    }
+
+    fn cached_list(&self, cache: &cache::Store) -> Result<Vec<(BoardId, Board)>, CacheError> {
+        let repo = self.raw.as_ref();
+        let rid = repo.id();
+        let current = tips(repo).map_err(CacheError::Store)?;
+        let mut rows: HashMap<BoardId, cache::Row> = cache.rows(&rid)?.into_iter().collect();
+        let mut boards = Vec::new();
+        for (id, tips) in &current {
+            let token = cache::head_token(tips);
+            if let Some(board) = fresh(rows.remove(id), &token) {
+                boards.push((*id, board));
+                continue;
+            }
+            match self.evaluate_or_skip(id) {
+                Some(board) => {
+                    cache.update(&rid, id, &token, &board)?;
+                    boards.push((*id, board));
+                }
+                None => cache.remove(&rid, id)?,
+            }
+        }
+        for id in rows.keys() {
+            cache.remove(&rid, id)?;
+        }
+
+        Ok(boards)
+    }
+
+    /// Stores a board we wrote, unless another namespace's tip changed in the
+    /// meantime: then the next read evaluates it with that change.
+    fn remember(&self, id: &BoardId, before: &[Oid], head: Oid, board: &Board) {
+        let Some(cache) = &self.cache else {
+            return;
+        };
+        let repo = self.raw.as_ref();
+        let result = tips_of(repo, id)
+            .map_err(CacheError::Store)
+            .and_then(|after| {
+                let expected = after.contains(&head)
+                    && after.iter().all(|tip| *tip == head || before.contains(tip));
+                if !expected {
+                    return Ok(());
+                }
+                Ok(cache.update(&repo.id(), id, &cache::head_token(&after), board)?)
+            });
+        match result {
+            Ok(()) => {}
+            Err(CacheError::Store(e)) => {
+                log::warn!(target: "board", "Board cache write skipped: {e}");
+            }
+            Err(CacheError::Cache(e)) => {
+                log::warn!(target: "board", "Board cache write failed: {e}");
+            }
+        }
+    }
+}
+
 impl<'a, R, S> Boards<'a, R, access::WriteAs<'a, S>>
 where
     R: WriteRepository
         + SignRepository
+        + AsRef<Repository>
         + cob::Store<Namespace = NodeId>
         + cob::change::Storage<
             ObjectId = Oid,
@@ -663,11 +1026,15 @@ where
     S: crypto::Signer,
 {
     pub fn create(&mut self, name: &str) -> Result<(BoardId, Board), store::Error> {
-        store::Transaction::initial("Create board", &mut self.raw, |tx, _| {
+        let (id, board) = store::Transaction::initial("Create board", &mut self.raw, |tx, _| {
             tx.push(Action::Edit {
                 name: name.to_string(),
             })
-        })
+        })?;
+        #[cfg(feature = "sqlite")]
+        self.remember(&id, &[], *id, &board);
+
+        Ok((id, board))
     }
 
     pub fn rename(&mut self, id: &BoardId, name: &str) -> Result<Board, store::Error> {
@@ -713,7 +1080,13 @@ where
     ) -> Result<Board, store::Error> {
         let mut tx = store::Transaction::<Board, R>::default();
         tx.extend(actions)?;
-        let (board, _) = tx.commit(message, *id, &mut self.raw)?;
+        #[cfg(feature = "sqlite")]
+        let before = tips_of(self.raw.as_ref(), id)?;
+        let (board, head) = tx.commit(message, *id, &mut self.raw)?;
+        #[cfg(feature = "sqlite")]
+        self.remember(id, &before, head, &board);
+        #[cfg(not(feature = "sqlite"))]
+        let _ = head;
 
         Ok(board)
     }

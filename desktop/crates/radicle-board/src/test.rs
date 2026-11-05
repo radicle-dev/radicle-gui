@@ -1142,6 +1142,400 @@ fn oversized_names_columns_and_positions_are_ignored() {
 }
 
 #[test]
+fn memoised_and_plain_evaluation_agree() {
+    let test::setup::NodeWithRepo {
+        node: alice, repo, ..
+    } = test::setup::NodeWithRepo::default();
+    let bob = SigningKey::mock(1);
+    let alices = open_issue(&repo, &alice.signer, "Alice's issue");
+    let assigned = open_issue(&repo, &alice.signer, "Assigned to Bob");
+    let bobs = open_issue(&repo, &bob, "Bob's issue");
+    let patch = open_patch(&repo, &alice.signer, "A patch");
+    let mut issues = Issues::open(&*repo, WriteAs::new(&alice.signer)).unwrap();
+    let proof = issues
+        .get_mut(&assigned, &mut NoCache)
+        .unwrap()
+        .assign([Did::from(*bob.public_key())])
+        .unwrap();
+
+    let mut boards = Boards::open(&*repo, WriteAs::new(&alice.signer)).unwrap();
+    let (id, _) = boards.create("Roadmap").unwrap();
+    let a = issue_card(&*repo, alices);
+    let s = issue_card(&*repo, assigned);
+    let b = issue_card(&*repo, bobs);
+    let p = patch_card(&*repo, patch);
+    move_card(
+        &alice.storage,
+        &mut boards,
+        &id,
+        a.clone(),
+        "todo",
+        first(),
+        None,
+    );
+    move_card(
+        &alice.storage,
+        &mut boards,
+        &id,
+        s.clone(),
+        "todo",
+        first(),
+        None,
+    );
+    move_card(
+        &alice.storage,
+        &mut boards,
+        &id,
+        p.clone(),
+        "in-review",
+        first(),
+        None,
+    );
+
+    let mut bobs_boards = Boards::open(&*repo, WriteAs::new(&bob)).unwrap();
+    // The same card and identity come up in allowed and denied moves, so a
+    // memo that kept more than the loaded objects would show here.
+    move_card(
+        &alice.storage,
+        &mut bobs_boards,
+        &id,
+        b.clone(),
+        "in-progress",
+        first(),
+        None,
+    );
+    move_card(
+        &alice.storage,
+        &mut bobs_boards,
+        &id,
+        a.clone(),
+        "done",
+        first(),
+        None,
+    );
+    move_card(
+        &alice.storage,
+        &mut bobs_boards,
+        &id,
+        s.clone(),
+        "done",
+        first(),
+        Some(proof),
+    );
+    move_card(
+        &alice.storage,
+        &mut bobs_boards,
+        &id,
+        s.clone(),
+        "in-progress",
+        first(),
+        Some(proof),
+    );
+    move_card(
+        &alice.storage,
+        &mut bobs_boards,
+        &id,
+        p.clone(),
+        "done",
+        first(),
+        None,
+    );
+    move_card(
+        &alice.storage,
+        &mut bobs_boards,
+        &id,
+        a.clone(),
+        "backlog",
+        first(),
+        Some(proof),
+    );
+    move_card(
+        &alice.storage,
+        &mut boards,
+        &id,
+        a.clone(),
+        "canceled",
+        first(),
+        None,
+    );
+    bobs_boards
+        .update(
+            &alice.storage,
+            &id,
+            vec![Action::Remove { card: p.clone() }],
+        )
+        .unwrap();
+
+    let plain = radicle::cob::get::<Board, _>(&*repo, &crate::TYPENAME, &id)
+        .unwrap()
+        .unwrap()
+        .object;
+    let memoised = Boards::open(&*repo, ReadOnly)
+        .unwrap()
+        .get(&id)
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(memoised, plain);
+    assert_eq!(plain.placement(&a).unwrap().column, "canceled");
+    assert_eq!(plain.placement(&s).unwrap().column, "in-progress");
+    assert_eq!(plain.placement(&b).unwrap().column, "in-progress");
+    assert_eq!(plain.placement(&p).unwrap().column, "in-review");
+}
+
+#[cfg(feature = "sqlite")]
+mod cache {
+    use std::str::FromStr;
+
+    use radicle::cob::store::access::{ReadOnly, WriteAs};
+    use radicle::crypto::SigningKey;
+    use radicle::storage::ReadRepository;
+    use radicle::test;
+
+    use super::{first, issue_card, move_card, open_issue};
+    use crate::cache::{Store, head_token};
+    use crate::{Board, BoardId, Boards, REFS};
+
+    type Repo = radicle::storage::git::Repository;
+
+    fn tips(repo: &Repo) -> Vec<radicle::git::Oid> {
+        repo.backend
+            .references_glob(&REFS)
+            .unwrap()
+            .map(|r| r.unwrap().target().unwrap().into())
+            .collect()
+    }
+
+    /// Stores a board named "Tampered" under `token`, to tell a read served
+    /// from the cache from one that evaluated.
+    fn tamper(path: &std::path::Path, repo: &Repo, id: &BoardId, token: &str) -> Board {
+        let board = Boards::open(repo, ReadOnly).unwrap().get(id).unwrap();
+        let mut json = serde_json::to_value(board).unwrap();
+        json["name"] = "Tampered".into();
+        let tampered: Board = serde_json::from_value(json).unwrap();
+        assert_eq!(tampered.name(), "Tampered");
+        Store::open(path)
+            .unwrap()
+            .update(&repo.id(), id, token, &tampered)
+            .unwrap();
+        tampered
+    }
+
+    fn stored(path: &std::path::Path, repo: &Repo, id: &BoardId) -> Option<(String, Board)> {
+        let row = Store::open(path).unwrap().get(&repo.id(), id).unwrap()?;
+        Some((row.head, serde_json::from_str(&row.board).unwrap()))
+    }
+
+    #[test]
+    fn a_hit_is_the_evaluated_board() {
+        let test::setup::NodeWithRepo {
+            node: alice, repo, ..
+        } = test::setup::NodeWithRepo::default();
+        let path = alice.root.join("boards.db");
+        let issue = open_issue(&repo, &alice.signer, "Issue");
+        let mut boards = Boards::open(&*repo, WriteAs::new(&alice.signer)).unwrap();
+        let (id, _) = boards.create("Roadmap").unwrap();
+        move_card(
+            &alice.storage,
+            &mut boards,
+            &id,
+            issue_card(&*repo, issue),
+            "todo",
+            first(),
+            None,
+        );
+        let plain = Boards::open(&*repo, ReadOnly).unwrap();
+
+        let cached = Boards::open_cached(&*repo, ReadOnly, &path).unwrap();
+        assert_eq!(cached.get(&id).unwrap(), plain.get(&id).unwrap());
+        assert_eq!(cached.list().unwrap(), plain.list().unwrap());
+        let (head, board) = stored(&path, &repo, &id).unwrap();
+        assert_eq!(head, head_token(&tips(&repo)));
+        assert_eq!(Some(board), plain.get(&id).unwrap());
+
+        let tampered = tamper(&path, &repo, &id, &head_token(&tips(&repo)));
+        assert_eq!(cached.get(&id).unwrap().unwrap(), tampered);
+        assert_eq!(cached.list().unwrap(), vec![(id, tampered)]);
+    }
+
+    #[test]
+    fn a_new_operation_in_any_namespace_is_evaluated() {
+        let test::setup::NodeWithRepo {
+            node: alice, repo, ..
+        } = test::setup::NodeWithRepo::default();
+        let path = alice.root.join("boards.db");
+        let bob = SigningKey::mock(1);
+        let bobs = open_issue(&repo, &bob, "Bob's issue");
+        let mut boards = Boards::open(&*repo, WriteAs::new(&alice.signer)).unwrap();
+        let (id, _) = boards.create("Roadmap").unwrap();
+        let cached = Boards::open_cached(&*repo, ReadOnly, &path).unwrap();
+        cached.get(&id).unwrap();
+
+        // Bob's reference appears as it would after a fetch of his namespace.
+        tamper(&path, &repo, &id, &head_token(&tips(&repo)));
+        let mut bobs_boards = Boards::open(&*repo, WriteAs::new(&bob)).unwrap();
+        let card = issue_card(&*repo, bobs);
+        let written = move_card(
+            &alice.storage,
+            &mut bobs_boards,
+            &id,
+            card.clone(),
+            "todo",
+            first(),
+            None,
+        );
+        assert_eq!(tips(&repo).len(), 2);
+        let board = cached.get(&id).unwrap().unwrap();
+        assert_eq!(board, written);
+        assert_eq!(board.placement(&card).unwrap().column, "todo");
+        assert_eq!(cached.list().unwrap(), vec![(id, written)]);
+
+        tamper(&path, &repo, &id, &head_token(&tips(&repo)));
+        let written = move_card(
+            &alice.storage,
+            &mut boards,
+            &id,
+            card.clone(),
+            "done",
+            first(),
+            None,
+        );
+        assert_eq!(cached.get(&id).unwrap().unwrap(), written);
+        assert_eq!(cached.list().unwrap(), vec![(id, written)]);
+    }
+
+    #[test]
+    fn a_deleted_board_is_pruned() {
+        let test::setup::NodeWithRepo {
+            node: alice, repo, ..
+        } = test::setup::NodeWithRepo::default();
+        let path = alice.root.join("boards.db");
+        let mut boards = Boards::open(&*repo, WriteAs::new(&alice.signer)).unwrap();
+        let (id, _) = boards.create("Roadmap").unwrap();
+        let (other, _) = boards.create("Other").unwrap();
+        let cached = Boards::open_cached(&*repo, ReadOnly, &path).unwrap();
+        assert_eq!(cached.list().unwrap().len(), 2);
+        assert!(stored(&path, &repo, &id).is_some());
+
+        for reference in repo.backend.references_glob(&REFS).unwrap() {
+            let mut reference = reference.unwrap();
+            if reference.name().unwrap().ends_with(&id.to_string()) {
+                reference.delete().unwrap();
+            }
+        }
+
+        let listed = cached.list().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].0, other);
+        assert!(stored(&path, &repo, &id).is_none());
+
+        tamper(&path, &repo, &other, &head_token(&tips(&repo)));
+        for reference in repo.backend.references_glob(&REFS).unwrap() {
+            reference.unwrap().delete().unwrap();
+        }
+        assert_eq!(cached.get(&other).unwrap(), None);
+        assert!(stored(&path, &repo, &other).is_none());
+    }
+
+    #[test]
+    fn a_format_change_invalidates() {
+        let test::setup::NodeWithRepo {
+            node: alice, repo, ..
+        } = test::setup::NodeWithRepo::default();
+        let path = alice.root.join("boards.db");
+        let mut boards = Boards::open(&*repo, WriteAs::new(&alice.signer)).unwrap();
+        let (id, _) = boards.create("Roadmap").unwrap();
+        let cached = Boards::open_cached(&*repo, ReadOnly, &path).unwrap();
+        let token = head_token(&tips(&repo));
+        let (format, tips) = token.split_once(':').unwrap();
+        assert_eq!(format, format!("v{}.{}", 5, crate::VERSION));
+
+        for stale in [
+            format!("v4.{}:{tips}", crate::VERSION),
+            format!("v5.0:{tips}"),
+        ] {
+            tamper(&path, &repo, &id, &stale);
+            assert_eq!(cached.get(&id).unwrap().unwrap().name(), "Roadmap");
+            assert_eq!(stored(&path, &repo, &id).unwrap().0, token);
+            tamper(&path, &repo, &id, &stale);
+            assert_eq!(cached.list().unwrap()[0].1.name(), "Roadmap");
+            assert_eq!(stored(&path, &repo, &id).unwrap().0, token);
+        }
+    }
+
+    #[test]
+    fn a_broken_cache_falls_back_to_evaluation() {
+        let test::setup::NodeWithRepo {
+            node: alice, repo, ..
+        } = test::setup::NodeWithRepo::default();
+        let path = alice.root.join("boards.db");
+        let mut boards = Boards::open(&*repo, WriteAs::new(&alice.signer)).unwrap();
+        let (id, board) = boards.create("Roadmap").unwrap();
+
+        std::fs::write(&path, "not a database").unwrap();
+        let corrupt = Boards::open_cached(&*repo, ReadOnly, &path).unwrap();
+        assert_eq!(corrupt.get(&id).unwrap().unwrap(), board);
+        assert_eq!(corrupt.list().unwrap(), vec![(id, board.clone())]);
+
+        std::fs::remove_file(&path).unwrap();
+        let cached = Boards::open_cached(&*repo, ReadOnly, &path).unwrap();
+        assert_eq!(cached.get(&id).unwrap().unwrap(), board);
+        sqlite::open(&path)
+            .unwrap()
+            .execute("DROP TABLE boards")
+            .unwrap();
+        assert_eq!(cached.get(&id).unwrap().unwrap(), board);
+        assert_eq!(cached.list().unwrap(), vec![(id, board)]);
+    }
+
+    #[test]
+    fn writes_store_the_written_board() {
+        let test::setup::NodeWithRepo {
+            node: alice, repo, ..
+        } = test::setup::NodeWithRepo::default();
+        let path = alice.root.join("boards.db");
+        let issue = open_issue(&repo, &alice.signer, "Issue");
+        let mut boards = Boards::open_cached(&*repo, WriteAs::new(&alice.signer), &path).unwrap();
+
+        let (id, created) = boards.create("Roadmap").unwrap();
+        assert_eq!(
+            stored(&path, &repo, &id).unwrap(),
+            (head_token(&tips(&repo)), created)
+        );
+
+        let card = issue_card(&*repo, issue);
+        let moved = move_card(
+            &alice.storage,
+            &mut boards,
+            &id,
+            card.clone(),
+            "todo",
+            first(),
+            None,
+        );
+        assert_eq!(
+            stored(&path, &repo, &id).unwrap(),
+            (head_token(&tips(&repo)), moved)
+        );
+        let renamed = boards.rename(&id, "Plan").unwrap();
+        assert_eq!(stored(&path, &repo, &id).unwrap().1, renamed);
+        let columns = boards
+            .set_columns(&id, vec![crate::Column::new("one", "One", None)])
+            .unwrap();
+        let (head, stored_board) = stored(&path, &repo, &id).unwrap();
+        assert_eq!(stored_board, columns);
+        assert_eq!(head, head_token(&tips(&repo)));
+        assert_eq!(stored_board.name(), "Plan");
+        assert_eq!(stored_board.columns().len(), 1);
+
+        // Served from the cache: the row has the current token.
+        let tampered = tamper(&path, &repo, &id, &head);
+        assert_eq!(boards.get(&id).unwrap().unwrap(), tampered);
+        let _ = BoardId::from_str(&id.to_string()).unwrap();
+    }
+}
+
+#[test]
 fn moves_that_do_not_link_their_local_card_are_ignored() {
     let test::setup::NodeWithRepo {
         node: alice, repo, ..
