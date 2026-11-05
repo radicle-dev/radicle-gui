@@ -1,7 +1,12 @@
 mod commands;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+
 use radicle_types::AppState;
-use tauri::Manager;
+#[cfg(target_os = "macos")]
+use tauri::menu::{Menu, MenuItem, MenuItemKind};
+use tauri::{Emitter, Manager};
 use tauri_plugin_log::{Target, TargetKind};
 
 use commands::{auth, cob, diff, identity, inbox, profile, repo, startup, thread};
@@ -52,7 +57,7 @@ pub fn run() {
                 .build(),
         );
 
-    builder
+    let builder = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -61,7 +66,18 @@ pub fn run() {
         .setup(|app| {
             register_rad_scheme(app);
             Ok(())
-        })
+        });
+    // Tauri only installs a default menu on macOS, so only there is one
+    // replaced.
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(app_menu).on_menu_event(|app, event| {
+        if event.id() == QUIT {
+            quit(app);
+        }
+    });
+
+    builder
+        .on_window_event(flush_before_close)
         .invoke_handler(tauri::generate_handler![
             auth::authenticate,
             auth::init,
@@ -149,6 +165,71 @@ pub fn run() {
         ])
         .run(context)
         .expect("error while running tauri application");
+}
+
+#[cfg(target_os = "macos")]
+const QUIT: &str = "quit";
+
+// The default menu's Quit terminates the app without closing its window, which
+// would skip the flush below, so it's replaced by one that closes the window.
+#[cfg(target_os = "macos")]
+fn app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<R>> {
+    let menu = Menu::default(app)?;
+    for item in menu.items()? {
+        let MenuItemKind::Submenu(submenu) = item else {
+            continue;
+        };
+        for (index, entry) in submenu.items()?.into_iter().enumerate() {
+            let MenuItemKind::Predefined(predefined) = entry else {
+                continue;
+            };
+            let text = predefined.text()?;
+            if !text.trim_start_matches('&').starts_with("Quit") {
+                continue;
+            }
+            submenu.remove(&predefined)?;
+            let item = MenuItem::with_id(app, QUIT, text, true, Some("CmdOrCtrl+Q"))?;
+            submenu.insert(&item, index)?;
+        }
+    }
+    Ok(menu)
+}
+
+#[cfg(target_os = "macos")]
+fn quit<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    match app.get_webview_window("main") {
+        Some(window) => {
+            if let Err(e) = window.close() {
+                log::warn!("Unable to close the main window: {e}");
+                app.exit(0);
+            }
+        }
+        None => app.exit(0),
+    }
+}
+
+// The frontend holds back some writes, such as board changes, to batch them.
+// The first close asks it to flush and close the window itself, which it does
+// as soon as the flush is through; if it doesn't within five seconds, the
+// window closes anyway.
+fn flush_before_close(window: &tauri::Window, event: &tauri::WindowEvent) {
+    static CLOSING: AtomicBool = AtomicBool::new(false);
+
+    let tauri::WindowEvent::CloseRequested { api, .. } = event else {
+        return;
+    };
+    if CLOSING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    api.prevent_close();
+    if let Err(e) = window.emit("close-requested", ()) {
+        log::warn!("Unable to ask the frontend to flush before closing: {e}");
+    }
+    let window = window.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(5));
+        let _ = window.close();
+    });
 }
 
 // Installers register the scheme; an AppImage has to do it at runtime. It
