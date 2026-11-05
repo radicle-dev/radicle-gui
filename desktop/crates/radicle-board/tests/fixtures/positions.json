@@ -1,0 +1,223 @@
+{
+  "between": [
+    {
+      "before": null,
+      "after": null,
+      "key": "V"
+    },
+    {
+      "before": "V",
+      "after": null,
+      "key": "k"
+    },
+    {
+      "before": null,
+      "after": "V",
+      "key": "F"
+    },
+    {
+      "before": "V",
+      "after": "W",
+      "key": "VV"
+    },
+    {
+      "before": "A",
+      "after": "C",
+      "key": "B"
+    },
+    {
+      "before": "k",
+      "after": "l",
+      "key": "kV"
+    },
+    {
+      "before": "V",
+      "after": "V1",
+      "key": "V0V"
+    },
+    {
+      "before": "Vz",
+      "after": "W",
+      "key": "VzV"
+    },
+    {
+      "before": "zz",
+      "after": null,
+      "key": "zzV"
+    },
+    {
+      "before": "1",
+      "after": null,
+      "key": "V"
+    },
+    {
+      "before": null,
+      "after": "1",
+      "key": "0V"
+    },
+    {
+      "before": "AB",
+      "after": "AC",
+      "key": "ABV"
+    },
+    {
+      "before": "A",
+      "after": "AV",
+      "key": "AF"
+    },
+    {
+      "before": "V00000000000000000000000000000000000000000000000000000000000001",
+      "after": "V00000000000000000000000000000000000000000000000000000000000002",
+      "key": "V00000000000000000000000000000000000000000000000000000000000001V"
+    },
+    {
+      "before": "W",
+      "after": "V",
+      "key": null
+    },
+    {
+      "before": "V",
+      "after": "V",
+      "key": null
+    },
+    {
+      "before": "V0",
+      "after": null,
+      "key": null
+    },
+    {
+      "before": "!",
+      "after": null,
+      "key": null
+    },
+    {
+      "before": "",
+      "after": null,
+      "key": null
+    },
+    {
+      "before": null,
+      "after": "",
+      "key": null
+    },
+    {
+      "before": "V000000000000000000000000000000000000000000000000000000000000001",
+      "after": "V000000000000000000000000000000000000000000000000000000000000002",
+      "key": null
+    },
+    {
+      "before": "V000000000000000000000000000000000000000000000000000000000000001",
+      "after": null,
+      "key": "k"
+    }
+  ],
+  "neighbours": [
+    {
+      "positions": [],
+      "index": 0,
+      "before": null,
+      "after": null,
+      "key": "V"
+    },
+    {
+      "positions": [
+        "A",
+        "C",
+        "E"
+      ],
+      "index": 0,
+      "before": null,
+      "after": "A",
+      "key": "5"
+    },
+    {
+      "positions": [
+        "A",
+        "C",
+        "E"
+      ],
+      "index": 1,
+      "before": "A",
+      "after": "C",
+      "key": "B"
+    },
+    {
+      "positions": [
+        "A",
+        "C",
+        "E"
+      ],
+      "index": 3,
+      "before": "E",
+      "after": null,
+      "key": "c"
+    },
+    {
+      "positions": [
+        "A",
+        "A"
+      ],
+      "index": 0,
+      "before": null,
+      "after": "A",
+      "key": "5"
+    },
+    {
+      "positions": [
+        "A",
+        "C",
+        "C",
+        "E"
+      ],
+      "index": 1,
+      "before": "A",
+      "after": "C",
+      "key": "B"
+    },
+    {
+      "positions": [
+        "A",
+        "C",
+        "C",
+        "E"
+      ],
+      "index": 2,
+      "before": "C",
+      "after": "E",
+      "key": "D"
+    },
+    {
+      "positions": [
+        "A",
+        "B",
+        "B",
+        "C"
+      ],
+      "index": 2,
+      "before": "B",
+      "after": "C",
+      "key": "BV"
+    },
+    {
+      "positions": [
+        "C",
+        "C"
+      ],
+      "index": 1,
+      "before": "C",
+      "after": null,
+      "key": "b"
+    },
+    {
+      "positions": [
+        "C",
+        "C",
+        "C"
+      ],
+      "index": 1,
+      "before": "C",
+      "after": null,
+      "key": "b"
+    }
+  ]
+}

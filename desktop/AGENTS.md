@@ -146,6 +146,10 @@ Paginated list views (issues, patches, notifications) go through a domain
 `Service` backed by the SQLite adapter instead of the ports; new lists over
 large data sets should do the same.
 
+## Boards
+
+Read `docs/adr/0005-boards.md` before working on boards.
+
 ## Code conventions
 
 ### Svelte components
