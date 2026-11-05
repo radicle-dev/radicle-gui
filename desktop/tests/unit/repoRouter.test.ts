@@ -42,6 +42,18 @@ describe("repoRouteToPath and repoUrlToRoute round trip", () => {
     ["/repos/RID/commits/SHA", { resource: "repo.commit", rid, commit: sha }],
     ["/repos/RID/identity", { resource: "repo.identity", rid }],
     [
+      "/repos/RID/board",
+      { resource: "repo.board", rid, view: undefined, board: undefined },
+    ],
+    [
+      "/repos/RID/board?view=board",
+      { resource: "repo.board", rid, view: "board", board: undefined },
+    ],
+    [
+      "/repos/RID/board?board=abc",
+      { resource: "repo.board", rid, view: undefined, board: "abc" },
+    ],
+    [
       "/repos/RID/issues?status=all",
       { resource: "repo.issues", rid, status: "all" },
     ],

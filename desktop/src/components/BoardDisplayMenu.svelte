@@ -1,0 +1,191 @@
+<script lang="ts">
+  import type { BoardView } from "@app/lib/board";
+  import type { BoardViewSettings, Property } from "@app/lib/boardView";
+  import {
+    defaultView,
+    GROUPINGS,
+    ORDERINGS,
+    PROPERTIES,
+  } from "@app/lib/boardView";
+
+  import Checkbox from "@app/components/Checkbox.svelte";
+  import Icon from "@app/components/Icon.svelte";
+  import SegmentedSwitch from "@app/components/SegmentedSwitch.svelte";
+  import Select from "@app/components/Select.svelte";
+
+  interface Props {
+    view: BoardView;
+    settings: BoardViewSettings;
+    onView: (view: BoardView) => void;
+  }
+
+  /* eslint-disable prefer-const */
+  let { view, settings = $bindable(), onView }: Props = $props();
+  /* eslint-enable prefer-const */
+
+  function toggleProperty(property: Property) {
+    settings.properties = settings.properties.includes(property)
+      ? settings.properties.filter(p => p !== property)
+      : [...settings.properties, property];
+  }
+
+  function reset() {
+    const { filters } = settings;
+    settings = { ...defaultView(), filters };
+  }
+</script>
+
+<style>
+  .menu {
+    width: 20rem;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--border-radius-md);
+    background-color: var(--color-surface-canvas);
+    font: var(--txt-body-m-regular);
+    color: var(--color-text-secondary);
+  }
+  .section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    padding: 0.875rem 1rem;
+  }
+  .section + .section {
+    border-top: 1px solid var(--color-border-subtle);
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-height: 2rem;
+  }
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .row.disabled {
+    color: var(--color-text-disabled);
+  }
+  .direction {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 0;
+    border-radius: var(--border-radius-sm);
+    background: none;
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+  }
+  .direction:hover {
+    background-color: var(--color-surface-subtle);
+    color: var(--color-text-primary);
+  }
+  .heading {
+    color: var(--color-text-primary);
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+  .chip {
+    padding: 0.25rem 0.625rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--border-radius-sm);
+    background: none;
+    color: var(--color-text-tertiary);
+    font: var(--txt-body-m-regular);
+    cursor: pointer;
+  }
+  .chip.on {
+    background-color: var(--color-surface-subtle);
+    color: var(--color-text-primary);
+  }
+  .footer {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0.625rem 1rem;
+    border-top: 1px solid var(--color-border-subtle);
+  }
+  .reset {
+    border: 0;
+    background: none;
+    color: var(--color-text-secondary);
+    font: var(--txt-body-m-regular);
+    cursor: pointer;
+  }
+  .reset:hover {
+    color: var(--color-text-primary);
+  }
+</style>
+
+<div class="menu">
+  <div class="section">
+    <SegmentedSwitch
+      options={[
+        { value: "board", label: "Columns", icon: "dashboard" },
+        { value: "list", label: "List", icon: "menu" },
+      ]}
+      value={view}
+      onchange={onView} />
+    <div class="row" class:disabled={view !== "list"}>
+      Grouping
+      <Select
+        label="Grouping"
+        title={view === "list" ? undefined : "Grouping applies to the list"}
+        disabled={view !== "list"}
+        options={GROUPINGS.map(g => ({ value: g.id, label: g.label }))}
+        bind:value={settings.grouping} />
+    </div>
+    <div class="row">
+      Ordering
+      <div class="controls">
+        {#if settings.ordering !== "manual"}
+          <button
+            class="direction"
+            title={settings.descending ? "Descending" : "Ascending"}
+            aria-label="Reverse the order"
+            onclick={() => (settings.descending = !settings.descending)}>
+            <Icon name={settings.descending ? "arrow-down" : "arrow-up"} />
+          </button>
+        {/if}
+        <Select
+          label="Ordering"
+          options={ORDERINGS.map(o => ({ value: o.id, label: o.label }))}
+          bind:value={settings.ordering} />
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <Checkbox bind:checked={settings.showCompleted}>Show completed</Checkbox>
+    <Checkbox bind:checked={settings.showCanceled}>Show canceled</Checkbox>
+    <Checkbox bind:checked={settings.showEmpty}>Show empty columns</Checkbox>
+  </div>
+
+  <div class="section">
+    <span class="heading">Display</span>
+    <div class="chips">
+      {#each PROPERTIES as property (property.id)}
+        <button
+          class="chip"
+          class:on={settings.properties.includes(property.id)}
+          aria-pressed={settings.properties.includes(property.id)}
+          onclick={() => toggleProperty(property.id)}>
+          {property.label}
+        </button>
+      {/each}
+    </div>
+  </div>
+
+  <div class="footer">
+    <button class="reset" onclick={reset}>Reset</button>
+  </div>
+</div>

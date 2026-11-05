@@ -23,9 +23,11 @@
 
   interface Props {
     repo: RepoInfo;
+    // Called instead of opening the new issue.
+    onCreated?: (issue: Issue) => void;
   }
 
-  const { repo }: Props = $props();
+  const { repo, onCreated = undefined }: Props = $props();
 
   let commentBox: ExtendedTextarea | undefined = $state();
   let preview = $state(false);
@@ -176,12 +178,16 @@
             comment,
             Array.from(embeds.values()),
           );
-          await router.push({
-            resource: "repo.issue",
-            rid: repo.rid,
-            issue: response.id,
-            status: "open",
-          });
+          if (onCreated) {
+            onCreated(response);
+          } else {
+            await router.push({
+              resource: "repo.issue",
+              rid: repo.rid,
+              issue: response.id,
+              status: "open",
+            });
+          }
           forceHide();
         } catch {
           console.error("Not able to create issue.");

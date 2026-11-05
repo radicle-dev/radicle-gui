@@ -2,6 +2,7 @@ import { repoRouteToPath, repoUrlToRoute } from "@app/views/repo/router";
 import { on } from "svelte/events";
 import { get, writable } from "svelte/store";
 
+import { labs } from "@app/lib/labs";
 import * as mutexExecutor from "@app/lib/mutexExecutor";
 import type { LoadedRoute, Route } from "@app/lib/router/definitions";
 import { loadRoute } from "@app/lib/router/definitions";
@@ -126,9 +127,15 @@ const loadExecutor = mutexExecutor.create();
 
 async function navigate(
   action: "push" | "replace",
-  newRoute: Route,
+  route: Route,
   fragment?: string,
 ): Promise<void> {
+  // Boards are a Labs feature; while it's off a board link shows the
+  // repository instead, and the address says so.
+  const hidden = route.resource === "repo.board" && !labs.boards;
+  const newRoute: Route = hidden
+    ? { resource: "repo.home", rid: route.rid }
+    : route;
   const historyNav = pendingHistoryNavigation;
   pendingHistoryNavigation = false;
   isLoading.set(true);
@@ -150,7 +157,11 @@ async function navigate(
     updateNavigationState(index, true);
   } else if (action === "replace") {
     const index = historyIndex();
-    window.history.replaceState(stamp(newRoute, index), "");
+    window.history.replaceState(
+      stamp(newRoute, index),
+      "",
+      hidden ? path : undefined,
+    );
     updateNavigationState(index);
   } else {
     updateNavigationState(historyIndex());
@@ -232,6 +243,7 @@ export function routeToPath(route: Route): string {
   } else if (route.resource === "guide") {
     return "/guide";
   } else if (
+    route.resource === "repo.board" ||
     route.resource === "repo.home" ||
     route.resource === "repo.commits" ||
     route.resource === "repo.commit" ||

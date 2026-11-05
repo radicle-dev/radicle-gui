@@ -1,6 +1,7 @@
 import { get } from "svelte/store";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { labs } from "@app/lib/labs";
 import type { Route } from "@app/lib/router";
 import {
   activeUnloadedRouteStore,
@@ -25,12 +26,23 @@ async function resolve(path: string) {
 }
 
 beforeEach(() => {
+  labs.boards = true;
   vi.stubGlobal("origin", window.location.origin);
   vi.spyOn(console, "error").mockReturnValue(undefined);
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+test("board links show the repository while boards are off", async () => {
+  labs.boards = false;
+  expect(await resolve(`/repos/${rid}/board?view=list`)).toEqual({
+    resource: "repo.home",
+    rid,
+  });
+  expect(window.location.pathname).toBe(`/repos/${rid}/home`);
+  expect(window.location.search).toBe("");
 });
 
 describe("routeToPath and loadFromLocation round trip", () => {
@@ -47,6 +59,14 @@ describe("routeToPath and loadFromLocation round trip", () => {
       { resource: "repo.commit", rid, commit: sha },
     ],
     [`/repos/${rid}/identity`, { resource: "repo.identity", rid }],
+    [
+      `/repos/${rid}/board`,
+      { resource: "repo.board", rid, view: undefined, board: undefined },
+    ],
+    [
+      `/repos/${rid}/board?view=list&board=abc`,
+      { resource: "repo.board", rid, view: "list", board: "abc" },
+    ],
     [
       `/repos/${rid}/issues?status=closed`,
       { resource: "repo.issues", rid, status: "closed" },

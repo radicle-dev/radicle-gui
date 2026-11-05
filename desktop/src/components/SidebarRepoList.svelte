@@ -74,6 +74,7 @@
     invoke,
     writeToClipboard,
   } from "@app/lib/invoke";
+  import { labs } from "@app/lib/labs";
   import { entityUrl } from "@app/lib/mentions";
   import { show } from "@app/lib/modal";
   import { repoListScope } from "@app/lib/repoListScope";
@@ -532,6 +533,10 @@
 
   function isRepoHome(rid: string): boolean {
     return $activeRoute.resource === "repo.home" && activeRid() === rid;
+  }
+
+  function isBoard(rid: string): boolean {
+    return $activeRoute.resource === "repo.board" && activeRid() === rid;
   }
 
   function isIssues(rid: string): boolean {
@@ -1183,6 +1188,19 @@
     <div
       class="sub-items"
       transition:slide={{ duration: ANIMATION_DURATION_MS }}>
+      {#if labs.boards}
+        {@render subItem(
+          repo.name,
+          router.routeToPath({
+            resource: "repo.board",
+            rid: repo.rid,
+          }),
+          "dashboard",
+          "Boards",
+          isBoard(repo.rid),
+          undefined,
+        )}
+      {/if}
       {@render subItem(
         repo.name,
         router.routeToPath({
@@ -1225,7 +1243,7 @@
 {#snippet subItem(
   repoName: string,
   href: string,
-  icon: "branch" | "issue" | "patch" | "parcel",
+  icon: "branch" | "dashboard" | "issue" | "patch" | "parcel",
   label: string,
   active: boolean,
   count: number | undefined,

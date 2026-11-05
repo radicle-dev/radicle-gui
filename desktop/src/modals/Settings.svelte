@@ -6,6 +6,7 @@
   import { diffOptions } from "@app/lib/diffOptions.svelte";
   import { hints } from "@app/lib/hints";
   import { invoke } from "@app/lib/invoke";
+  import { labs } from "@app/lib/labs";
   import { updateChecker } from "@app/lib/updateChecker.svelte";
   import { pluralize } from "@app/lib/utils";
 
@@ -56,6 +57,10 @@
     },
     { value: "char", label: "Char", title: "Highlight character changes" },
     { value: "none", label: "None", title: "Show line-level changes only" },
+  ];
+  const labsOptions: Option<"on" | "off">[] = [
+    { value: "on", label: "On" },
+    { value: "off", label: "Off" },
   ];
   const wordWrapOptions: Option<"on" | "off">[] = [
     { value: "on", label: "On" },
@@ -113,6 +118,11 @@
   }
   .section {
     border-top: 1px solid var(--color-border-subtle);
+  }
+  .section-title {
+    margin-bottom: -0.5rem;
+    font: var(--txt-heading-xs);
+    color: var(--color-text-primary);
   }
   .git {
     overflow-wrap: anywhere;
@@ -275,6 +285,22 @@
         options={wordDiffOptions}
         value={diffOptions.lineDiffType}
         onchange={value => (diffOptions.lineDiffType = value)} />
+    </div>
+  </div>
+  <div class="rows section">
+    <span class="section-title">Labs</span>
+    <div class="row">
+      <div class="row-label">
+        <span class="row-title">Boards</span>
+        <span class="row-description">
+          Arrange issues and patches on a board. Experimental: the board format
+          may still change.
+        </span>
+      </div>
+      <SegmentedSwitch
+        options={labsOptions}
+        value={labs.boards ? "on" : "off"}
+        onchange={value => (labs.boards = value === "on")} />
     </div>
   </div>
   <div class="footer">
