@@ -225,6 +225,25 @@ pub enum Error {
     /// Artifact node client error.
     #[error(transparent)]
     ArtifactClient(#[from] radicle_artifact_client::ClientError),
+    /// Board error.
+    #[error("{0}")]
+    Board(&'static str),
+}
+
+impl From<radicle_board::UpdateError> for Error {
+    fn from(err: radicle_board::UpdateError) -> Self {
+        match err {
+            radicle_board::UpdateError::Store(e) => Error::CobStore(e),
+            radicle_board::UpdateError::Share(radicle_board::ShareError::Private(_)) => {
+                Error::Board(
+                    "cards from private repositories can only go on their own repository's boards",
+                )
+            }
+            radicle_board::UpdateError::Share(radicle_board::ShareError::Unavailable(_)) => {
+                Error::Board("the card's repository isn't available locally")
+            }
+        }
+    }
 }
 
 impl Error {
@@ -258,6 +277,7 @@ impl Error {
             Error::ArtifactCore(radicle_artifact_core::Error::CidMismatch { .. }) => {
                 "ArtifactError.CidMismatch"
             }
+            Error::Board(_) => "BoardError",
             _ => "UnknownError",
         }
     }

@@ -4828,6 +4828,7 @@ dependencies = [
  "radicle-artifact",
  "radicle-artifact-client",
  "radicle-artifact-core",
+ "radicle-board",
  "radicle-job",
  "radicle-localtime",
  "radicle-surf",
