@@ -74,7 +74,7 @@
     "fuzzysort": "^3.1.0",
     "get-port": "^7.2.0",
     "globals": "^17.7.0",
-    "happy-dom": "^20.11.0",
+    "happy-dom": "^21.0.4",
     "hast-util-to-dom": "^4.0.1",
     "js-yaml": "^5.2.1",
     "katex": "^0.18.9",

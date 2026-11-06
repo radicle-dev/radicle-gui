@@ -18,7 +18,7 @@
     "test:http-client:unit": "NODE_CONFIG_ENV='test' TZ='UTC' vitest run --config http-client/vite.config.ts --reporter verbose",
     "test:http-client:unit:local": "scripts/compile-local-httpd && USE_LOCAL_HTTPD=true NODE_CONFIG_ENV='test' TZ='UTC' vitest run --config http-client/vite.config.ts --reporter verbose",
     "test:radicle-httpd": "cargo test --all-features",
-    "deploy": "rimraf build && npm clean-install && NODE_CONFIG_ENV='radicle.network' npm run build && scripts/inject-plausible && npx wrangler deploy",
+    "deploy": "rm -rf build && npm clean-install && NODE_CONFIG_ENV='radicle.network' npm run build && scripts/inject-plausible && npx wrangler deploy",
     "deploy:open-graph": "cd workers/open-graph && npx wrangler deploy",
     "start:open-graph": "cd workers/open-graph && npx wrangler dev"
   },
@@ -54,7 +54,6 @@
     "prettier-plugin-svelte": "^4.1.1",
     "rehype-slug": "^6.0.0",
     "remark-unwrap-images": "^4.0.1",
-    "rimraf": "^6.1.3",
     "shiki": "^4.3.1",
     "svelte-check": "^4.7.2",
     "svelte-eslint-parser": "^1.8.0",
