@@ -7,15 +7,13 @@
   import type { BaseUrl, Repo } from "@http-client";
   import type { RepoNode } from "./router";
 
-  import config from "@app/lib/config";
-  import debounce from "lodash/debounce";
   import { routeToPath } from "@app/lib/router";
-  import { toClipboard } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
   import Icon from "@app/components/Icon.svelte";
   import Link from "@app/components/Link.svelte";
   import SeedButton from "@app/views/repos/Header/SeedButton.svelte";
+  import Share from "@app/views/repos/Share.svelte";
 
   export let baseUrl: BaseUrl;
   export let activeTab: ActiveTab = undefined;
@@ -25,12 +23,6 @@
 
   // Undefined when the node cannot count the releases.
   $: releaseCount = repo.releaseCount;
-
-  let shareIcon: "link" | "checkmark" = "link";
-
-  const restoreIcon = debounce(() => {
-    shareIcon = "link";
-  }, 1000);
 
   function tabRoute(): string {
     if (activeTab === "issues") {
@@ -59,13 +51,6 @@
         path: "/",
       });
     }
-  }
-
-  async function copyLink() {
-    const origin = new URL(config.nodes.fallbackPublicExplorer).origin;
-    await toClipboard(origin.concat(tabRoute()));
-    shareIcon = "checkmark";
-    restoreIcon();
   }
 </script>
 
@@ -199,10 +184,7 @@
 
   <div class="actions">
     {#if activeTab !== "issues" && activeTab !== "patches" && activeTab !== "releases"}
-      <Button variant="outline" size="regular" on:click={copyLink}>
-        <Icon name={shareIcon} />
-        <span class="global-hide-on-small-desktop-down">Copy link</span>
-      </Button>
+      <Share {repoId} id={repo.rid} idLabel="repository" path={tabRoute()} />
     {/if}
     <slot name="actions" />
     <SeedButton seedCount={repo.seeding} repoId={repo.rid} />
