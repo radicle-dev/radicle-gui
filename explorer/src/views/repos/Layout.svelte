@@ -25,6 +25,7 @@
   export let repoId: string;
   export let stylePaddingBottom: string = "2.5rem";
   export let node: RepoNode;
+  export let hideShare = false;
 
   $: route = $activeRouteStore;
   $: project = repo.payloads["xyz.radicle.project"];
@@ -240,7 +241,7 @@
   </div>
 
   <div class="tab-bar">
-    <RepoHeader {activeTab} {baseUrl} {repo} {repoId} {node}>
+    <RepoHeader {activeTab} {baseUrl} {repo} {repoId} {node} {hideShare}>
       <svelte:fragment slot="actions">
         <slot name="actions" />
       </svelte:fragment>

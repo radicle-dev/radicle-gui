@@ -20,6 +20,7 @@
   import Link from "@app/components/Link.svelte";
   import Popover from "@app/components/Popover.svelte";
   import Separator from "./Separator.svelte";
+  import Share from "./Share.svelte";
 
   export let baseUrl: BaseUrl;
   export let commit: Commit;
@@ -75,7 +76,7 @@
   }
 </style>
 
-<Layout {node} {baseUrl} {repo} {repoId}>
+<Layout {node} {baseUrl} {repo} {repoId} hideShare>
   <svelte:fragment slot="breadcrumb">
     <Separator />
     <Link
@@ -110,6 +111,11 @@
             <InlineTitle fontSize="heading-l" content={header.summary} />
           {/if}
           <div class="button-container">
+            <Share
+              rid={repo.rid}
+              resource="commit/{commit.commit.id}"
+              id={commit.commit.id}
+              idLabel="commit" />
             <Link
               route={{
                 resource: "repo.source",

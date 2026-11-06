@@ -380,7 +380,11 @@
             <span style:color="var(--color-text-tertiary)">No title</span>
           {/if}
           <div class="global-flex-item">
-            <Share />
+            <Share
+              rid={repo.rid}
+              resource="cob/xyz.radicle.patch/{patch.id}"
+              id={patch.id}
+              idLabel="patch" />
             <div class="global-hide-on-mobile-down">
               <CheckoutButton id={patch.id} />
             </div>

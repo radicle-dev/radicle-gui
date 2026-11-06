@@ -166,7 +166,13 @@
               <span style:color="var(--color-text-tertiary)">No title</span>
             {/if}
           </div>
-          <Share />
+          <div class="global-flex-item">
+            <Share
+              rid={repo.rid}
+              resource="cob/xyz.radicle.issue/{issue.id}"
+              id={issue.id}
+              idLabel="issue" />
+          </div>
         </svelte:fragment>
         <svelte:fragment slot="state">
           {#if issue.state.status === "open"}

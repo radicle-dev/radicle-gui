@@ -28,6 +28,7 @@
   import Link from "@app/components/Link.svelte";
   import NodeId from "@app/components/NodeId.svelte";
   import Separator from "./Separator.svelte";
+  import Share from "./Share.svelte";
   import UntrustedWarning from "./Release/UntrustedWarning.svelte";
 
   export let baseUrl: BaseUrl;
@@ -391,6 +392,13 @@
           <div class="title">
             <Icon name="parcel" />
             <InlineTitle fontSize="heading-l" content={title} />
+          </div>
+          <div class="global-flex-item">
+            <Share
+              rid={repo.rid}
+              resource="cob/dev.radicle.artifact/{release.id}"
+              id={release.id}
+              idLabel="release" />
           </div>
         </svelte:fragment>
         <svelte:fragment slot="state">
