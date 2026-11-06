@@ -42,6 +42,7 @@
   import Auth from "@app/views/auth/Auth.svelte";
   import CreateIdentity from "@app/views/auth/CreateIdentity.svelte";
   import InboxView from "@app/views/Inbox.svelte";
+  import ProfileView from "@app/views/profile/Profile.svelte";
   import Board from "@app/views/repo/Board.svelte";
   import Identity from "@app/views/repo/Identity.svelte";
   import Issue from "@app/views/repo/Issue.svelte";
@@ -272,6 +273,8 @@
         <GuideView {...$activeRouteStore.params} />
       {:else if $activeRouteStore.resource === "repo.board"}
         <Board {...$activeRouteStore.params} />
+      {:else if $activeRouteStore.resource === "profile"}
+        <ProfileView {...$activeRouteStore.params} />
       {:else if $activeRouteStore.resource === "repo.home"}
         <RepoHome {...$activeRouteStore.params} />
       {:else if $activeRouteStore.resource === "repo.commits"}

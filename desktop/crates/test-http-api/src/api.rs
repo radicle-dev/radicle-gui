@@ -22,6 +22,7 @@ use radicle::node::{NOTIFICATIONS_DB_FILE, NodeId};
 use radicle::storage::{ReadRepository as _, ReadStorage as _};
 use radicle::{git, identity};
 use radicle_types as types;
+use radicle_types::actor::ActorProfile;
 use radicle_types::cobs::CobOptions;
 use radicle_types::cobs::FromRadicleAction;
 use radicle_types::cobs::issue;
@@ -37,6 +38,7 @@ use radicle_types::domain::patch::traits::PatchService;
 use radicle_types::error::Error;
 use radicle_types::outbound::sqlite::Sqlite;
 use radicle_types::traits::Profile;
+use radicle_types::traits::actor::Actor;
 use radicle_types::traits::artifact_node::ArtifactNode;
 use radicle_types::traits::board::Boards;
 use radicle_types::traits::cobs::Cobs;
@@ -62,6 +64,7 @@ impl Boards for Context {}
 impl Repo for Context {}
 impl Cobs for Context {}
 impl Identity for Context {}
+impl Actor for Context {}
 impl Inbox for Context {}
 impl Thread for Context {}
 impl Issues for Context {}
@@ -177,6 +180,23 @@ pub fn router(shared: Shared) -> Router {
         .route("/update_board", post(update_board_handler))
         .route("/rename_board", post(rename_board_handler))
         .route("/set_board_columns", post(set_board_columns_handler))
+        .route("/create_actor", post(create_actor_handler))
+        .route("/update_actor_profile", post(update_actor_profile_handler))
+        .route("/join_actor", post(join_actor_handler))
+        .route("/approve_enrollment", post(approve_enrollment_handler))
+        .route(
+            "/approve_actor_revision",
+            post(approve_actor_revision_handler),
+        )
+        .route(
+            "/withdraw_actor_revision",
+            post(withdraw_actor_revision_handler),
+        )
+        .route(
+            "/reject_actor_revision",
+            post(reject_actor_revision_handler),
+        )
+        .route("/remove_actor_key", post(remove_actor_key_handler))
         .route_layer(middleware::from_fn_with_state(
             Arc::new(Mutex::new(())),
             serialize_writes,
@@ -201,6 +221,8 @@ pub fn router(shared: Shared) -> Router {
         .route("/list_repo_refs", post(list_repo_refs_handler))
         .route("/list_canonical_tags", post(list_canonical_tags_handler))
         .route("/identity_by_repo", post(identity_handler))
+        .route("/actor", post(actor_handler))
+        .route("/decode_enrollment", post(decode_enrollment_handler))
         .route("/version", post(version_handler))
         .route("/git_info", post(git_info_handler))
         .route("/diff_stats", post(diff_stats_handler))
@@ -466,6 +488,107 @@ async fn identity_handler(
     let identity = ctx.identity_by_repo(rid)?;
 
     Ok::<_, Error>(Json(identity))
+}
+
+async fn actor_handler(Ctx(ctx): Ctx) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.actor()?))
+}
+
+#[derive(Deserialize)]
+struct ActorProfileBody {
+    pub profile: ActorProfile,
+    pub opts: types::cobs::CobOptions,
+}
+
+async fn create_actor_handler(
+    Ctx(ctx): Ctx,
+    Json(ActorProfileBody { profile, opts }): Json<ActorProfileBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.create_actor(profile, opts)?))
+}
+
+async fn update_actor_profile_handler(
+    Ctx(ctx): Ctx,
+    Json(ActorProfileBody { profile, opts }): Json<ActorProfileBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.update_actor_profile(profile, opts)?))
+}
+
+async fn join_actor_handler(
+    Ctx(ctx): Ctx,
+    Json(RepoBody { rid }): Json<RepoBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.join_actor(rid)?))
+}
+
+#[derive(Deserialize)]
+struct CodeBody {
+    pub code: String,
+}
+
+async fn decode_enrollment_handler(
+    Ctx(ctx): Ctx,
+    Json(CodeBody { code }): Json<CodeBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.decode_enrollment(code)?))
+}
+
+#[derive(Deserialize)]
+struct EnrollmentBody {
+    pub code: String,
+    pub controller: bool,
+    pub opts: types::cobs::CobOptions,
+}
+
+async fn approve_enrollment_handler(
+    Ctx(ctx): Ctx,
+    Json(EnrollmentBody {
+        code,
+        controller,
+        opts,
+    }): Json<EnrollmentBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.approve_enrollment(code, controller, opts)?))
+}
+
+#[derive(Deserialize)]
+struct RevisionBody {
+    pub id: radicle::git::Oid,
+    pub opts: types::cobs::CobOptions,
+}
+
+async fn approve_actor_revision_handler(
+    Ctx(ctx): Ctx,
+    Json(RevisionBody { id, opts }): Json<RevisionBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.approve_actor_revision(id, opts)?))
+}
+
+async fn withdraw_actor_revision_handler(
+    Ctx(ctx): Ctx,
+    Json(RevisionBody { id, opts }): Json<RevisionBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.withdraw_actor_revision(id, opts)?))
+}
+
+async fn reject_actor_revision_handler(
+    Ctx(ctx): Ctx,
+    Json(RevisionBody { id, opts }): Json<RevisionBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.reject_actor_revision(id, opts)?))
+}
+
+#[derive(Deserialize)]
+struct KeyBody {
+    pub did: identity::Did,
+    pub opts: types::cobs::CobOptions,
+}
+
+async fn remove_actor_key_handler(
+    Ctx(ctx): Ctx,
+    Json(KeyBody { did, opts }): Json<KeyBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.remove_actor_key(did, opts)?))
 }
 
 async fn list_repo_refs_handler(

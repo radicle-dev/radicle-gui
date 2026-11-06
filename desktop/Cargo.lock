@@ -4825,6 +4825,7 @@ dependencies = [
  "infer",
  "log",
  "mime-infer",
+ "multibase",
  "radicle",
  "radicle-artifact",
  "radicle-artifact-client",
@@ -4842,6 +4843,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.19",
  "ts-rs",
+ "unicode-normalization",
  "url",
  "which",
 ]

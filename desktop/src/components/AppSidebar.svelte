@@ -626,7 +626,9 @@
         <div class="body">
           <div class="nav">
             {#if !mini}
-              <IdentityButton config={sidebarData.config} />
+              <IdentityButton
+                config={sidebarData.config}
+                actor={sidebarData.actor} />
             {/if}
 
             <a
@@ -648,6 +650,7 @@
 
             <SidebarRepoList
               initialRepos={sidebarData.repos}
+              ownActor={sidebarData.actor?.rid}
               initialSeededNotReplicated={sidebarData.seededNotReplicated}
               config={sidebarData.config}
               {activeRepo} />

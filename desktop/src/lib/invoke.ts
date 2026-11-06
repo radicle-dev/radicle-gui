@@ -1,3 +1,4 @@
+import type { ActorInfo } from "@bindings/actor/ActorInfo";
 import type { AliasSuggestion } from "@bindings/cob/AliasSuggestion";
 import type { DiffOptions } from "@bindings/cob/DiffOptions";
 import type { Issue } from "@bindings/cob/issue/Issue";
@@ -423,8 +424,21 @@ export const cachedListReposSummary = cached(
   { max: 2, ttl: 30_000 },
 );
 
+/**
+ * Finding the local actor scans storage like the repo list does, and every
+ * route loads it while the lab is on, so it shares the list's caching and
+ * invalidation; a save or create clears it as well.
+ */
+export const cachedActor = cached(
+  () => invoke<ActorInfo | null>("actor"),
+  () => "actor",
+  { max: 1, ttl: 30_000 },
+);
+
+// The sidebar loads the repositories and the actor together, so both go.
 export function invalidateReposSummary(): void {
   cachedListReposSummary.clear();
+  cachedActor.clear();
 }
 
 export async function writeToClipboard(

@@ -100,6 +100,7 @@
 
   interface Props {
     initialRepos: RepoSummary[];
+    ownActor?: string;
     initialSeededNotReplicated: string[];
     activeRepo?: RepoInfo;
     config: Config;
@@ -107,12 +108,20 @@
 
   const {
     initialRepos,
+    ownActor = undefined,
     initialSeededNotReplicated,
     activeRepo = undefined,
     config,
   }: Props = $props();
 
-  let repos: RepoSummary[] = $derived(initialRepos);
+  let allRepos: RepoSummary[] = $derived(initialRepos);
+  // Your own actor repository is the profile page's while the lab is on;
+  // other people's stay listed until they have a page of their own.
+  const repos = $derived(
+    labs.actorRepos && ownActor
+      ? allRepos.filter(r => r.rid !== ownActor)
+      : allRepos,
+  );
   let seededNotReplicated: string[] = $derived(initialSeededNotReplicated);
   let filterInputElement: HTMLInputElement | undefined = $state(undefined);
 
@@ -389,10 +398,12 @@
 
   async function reloadRepos() {
     invalidateReposSummary();
-    [repos, seededNotReplicated] = await Promise.all([
+    const [reloaded, fetching] = await Promise.all([
       cachedListReposSummary(repoListScope.value),
       invoke<string[]>("seeded_not_replicated"),
     ]);
+    allRepos = reloaded;
+    seededNotReplicated = fetching;
   }
 
   // The route loader already fetched the list for the scope in force, so the
@@ -1126,7 +1137,10 @@
     data-flip
     onclick={e => e.stopPropagation()}
     role="none">
-    <AddRepoButton reload={reloadRepos} {repos} {seededNotReplicated} />
+    <AddRepoButton
+      reload={reloadRepos}
+      repos={allRepos}
+      {seededNotReplicated} />
   </span>
 </div>
 

@@ -7,6 +7,7 @@
   import { hints } from "@app/lib/hints";
   import { invoke } from "@app/lib/invoke";
   import { labs } from "@app/lib/labs";
+  import * as router from "@app/lib/router";
   import { updateChecker } from "@app/lib/updateChecker.svelte";
   import { pluralize } from "@app/lib/utils";
 
@@ -34,6 +35,7 @@
   // Shown so that a user seeing the slower fallback can tell which git, if
   // any, was picked.
   const gitInfo = invoke<GitInfo>("git_info");
+  const activeRoute = router.activeUnloadedRouteStore;
 
   const diffStyleOptions: Option<DiffOptions["diffStyle"]>[] = [
     { value: "unified", icon: "diff-unified", title: "Unified" },
@@ -301,6 +303,25 @@
         options={labsOptions}
         value={labs.boards ? "on" : "off"}
         onchange={value => (labs.boards = value === "on")} />
+    </div>
+    <div class="row">
+      <div class="row-label">
+        <span class="row-title">Rich profiles</span>
+        <span class="row-description">
+          Link the keys on your devices into one profile. Experimental: the
+          profile format may still change.
+        </span>
+      </div>
+      <SegmentedSwitch
+        options={labsOptions}
+        value={labs.actorRepos ? "on" : "off"}
+        onchange={value => {
+          labs.actorRepos = value === "on";
+          // The sidebar is loaded with the route, so the page loads again
+          // for it to follow; the router leaves a page that needs this
+          // experiment.
+          void router.replace($activeRoute);
+        }} />
     </div>
   </div>
   <div class="footer">

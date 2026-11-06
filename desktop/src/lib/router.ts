@@ -130,12 +130,16 @@ async function navigate(
   route: Route,
   fragment?: string,
 ): Promise<void> {
-  // Boards are a Labs feature; while it's off a board link shows the
-  // repository instead, and the address says so.
-  const hidden = route.resource === "repo.board" && !labs.boards;
-  const newRoute: Route = hidden
-    ? { resource: "repo.home", rid: route.rid }
-    : route;
+  // Boards and the profile are Labs features; while one is off its link
+  // shows the repository, or the inbox, instead, and the address says so.
+  const hidden =
+    (route.resource === "repo.board" && !labs.boards) ||
+    (route.resource === "profile" && !labs.actorRepos);
+  const newRoute: Route = !hidden
+    ? route
+    : route.resource === "repo.board"
+      ? { resource: "repo.home", rid: route.rid }
+      : { resource: "inbox" };
   const historyNav = pendingHistoryNavigation;
   pendingHistoryNavigation = false;
   isLoading.set(true);
@@ -209,6 +213,13 @@ function guideUrlToRoute(url: URL): { resource: "guide" } | undefined {
   }
 }
 
+function profileUrlToRoute(url: URL): Route | undefined {
+  if (url.pathname === "/profile") {
+    const tab = url.searchParams.get("tab");
+    return { resource: "profile", tab: tab === "keys" ? "keys" : "profile" };
+  }
+}
+
 function urlToRoute(url: URL): Route | null {
   const segments = url.pathname.substring(1).split("/");
   const resource = segments.shift();
@@ -227,6 +238,11 @@ function urlToRoute(url: URL): Route | null {
     return guideRoute;
   }
 
+  const profileRoute = profileUrlToRoute(url);
+  if (profileRoute) {
+    return profileRoute;
+  }
+
   switch (resource) {
     case "repos": {
       return repoUrlToRoute(segments, url.searchParams);
@@ -242,6 +258,8 @@ export function routeToPath(route: Route): string {
     return "/inbox";
   } else if (route.resource === "guide") {
     return "/guide";
+  } else if (route.resource === "profile") {
+    return `/profile?tab=${route.tab}`;
   } else if (
     route.resource === "repo.board" ||
     route.resource === "repo.home" ||

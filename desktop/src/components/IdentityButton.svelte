@@ -1,11 +1,14 @@
 <script lang="ts">
+  import type { ActorInfo } from "@bindings/actor/ActorInfo";
   import type { Config } from "@bindings/config/Config";
 
   import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
   import debounce from "lodash/debounce";
 
   import { writeToClipboard } from "@app/lib/invoke";
+  import { labs } from "@app/lib/labs";
   import { entityUrl } from "@app/lib/mentions";
+  import * as router from "@app/lib/router";
   import { didFromPublicKey, explorerHost, truncateDid } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
@@ -16,9 +19,10 @@
 
   interface Props {
     config: Config;
+    actor: ActorInfo | null;
   }
 
-  const { config }: Props = $props();
+  const { config, actor }: Props = $props();
 
   let popoverExpanded: boolean = $state(false);
   let copyIcon: "copy" | "checkmark" = $state("copy");
@@ -36,7 +40,7 @@
       active={popoverExpanded}
       {onclick}>
       <UserAvatar nodeId={config.publicKey} styleWidth="1rem" />
-      <span class="label">{config.alias}</span>
+      <span class="label">{actor?.profile?.displayName ?? config.alias}</span>
       <span class="label" style:color="var(--color-text-tertiary)">
         <Icon name={popoverExpanded ? "chevron-up" : "chevron-down"} />
       </span>
@@ -48,6 +52,19 @@
       style:border-radius="var(--border-radius-md)"
       style:background-color="var(--color-surface-canvas)"
       style:padding="0.25rem">
+      {#if labs.actorRepos}
+        <DropdownListItem
+          styleGap="0.5rem"
+          styleWidth="100%"
+          selected={false}
+          onclick={async () => {
+            closeFocused();
+            await router.push({ resource: "profile", tab: "profile" });
+          }}>
+          <Icon name="badge" />
+          {actor ? "Profile" : "Set up profile"}
+        </DropdownListItem>
+      {/if}
       <DropdownListItem
         styleGap="0.5rem"
         styleWidth="100%"

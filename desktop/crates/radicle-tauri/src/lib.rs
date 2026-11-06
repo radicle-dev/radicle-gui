@@ -9,7 +9,7 @@ use tauri::menu::{Menu, MenuItem, MenuItemKind};
 use tauri::{Emitter, Manager};
 use tauri_plugin_log::{Target, TargetKind};
 
-use commands::{auth, cob, diff, identity, inbox, profile, repo, startup, thread};
+use commands::{actor, auth, cob, diff, identity, inbox, profile, repo, startup, thread};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -135,6 +135,16 @@ pub fn run() {
             diff::save_diff_to_disk,
             repo::get_commit_diff,
             identity::identity_by_repo,
+            actor::actor,
+            actor::create_actor,
+            actor::update_actor_profile,
+            actor::join_actor,
+            actor::decode_enrollment,
+            actor::approve_enrollment,
+            actor::approve_actor_revision,
+            actor::withdraw_actor_revision,
+            actor::reject_actor_revision,
+            actor::remove_actor_key,
             inbox::clear_notifications,
             inbox::notification_count,
             inbox::list_notifications,
