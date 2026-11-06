@@ -104,7 +104,9 @@
     gap: 0.25rem;
   }
   .breadcrumb :global(a:hover) {
-    color: var(--color-text-brand);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
   }
   .breadcrumb-current {
     color: var(--color-text-secondary);

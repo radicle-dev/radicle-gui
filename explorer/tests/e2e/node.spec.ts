@@ -187,14 +187,35 @@ test("node can be switched from a repo the node doesn't have", async ({
   ).toBeVisible();
 });
 
-test("repo page shows the node selector in the header", async ({ page }) => {
+test("repo page links the node name and shows the node selector", async ({
+  page,
+}) => {
   await page.goto(`/nodes/localhost/${sourceBrowsingRid}`, {
     waitUntil: "networkidle",
   });
 
-  await expect(
-    page.getByRole("button", { name: "Current node selector" }),
-  ).toContainText("localhost");
+  await expect(page.getByRole("link", { name: "localhost" })).toHaveAttribute(
+    "href",
+    "/nodes/localhost",
+  );
+  await expect(page.getByRole("button", { name: "Switch node" })).toBeVisible();
+});
+
+test("node selector works with the keyboard", async ({ page }) => {
+  await page.goto(`/nodes/localhost/${sourceBrowsingRid}`, {
+    waitUntil: "networkidle",
+  });
+
+  const chevron = page.getByRole("button", { name: "Switch node" });
+  await chevron.focus();
+  await page.keyboard.press("Enter");
+  await expect(chevron).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText("Custom seeds")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(chevron).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByText("Custom seeds")).toBeHidden();
+  await expect(chevron).toBeFocused();
 });
 
 test("breadcrumb picker lists a seed that isn't bookmarked", async ({
@@ -220,18 +241,19 @@ test("breadcrumb picker lists a seed that isn't bookmarked", async ({
     waitUntil: "networkidle",
   });
 
-  const picker = page.getByRole("button", { name: "Current node selector" });
-  await expect(picker).toContainText("seed.example.tld");
-  await picker.click();
+  await page.getByRole("button", { name: "Switch node" }).click();
 
   // The seed serving the page is listed under the custom seeds, even though
-  // it was never bookmarked, and its node view is reachable from there.
+  // it was never bookmarked.
   const item = page
     .locator(".item")
     .filter({ hasText: "seed.example.tld" })
     .first();
   await expect(item).toBeVisible();
-  await item.getByRole("button", { name: "Open node view" }).click();
+  await expect(
+    item.getByRole("button", { name: "Open node view" }),
+  ).toHaveCount(0);
 
+  await page.getByRole("link", { name: "seed.example.tld" }).click();
   await expect(page).toHaveURL("/nodes/seed.example.tld");
 });

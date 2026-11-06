@@ -161,7 +161,7 @@
       {baseUrl}
       mode="node"
       variant="breadcrumb"
-      ariaLabel="Current node selector"
+      nodeLink
       title="Switch the node serving this page">
       <svelte:fragment slot="icon">
         <NodeAvatar nodeId={node.id} avatarUrl={node.avatarUrl} />

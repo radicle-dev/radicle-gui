@@ -78,7 +78,9 @@
     gap: 0.25rem;
   }
   .breadcrumb :global(a:hover) {
-    color: var(--color-text-brand);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
   }
 </style>
 
@@ -90,7 +92,7 @@
           {baseUrl}
           mode="node"
           variant="breadcrumb"
-          ariaLabel="Current node selector"
+          nodeLink
           title="Switch the node serving this page">
           <svelte:fragment slot="icon">
             <NodeAvatar {nodeId} avatarUrl={nodeAvatarUrl} />

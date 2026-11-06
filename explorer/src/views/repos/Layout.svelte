@@ -99,13 +99,15 @@
     gap: 0.375rem;
   }
   .node-crumb {
-    margin-right: -0.5rem;
+    margin-right: -0.25rem;
   }
   .repo-separator {
     display: flex;
   }
   .breadcrumb :global(a:hover) {
-    color: var(--color-text-brand);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
   }
   @media (max-width: 719.98px) {
     .tab-bar {
@@ -191,7 +193,7 @@
                   {baseUrl}
                   mode="node"
                   variant="breadcrumb"
-                  ariaLabel="Current node selector"
+                  nodeLink
                   title="Switch the node serving this page">
                   <svelte:fragment slot="icon">
                     <NodeAvatar

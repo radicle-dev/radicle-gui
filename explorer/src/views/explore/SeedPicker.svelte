@@ -33,6 +33,7 @@
   import DropdownListItem from "@app/components/DropdownList/DropdownListItem.svelte";
   import Icon from "@app/components/Icon.svelte";
   import IconButton from "@app/components/IconButton.svelte";
+  import Link from "@app/components/Link.svelte";
   import Popover from "@app/components/Popover.svelte";
   import TextInput from "@app/components/TextInput.svelte";
 
@@ -47,8 +48,13 @@
   // Where the picker sits. A breadcrumb sits on the left of the header, so
   // its popover is anchored to the toggle's left edge instead of its right.
   export let variant: "header" | "breadcrumb" | "panel" = "header";
+  // Splits the toggle: the hostname links to the node page, and a separate
+  // chevron opens the picker.
+  export let nodeLink = false;
 
   const VALIDATION_TIMEOUT_MS = 10000;
+
+  let chevron: HTMLButtonElement | undefined = undefined;
 
   // The httpd version of the seed serving the current page, if explorer no
   // longer supports it. Only the node picker names that seed.
@@ -226,6 +232,7 @@
   function handleEscape(event: KeyboardEvent) {
     if (expanded && event.key === "Escape") {
       closeFocused();
+      chevron?.focus();
     }
   }
 </script>
@@ -249,6 +256,35 @@
     padding: 0.375rem 0.5rem;
   }
   .target:hover {
+    background-color: var(--color-surface-mid);
+    color: var(--color-text-primary);
+  }
+  .split {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding-left: 0.5rem;
+  }
+  .node-link {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    max-width: 14rem;
+    padding: 0.375rem 0;
+    color: var(--color-text-primary);
+  }
+  .chevron {
+    display: flex;
+    align-items: center;
+    background: transparent;
+    border: none;
+    padding: 0.25rem;
+    border-radius: var(--border-radius-sm);
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+  }
+  .chevron:hover,
+  .chevron[aria-expanded="true"] {
     background-color: var(--color-surface-mid);
     color: var(--color-text-primary);
   }
@@ -282,6 +318,22 @@
     display: flex;
     align-items: center;
     gap: 0.125rem;
+  }
+  .hover-action {
+    display: flex;
+    opacity: 0;
+  }
+  /* Hover the whole dropdown row, not just .item, which sits inside the
+     row's padding. */
+  :global(:hover) > .item .hover-action,
+  :global(:focus-visible) > .item .hover-action,
+  .hover-action:focus-within {
+    opacity: 1;
+  }
+  @media (hover: none) {
+    .hover-action {
+      opacity: 1;
+    }
   }
   .add-new-row {
     padding: 0.25rem 0.25rem 0 0.25rem;
@@ -325,35 +377,70 @@
   popoverFullWidthOnMobile={variant === "breadcrumb"}
   popoverPadding="0.25rem"
   popoverBorderRadius="var(--border-radius-md)">
-  <div
-    slot="toggle"
-    let:toggle
-    class="target {variant}"
-    {title}
-    aria-label={ariaLabel}
-    on:click={toggle}
-    on:keydown={e => e.key === "Enter" && toggle()}
-    role="button"
-    tabindex="0"
-    aria-haspopup="dialog"
-    aria-expanded={expanded}>
-    <slot name="icon"><Icon name="seed" /></slot>
-    <div class="hostname txt-overflow">{baseUrl.hostname}</div>
-    {#await outdatedVersion then version}
-      {#if version !== undefined}
-        <span
-          class="failed-icon"
-          title="This node runs radicle-httpd {releaseNumber(
-            version,
-          )}, but explorer needs {minimumSupportedVersion} or newer. Upgrade radicle-httpd to the latest release.">
-          <Icon name="warning" />
-        </span>
-      {/if}
-    {/await}
-    {#if variant !== "breadcrumb"}
-      <Icon name={expanded ? "chevron-up" : "chevron-down"} />
+  <svelte:fragment slot="toggle" let:toggle>
+    {#if nodeLink}
+      <div class="split">
+        <Link
+          styleHoverState
+          route={{ resource: "nodes", params: { baseUrl, repoPageIndex: 0 } }}>
+          <span class="node-link">
+            <slot name="icon"><Icon name="seed" /></slot>
+            <span class="hostname txt-overflow">{baseUrl.hostname}</span>
+          </span>
+        </Link>
+        {#await outdatedVersion then version}
+          {#if version !== undefined}
+            <span
+              class="failed-icon"
+              title="This node runs radicle-httpd {releaseNumber(
+                version,
+              )}, but explorer needs {minimumSupportedVersion} or newer. Upgrade radicle-httpd to the latest release.">
+              <Icon name="warning" />
+            </span>
+          {/if}
+        {/await}
+        <button
+          bind:this={chevron}
+          type="button"
+          class="chevron"
+          {title}
+          aria-label="Switch node"
+          aria-haspopup="dialog"
+          aria-expanded={expanded}
+          on:click={toggle}>
+          <Icon name="chevron-down" />
+        </button>
+      </div>
+    {:else}
+      <div
+        class="target {variant}"
+        {title}
+        aria-label={ariaLabel}
+        on:click={toggle}
+        on:keydown={e => e.key === "Enter" && toggle()}
+        role="button"
+        tabindex="0"
+        aria-haspopup="dialog"
+        aria-expanded={expanded}>
+        <slot name="icon"><Icon name="seed" /></slot>
+        <div class="hostname txt-overflow">{baseUrl.hostname}</div>
+        {#await outdatedVersion then version}
+          {#if version !== undefined}
+            <span
+              class="failed-icon"
+              title="This node runs radicle-httpd {releaseNumber(
+                version,
+              )}, but explorer needs {minimumSupportedVersion} or newer. Upgrade radicle-httpd to the latest release.">
+              <Icon name="warning" />
+            </span>
+          {/if}
+        {/await}
+        {#if variant !== "breadcrumb"}
+          <Icon name={expanded ? "chevron-up" : "chevron-down"} />
+        {/if}
+      </div>
     {/if}
-  </div>
+  </svelte:fragment>
 
   <svelte:fragment slot="popover">
     <div class="popover-content">
@@ -375,20 +462,27 @@
                 </span>
               {/if}
               <div class="actions">
-                <IconButton
-                  ariaLabel="Open node view"
-                  title="Open node view"
-                  stopPropagation
-                  on:click={() => openNodeView(item)}>
-                  <Icon name="arrow-right" />
-                </IconButton>
+                {#if !nodeLink}
+                  <span class="hover-action">
+                    <IconButton
+                      ariaLabel="Open node view"
+                      title="Open node view"
+                      stopPropagation
+                      on:click={() => openNodeView(item)}>
+                      <Icon name="arrow-right" />
+                    </IconButton>
+                  </span>
+                {/if}
                 {#if isBookmarked(item, $bookmarkedSeeds)}
-                  <IconButton
-                    ariaLabel="Remove bookmark"
-                    stopPropagation
-                    on:click={() => removeBookmark(item)}>
-                    <Icon name="close" />
-                  </IconButton>
+                  <span class="hover-action">
+                    <IconButton
+                      ariaLabel="Remove bookmark"
+                      title="Remove bookmark"
+                      stopPropagation
+                      on:click={() => removeBookmark(item)}>
+                      <Icon name="close" />
+                    </IconButton>
+                  </span>
                 {:else}
                   <IconButton
                     ariaLabel="Bookmark seed"
@@ -447,13 +541,17 @@
                     <Icon name="warning" />
                   </span>
                 {/if}
-                <IconButton
-                  ariaLabel="Open node view"
-                  title="Open node view"
-                  stopPropagation
-                  on:click={() => openNodeView(item)}>
-                  <Icon name="arrow-right" />
-                </IconButton>
+                {#if !nodeLink}
+                  <span class="hover-action">
+                    <IconButton
+                      ariaLabel="Open node view"
+                      title="Open node view"
+                      stopPropagation
+                      on:click={() => openNodeView(item)}>
+                      <Icon name="arrow-right" />
+                    </IconButton>
+                  </span>
+                {/if}
               </div>
             </DropdownListItem>
           </DropdownList>
