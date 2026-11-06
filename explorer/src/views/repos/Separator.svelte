@@ -1,10 +1,14 @@
 <script lang="ts">
-  import Icon from "@app/components/Icon.svelte";
 </script>
 
 <span
+  aria-hidden="true"
   style:display="inline-flex"
   style:align-items="center"
-  style:color="var(--color-text-tertiary)">
-  <Icon name="chevron-right" />
+  style:padding="0 0.25rem"
+  style:cursor="default"
+  style:user-select="none"
+  style:font="var(--txt-body-m-regular)"
+  style:color="var(--color-border-strong)">
+  /
 </span>
