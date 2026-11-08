@@ -6,6 +6,7 @@ import type { RadiclePeer } from "@tests/support/peerManager.js";
 import * as Fs from "node:fs/promises";
 import * as Path from "node:path";
 
+import { api, saveEmbed } from "@tests/support/api.js";
 import * as issue from "@tests/support/cobs/issue.js";
 import * as patch from "@tests/support/cobs/patch.js";
 import {
@@ -29,29 +30,6 @@ const onePixelPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
   "base64",
 );
-
-function api(page: Page, peer: RadiclePeer, command: string, data: object) {
-  return page.request
-    .post(`http://127.0.0.1:${peer.httpdBaseUrl.port}/${command}`, { data })
-    .then(response => response.json());
-}
-
-async function saveEmbed(
-  page: Page,
-  peer: RadiclePeer,
-  rid: string,
-  name: string,
-  bytes: Uint8Array,
-) {
-  const response = await page.request.post(
-    `http://127.0.0.1:${peer.httpdBaseUrl.port}/save_embed_by_bytes`,
-    {
-      headers: { rid, "Content-Type": "application/octet-stream" },
-      data: Buffer.concat([Buffer.from(`${name}\0`), bytes]),
-    },
-  );
-  return (await response.json()) as string;
-}
 
 async function createComment(
   page: Page,

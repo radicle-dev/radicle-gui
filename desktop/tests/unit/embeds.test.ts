@@ -3,10 +3,29 @@ import { describe, expect, test } from "vitest";
 import {
   basename,
   decodeEmbed,
+  embedMap,
   embedPreviewKind,
   encodeEmbedUpload,
   retinaWidth,
 } from "@app/lib/embeds";
+
+describe("embedMap", () => {
+  test("keys embeds by their oid", () => {
+    const embed = { name: "board.png", content: "git:a1b2c3" };
+    expect(Array.from(embedMap([embed]))).toEqual([["a1b2c3", embed]]);
+  });
+
+  test("is empty without embeds", () => {
+    expect(embedMap().size).toBe(0);
+    expect(embedMap([]).size).toBe(0);
+  });
+
+  test("keeps the last of two embeds with the same oid", () => {
+    const first = { name: "old.png", content: "git:a1b2c3" };
+    const second = { name: "new.png", content: "git:a1b2c3" };
+    expect(Array.from(embedMap([first, second]).values())).toEqual([second]);
+  });
+});
 
 describe("basename", () => {
   test.each([

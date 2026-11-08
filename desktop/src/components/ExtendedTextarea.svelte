@@ -5,6 +5,7 @@
 
   import { open } from "@tauri-apps/plugin-dialog";
   import debounce from "lodash/debounce";
+  import { untrack } from "svelte";
   import { SvelteMap } from "svelte/reactivity";
 
   import { basename, encodeEmbedUpload } from "@app/lib/embeds";
@@ -79,7 +80,7 @@
     focus = false,
     inline = false,
     body = $bindable(""),
-    embeds = new SvelteMap<string, Embed>(),
+    embeds: initialEmbeds,
     submitInProgress = false,
     disableSubmit = false,
     disallowEmptyBody = false,
@@ -97,6 +98,8 @@
     leadingActions,
   }: Props = $props();
   /* eslint-enable prefer-const */
+
+  const embeds = new SvelteMap<string, Embed>(untrack(() => initialEmbeds));
 
   const attachEnabled = $derived(attachDisabled === false);
   const attachDisabledReason = $derived(

@@ -24,6 +24,7 @@
   import { diffOptions } from "@app/lib/diffOptions.svelte";
   import { fileDiffPath, fileStatusLabel } from "@app/lib/diffText";
   import { draftReviewStorage } from "@app/lib/draftReviewStorage";
+  import { embedMap } from "@app/lib/embeds";
   import { nodeRunning } from "@app/lib/events";
   import { isIgnoredFile } from "@app/lib/ignoredFiles";
   import {
@@ -1043,6 +1044,7 @@
       <ExtendedTextarea
         {rid}
         body={body ?? ""}
+        embeds={embedMap(revision.description.slice(-1)[0]?.embeds)}
         focus
         submitCaption="Save"
         submit={async ({ comment, embeds }) => {
@@ -1159,6 +1161,9 @@
                   <ExtendedTextarea
                     {rid}
                     body={descriptionEditorPrefill}
+                    embeds={embedMap(
+                      targetRev?.description.slice(-1)[0]?.embeds,
+                    )}
                     focus
                     submitCaption="Save"
                     submit={async ({ comment, embeds }) => {

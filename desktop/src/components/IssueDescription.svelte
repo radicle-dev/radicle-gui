@@ -3,6 +3,8 @@
   import type { Reaction } from "@bindings/cob/Reaction";
   import type { Embed } from "@bindings/cob/thread/Embed";
 
+  import { embedMap } from "@app/lib/embeds";
+
   import ExtendedTextarea from "@app/components/ExtendedTextarea.svelte";
   import Icon from "@app/components/Icon.svelte";
   import Markdown from "@app/components/Markdown.svelte";
@@ -90,6 +92,7 @@
     <ExtendedTextarea
       {rid}
       {body}
+      embeds={embedMap(embeds)}
       focus
       submitCaption="Save"
       submit={async ({ comment, embeds }) => {

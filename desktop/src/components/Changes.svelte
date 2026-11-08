@@ -22,6 +22,7 @@
     fullFileLoader,
   } from "@app/lib/diffText";
   import { draftReviewStorage } from "@app/lib/draftReviewStorage";
+  import { embedMap } from "@app/lib/embeds";
   import {
     cachedDiffStats,
     cachedGetDiff,
@@ -828,6 +829,7 @@
         <ExtendedTextarea
           {rid}
           body={showRevisionDescription ? revisionDescription : ""}
+          embeds={embedMap(revision.description.slice(-1)[0]?.embeds)}
           focus
           submitCaption="Save"
           submit={async ({ comment, embeds }) => {

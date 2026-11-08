@@ -1,3 +1,13 @@
+import type { Embed } from "@bindings/cob/thread/Embed";
+
+import { SvelteMap } from "svelte/reactivity";
+
+export function embedMap(embeds: Embed[] = []): Map<string, Embed> {
+  return new SvelteMap(
+    embeds.map(embed => [embed.content.replace(/^git:/, ""), embed]),
+  );
+}
+
 export function basename(path: string): string {
   const parts = path.split(/[\\/]/).filter(p => p.length > 0);
   return parts[parts.length - 1] ?? path;
