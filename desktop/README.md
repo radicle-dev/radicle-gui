@@ -72,6 +72,13 @@ npm run tauri build -- --debug --bundles app
 
 ## Releasing
 
+The release tag is signed with your Radicle key. Set up Git to sign with it:
+
+```
+git config set gpg.format ssh
+git config set user.signingKey "$(rad self --ssh-key)"
+```
+
 Releases are driven by an interactive, phased script. Start one with:
 
 ```

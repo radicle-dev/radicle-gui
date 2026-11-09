@@ -4,8 +4,8 @@
 # the desktop/ folder of the radicle-gui monorepo.
 #
 # Automates the mechanical steps of the release process and pauses at the human
-# gates (CI/patch approval, DMG smoke-test, the cross-repo apt signing, delegate
-# tag approval, Zulip announce). Each phase prints what to do next and the exact
+# gates (CI/patch approval, DMG smoke-test, the cross-repo apt signing, the
+# signed tag, Zulip announce). Each phase prints what to do next and the exact
 # flag to resume with. State is not persisted: the version comes from --version
 # (prep) or tauri.conf.json (later phases), and commit SHAs are derived from git.
 #
@@ -318,8 +318,17 @@ phase_tag() {
   [[ -n "$sha" ]] || fail "could not find the 'desktop: Release $version' commit (is the patch merged into master?)"
   info "Tagging commit: ${sha:-<release-commit-sha>}"
 
+  # The tag must be signed with the key of the delegate's Radicle identity.
+  local signing_key
+  signing_key="$(git -C "$PROJECT_DIR" config user.signingKey || true)"
+  if [[ -z "$signing_key" || "$signing_key" != "$(rad self --ssh-key)" ]]; then
+    fail "git's user.signingKey does not match 'rad self --ssh-key', see README.md"
+  fi
+
   local tag="releases/desktop/$version"
-  run git -C "$PROJECT_DIR" tag "$tag" "${sha:-<release-commit-sha>}" -m "desktop: Release $version"
+  run rad auth
+  run git -C "$PROJECT_DIR" tag --annotate --sign "$tag" "${sha:-<release-commit-sha>}" \
+    -m "desktop: Release $version"
   run git -C "$PROJECT_DIR" push rad "refs/tags/$tag"
   run rad sync
 
