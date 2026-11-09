@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## radicle-httpd + radicle-search 0.31.0
+
 This release defines a backward compatibility policy in Radicle Explorer for
 radicle-httpd in [ADR 0001](docs/adr/0001-expand-and-contract-api-changes.md).
 Starting this release, explorer maintains backward compatibility with at least

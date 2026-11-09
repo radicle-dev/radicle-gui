@@ -32,6 +32,8 @@ Explorer supports httpd 0.28.0 and newer, set by `minimumSupportedVersion` in
 
 ## Unreleased
 
+## 0.31.0
+
 ### API at `/api`
 
 - Added: httpd serves the API at `/api`, and still at `/api/v1`.
