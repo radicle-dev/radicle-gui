@@ -25,7 +25,7 @@ rad auth
 
 case "$confirmation" in
   [Yy]*)
-    if git tag --annotate --sign "$tag" -m "Release $version" "$commit"; then
+    if git tag --annotate --sign "$tag" -m "httpd: Release $version" "$commit"; then
       echo "Tag $tag created and signed over $commit."
     else
       echo "Failed to create tag."
