@@ -3,27 +3,18 @@ set -e
 
 # Registers the archives in `artifacts/` with radicle-artifact, in the release
 # of the tag `releases/httpd/<version>`, with their files.radicle.dev URLs and
-# checksums. It also builds the explorer bundle from the checked out tag with
-# config/default.json, registers it as a collection and seeds it from the local
-# artifact node. Run it after `upload`. Running it again changes nothing.
+# checksums. Run it after `upload`. Running it again changes nothing.
 
 outdir="$(dirname "$0")/artifacts"
-explorer="$(cd "$(dirname "$0")/../../.." && pwd)"
 version="$("$(dirname "$0")/version")"
 tag="releases/httpd/$version"
 
-for tool in git npm rad rad-artifact jq; do
+for tool in rad rad-artifact jq sha256sum; do
   if ! command -v "$tool" >/dev/null; then
     echo "fatal: $tool is not installed" >&2
     exit 1
   fi
 done
-
-# node-config also loads untracked files such as config/local.json.
-if [ -n "$(git -C "$explorer" ls-files --others config)" ]; then
-  echo "fatal: $explorer/config has untracked files, remove them" >&2
-  exit 1
-fi
 
 rad auth
 
@@ -53,22 +44,6 @@ for target in $(cat "$(dirname "$0")/TARGETS"); do
     fi
   done
 done
-
-echo "Building the explorer bundle.."
-(
-  cd "$explorer"
-  unset NODE_CONFIG NODE_CONFIG_ENV NODE_CONFIG_DIR VITE_RUNTIME_CONFIG
-  npm ci -w explorer --no-audit --no-fund
-  npm run build
-)
-
-if ! rad-artifact node status >/dev/null 2>&1; then
-  rad-artifact node start
-fi
-
-echo "Registering the explorer bundle.."
-artifact register "$explorer/build" --collection -n radicle-explorer \
-  --revision "$tag" --seed >/dev/null
 
 rad sync --announce
 echo "Registration successful."

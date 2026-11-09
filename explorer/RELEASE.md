@@ -169,14 +169,21 @@ the archives.
 3. Register the archives with radicle-artifact, in the release of the tag. This
    records each archive's files.radicle.dev URL and `sha256`. If you publish the
    archives that `fetch` downloaded into `artifacts/`, it also records their
-   Buildkite build. It also builds the explorer frontend bundle from the checked
-   out tag with `config/default.json`, registers it as the collection
-   `radicle-explorer` and seeds it from your local artifact node. This needs
-   `node` and `npm`, in the version of `.nvmrc`, and no untracked files in
-   `config/`, such as `local.json`. Running it again changes nothing:
+   Buildkite build. Running it again changes nothing:
 
    ```sh
    crates/radicle-httpd/build/register
+   ```
+
+4. Register the explorer frontend bundle. This builds it from the checked out
+   tag with `config/default.json`, registers it as the collection
+   `radicle-explorer` in the release of the tag and seeds it from your local
+   artifact node. This needs `node` and `npm`, in the version of `.nvmrc`, and
+   no untracked files in `config/`, such as `local.json`. Running it again
+   changes nothing:
+
+   ```sh
+   crates/radicle-httpd/build/register-bundle
    ```
 
 ## Attest (recommended)
