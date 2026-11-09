@@ -15,6 +15,8 @@
 #   scripts/release --phase apt
 #   scripts/release --phase publish
 #   scripts/release --phase tag
+#   scripts/release --phase register
+#   scripts/release --phase announce
 #
 #   scripts/release --list      List the phases in order
 #   scripts/release --help      Show this help
@@ -47,7 +49,7 @@ RELEASE_PATHS=("$TAURI_CONF" ":(top)crates/radicle-tauri/tauri.conf.json")
 CHANGELOG="$PROJECT_DIR/CHANGELOG.md"
 APT_REPO_DIR="$(cd "$REPO_DIR/../radicle-apt-repo" 2>/dev/null && pwd || true)"
 
-PHASES=(prep build apt publish tag)
+PHASES=(prep build apt publish tag register announce)
 
 # ---- Output helpers ----
 
@@ -334,7 +336,53 @@ phase_tag() {
 
   step "Canonical tag pushed"
   info "Any delegate's push of a releases/ tag makes it canonical."
+  next "scripts/release --phase register"
+}
 
+# Registers the published files in the release of the tag, with their
+# download URLs and checksums. Running it again changes nothing.
+phase_register() {
+  local version
+  version="$(conf_version)"
+  local release_dir="$PROJECT_DIR/releases/$version"
+  local tag="releases/desktop/$version"
+  local url="https://$FILES_HOST/releases/radicle-desktop/$version"
+
+  step "Registering $version with radicle-artifact"
+  command -v rad-artifact >/dev/null || fail "rad-artifact is not installed, see README.md"
+  git -C "$PROJECT_DIR" rev-parse -q --verify "refs/tags/$tag" >/dev/null \
+    || fail "tag $tag not found — run --phase tag first"
+  run rad auth
+
+  local artifact=(rad-artifact --no-announce --no-input)
+  local name file cid sha256
+  for name in radicle-desktop-aarch64.dmg "radicle-desktop_${version}_amd64.deb" \
+    radicle-desktop-amd64.AppImage; do
+    file="$release_dir/$name"
+    [[ -f "$file" ]] || fail "$file not found — run --phase build first"
+
+    info "Registering $name"
+    if [[ "$DRY_RUN" == true ]]; then
+      run "${artifact[@]}" register "$file" --revision "$tag" -n "$name" --json
+      cid="<cid>"
+      sha256="<sha256>"
+    else
+      cid="$("${artifact[@]}" register "$file" --revision "$tag" -n "$name" --json | jq -r .cid)"
+      sha256="$(shasum -a 256 "$file" | cut -d' ' -f1)"
+    fi
+    run "${artifact[@]}" location add --revision "$tag" --cid "$cid" "$url/$name"
+    run "${artifact[@]}" metadata set --revision "$tag" --cid "$cid" sha256 "$sha256"
+  done
+  run rad sync --announce
+
+  step "Registered"
+  info "Check it with: rad-artifact show $tag"
+  next "scripts/release --phase announce"
+}
+
+phase_announce() {
+  local version
+  version="$(conf_version)"
   step "Announce on Zulip"
   local entry
   entry="$(awk -v v="### $version" '
@@ -399,6 +447,8 @@ main() {
     apt)      phase_apt ;;
     publish)  phase_publish ;;
     tag)      phase_tag ;;
+    register) phase_register ;;
+    announce) phase_announce ;;
     *) die "Unknown phase: $phase (try --list)" ;;
   esac
 }

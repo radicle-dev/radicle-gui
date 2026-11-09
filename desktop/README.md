@@ -79,6 +79,13 @@ git config set gpg.format ssh
 git config set user.signingKey "$(rad self --ssh-key)"
 ```
 
+The `register` phase records each release file, its download URL and its
+`sha256` in the release of the tag with radicle-artifact. Install it with:
+
+```
+curl -sSf https://files.radicle.dev/releases/radicle-artifact/install | sh
+```
+
 Releases are driven by an interactive, phased script. Start one with:
 
 ```
