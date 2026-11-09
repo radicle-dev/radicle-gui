@@ -15,9 +15,8 @@ The release tooling lives in [`crates/radicle-httpd/build/`][build].
 Releases cover **only** the `radicle-httpd` and `radicle-search` binaries. The
 web front-end (`radicle-explorer`) is not released this way: it is deployed
 continuously (rolling release) and must always remain compatible with the latest
-`radicle-httpd`/`radicle-search` release. A release also registers the
-frontend bundle of the tagged commit with radicle-artifact, see
-[Publish](#publish).
+`radicle-httpd`/`radicle-search` release. A release also registers the frontend
+bundle of the tagged commit with radicle-artifact, see [Publish](#publish).
 
 ## Versioning
 
@@ -38,7 +37,8 @@ for which releases explorer supports.
   ```
 - Working `podman` setup (see [Podman Setup](#podman-setup) below), or Docker
 - Required tools: `podman` or `docker`, `rad`, `rad-artifact`, `sha256sum`,
-  `curl`, `jq`, `ssh`, `scp`, `ssh-keygen`, `node`, `npm`. Install `rad-artifact` with:
+  `curl`, `jq`, `ssh`, `scp`, `ssh-keygen`, `node`, `npm`. Install
+  `rad-artifact` with:
   ```sh
   curl -sSf https://files.radicle.dev/releases/radicle-artifact/install | sh
   ```
@@ -169,8 +169,8 @@ the archives.
 3. Register the archives with radicle-artifact, in the release of the tag. This
    records each archive's files.radicle.dev URL and `sha256`. If you publish the
    archives that `fetch` downloaded into `artifacts/`, it also records their
-   Buildkite build. It also builds the explorer frontend bundle from the
-   checked out tag with `config/default.json`, registers it as the collection
+   Buildkite build. It also builds the explorer frontend bundle from the checked
+   out tag with `config/default.json`, registers it as the collection
    `radicle-explorer` and seeds it from your local artifact node. This needs
    `node` and `npm`, in the version of `.nvmrc`, and no untracked files in
    `config/`, such as `local.json`. Running it again changes nothing:
