@@ -1,6 +1,6 @@
 [advisories]
 ignore = [
-  "RUSTSEC-2023-0071", # https://radicle.network/nodes/iris.radicle.network/rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5/issues/bd8af7a5e3fd02c0963d7550a5cc2cab00950775
+  "RUSTSEC-2023-0071", # https://radicle.network/nodes/oak.radicle.garden/rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5/issues/bd8af7a5e3fd02c0963d7550a5cc2cab00950775
   # atomic-polyfill is unmaintained. It reaches the lockfile through
   # radicle-artifact -> postcard -> heapless 0.7, which only depends on it for
   # AVR, RISC-V, thumbv6m and Xtensa bare-metal targets, so it is never

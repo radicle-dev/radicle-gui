@@ -12,12 +12,7 @@
   "supportWebsite": "https://radicle.zulipchat.com",
   "preferredSeeds": [
     {
-      "hostname": "rosa.radicle.network",
-      "port": 443,
-      "scheme": "https"
-    },
-    {
-      "hostname": "iris.radicle.network",
+      "hostname": "oak.radicle.garden",
       "port": 443,
       "scheme": "https"
     }

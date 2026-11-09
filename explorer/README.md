@@ -103,7 +103,8 @@ the configuration from a pre-defined location (`/config.json`) on the server.
 
 The config file must be served as static content and must be publicly
 accessible. The structure of the runtime `config.json` must match the shape of
-the application's base configuration defined in `config/default.json`.
+the application's base configuration defined in `config/default.json`. Arrays
+replace the built-in ones, and `preferredSeeds` must list at least one seed.
 
 ### Homepage
 
@@ -222,13 +223,13 @@ The UI is distributed under the terms of GPLv3. See [LICENSE][lic] for details.
 [con]: ../CONTRIBUTING.md
 [def]: ./config/default.json
 [iss]:
-  https://radicle.network/nodes/iris.radicle.network/rad:z4V1sjrXqjvFdnCUbxPFqd5p4DtH5/issues
+  https://radicle.network/nodes/oak.radicle.garden/rad:z4V1sjrXqjvFdnCUbxPFqd5p4DtH5/issues
 [lic]: ./LICENSE
 [nco]: https://github.com/node-config/node-config/wiki/Configuration-Files
 [nod]: https://nodejs.org
 [npm]: https://www.npmjs.com
 [pat]:
-  https://radicle.network/nodes/iris.radicle.network/rad:z4V1sjrXqjvFdnCUbxPFqd5p4DtH5/patches
+  https://radicle.network/nodes/oak.radicle.garden/rad:z4V1sjrXqjvFdnCUbxPFqd5p4DtH5/patches
 [rad]: https://radicle.dev
 [try]: https://caddyserver.com/docs/caddyfile/patterns#single-page-apps-spas
 [zul]: https://radicle.zulipchat.com/#narrow/stream/369278-web

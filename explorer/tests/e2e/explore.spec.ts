@@ -35,6 +35,7 @@ test("explore falls back to a healthy seed when the primary is unreachable", asy
   // Make an unreachable seed the primary, then fail its requests instantly.
   await page.addInitScript(seed => {
     window.localStorage.setItem("selectedSeed", JSON.stringify(seed));
+    window.localStorage.setItem("bookmarkedSeeds", JSON.stringify([seed]));
   }, unreachableSeed);
   await page.route(
     url => url.hostname === unreachableSeed.hostname,

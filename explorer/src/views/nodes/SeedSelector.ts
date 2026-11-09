@@ -13,12 +13,6 @@ const seedSchema = z.object({
   scheme: z.string(),
 });
 
-const HARDCODED_FALLBACK: BaseUrl = {
-  scheme: "https",
-  hostname: "iris.radicle.network",
-  port: 443,
-};
-
 // The seed the user explicitly picked, or `undefined` when they never did.
 // Read `searchSeed` instead of this unless you need to distinguish an explicit
 // pick from a resolved fallback.
@@ -49,6 +43,19 @@ export const bookmarkedSeeds = storedWritable<BaseUrl[]>(
   !window.localStorage,
 );
 
+function dropRetiredDefaultSeed() {
+  const pinned = get(explicitSeed);
+  if (
+    pinned &&
+    !config.preferredSeeds.some(s => isEqual(s, pinned)) &&
+    !get(bookmarkedSeeds).some(s => isEqual(s, pinned))
+  ) {
+    explicitSeed.clear();
+  }
+}
+
+dropRetiredDefaultSeed();
+
 // Session-scoped set of seeds the app tried and failed to reach. Used to
 // surface a warning icon in the seed picker.
 export const failedSeeds = writable<BaseUrl[]>([]);
@@ -67,10 +74,8 @@ export function removeBookmark(seed: BaseUrl) {
   bookmarkedSeeds.update(previous => previous.filter(x => !isEqual(x, seed)));
   if (isEqual(get(explicitSeed), seed)) {
     // Clear the explicit pick so `determineSeed()` falls back through its
-    // normal resolution path (bucket-pick a preferred seed, or the hardcoded
-    // fallback). Setting it to the first remaining bookmark or preferred seed
-    // would orphan the store when neither exists, and would also bypass the
-    // bucket-based load balancing.
+    // normal resolution path (bucket-pick a preferred seed). Setting it to the
+    // first remaining bookmark would bypass the bucket-based load balancing.
     explicitSeed.set(undefined);
   }
 }
@@ -94,18 +99,17 @@ function getOrCreateBucketRandom(): number {
 //      bucket number against the current preferred-seeds list. This keeps a
 //      user on the same seed across visits when the list is unchanged, but
 //      probabilistically rebalances them onto new seeds when the list grows.
-//   3. Fallback to a hardcoded seed if nothing is configured.
+// The config must list at least one preferred seed.
 export function determineSeed(): BaseUrl {
   const explicit = get(explicitSeed);
   if (explicit) return explicit;
 
   const pool = config.preferredSeeds;
-  if (pool.length > 0) {
-    const bucket = getOrCreateBucketRandom();
-    return pool[bucket % pool.length];
+  if (pool.length === 0) {
+    throw new Error("Config must list at least one seed in `preferredSeeds`");
   }
-
-  return HARDCODED_FALLBACK;
+  const bucket = getOrCreateBucketRandom();
+  return pool[bucket % pool.length];
 }
 
 // The seed that searches and the explore listing run against. Derived so

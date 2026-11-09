@@ -135,7 +135,7 @@
     {#if activeTab === "cli"}
       <label for="download-command">
         Use the <ExternalLink
-          href="https://radicle.network/nodes/iris.radicle.network/rad:z4VYyJ9KuwMNkXGQnmKuGPGKw3inv">
+          href="https://radicle.network/nodes/oak.radicle.garden/rad:z4VYyJ9KuwMNkXGQnmKuGPGKw3inv">
           Radicle Artifact CLI
         </ExternalLink> to download and verify this artifact.
       </label>
