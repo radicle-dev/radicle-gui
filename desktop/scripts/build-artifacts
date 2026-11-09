@@ -71,9 +71,9 @@ SHORT_SHA="$(git -C "$PROJECT_DIR" rev-parse --short=8 HEAD)"
 # container's root doesn't own, so build.rs can't rely on asking it for the
 # commit. Pass it in the way build.rs would get it.
 GIT_HEAD="$(git -C "$PROJECT_DIR" rev-parse --short HEAD)"
-RELEASE_DIR="$PROJECT_DIR/releases/v$VERSION"
+RELEASE_DIR="$PROJECT_DIR/releases/$VERSION"
 
-step "Building release v$VERSION (${SHORT_SHA})"
+step "Building release $VERSION (${SHORT_SHA})"
 echo "    Output: $RELEASE_DIR"
 mkdir -p "$RELEASE_DIR"
 

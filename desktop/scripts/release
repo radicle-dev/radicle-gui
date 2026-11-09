@@ -150,9 +150,13 @@ conf_version() {
   jq -r '.version' "$TAURI_CONF"
 }
 
+# Release commits are "desktop: Release X.Y.Z". Older ones lack the prefix
+# and have a v before the version.
+RELEASE_SUBJECT='^(desktop: )?Release v?'
+
 # The SHA of the release commit for $1, looked up by its commit subject.
 release_commit_sha() {
-  git -C "$PROJECT_DIR" log --grep="^Release v$1\$" -1 --format=%H -- "${RELEASE_PATHS[@]}"
+  git -C "$PROJECT_DIR" log -E --grep="$RELEASE_SUBJECT$1\$" -1 --format=%H -- "${RELEASE_PATHS[@]}"
 }
 
 # ---- Phases ----
@@ -161,7 +165,7 @@ phase_prep() {
   local version="$1"
   [[ -n "$version" ]] || die "prep requires --version X.Y.Z"
 
-  step "Preparing release v$version"
+  step "Preparing release $version"
 
   info "Syncing and fetching"
   run rad sync
@@ -170,9 +174,9 @@ phase_prep() {
   info "Creating branch release/desktop/$version"
   run git -C "$PROJECT_DIR" checkout -b "release/desktop/$version"
 
-  step "Changelog material (for the v$version entry)"
+  step "Changelog material (for the $version entry)"
   local prev
-  prev="$(git -C "$PROJECT_DIR" log --grep='^Release v' -1 --format=%H -- "${RELEASE_PATHS[@]}" || true)"
+  prev="$(git -C "$PROJECT_DIR" log -E --grep="${RELEASE_SUBJECT}[0-9]" -1 --format=%H -- "${RELEASE_PATHS[@]}" || true)"
   if [[ -n "$prev" ]]; then
     info "Commits since $(git -C "$PROJECT_DIR" log -1 --format='%s' "$prev"):"
     echo
@@ -185,7 +189,7 @@ phase_prep() {
     echo
     info "Format the list into the user-facing changes for the CHANGELOG entry."
   else
-    warn "no previous 'Release v*' commit found; writing the entry from scratch"
+    warn "no previous 'Release *' commit found; writing the entry from scratch"
   fi
 
   if ! confirm "Continue and open CHANGELOG.md in \$EDITOR?"; then
@@ -197,11 +201,11 @@ phase_prep() {
   [[ "$DRY_RUN" == true ]] || info "tauri.conf.json -> $(conf_version)"
 
   step "Editing CHANGELOG.md"
-  info "Add the v$version entry (Features, Bug fixes, Shout-out block)."
+  info "Add the $version entry (Features, Bug fixes, Shout-out block)."
   run "${EDITOR:-vi}" "$CHANGELOG"
 
   step "Creating Release Commit"
-  run git -C "$PROJECT_DIR" commit -m "Release v$version" -- "$TAURI_CONF" "$CHANGELOG"
+  run git -C "$PROJECT_DIR" commit -m "desktop: Release $version" -- "$TAURI_CONF" "$CHANGELOG"
   local sha
   sha="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
   info "Release commit: $sha"
@@ -220,11 +224,11 @@ phase_build() {
   local version
   version="$(conf_version)"
   require_podman
-  step "Building release artifacts for v$version"
+  step "Building release artifacts for $version"
   run "$SCRIPT_DIR/build-artifacts"
 
   step "Build complete"
-  info "Install releases/v$version/radicle-desktop-aarch64.dmg and verify it runs."
+  info "Install releases/$version/radicle-desktop-aarch64.dmg and verify it runs."
   next "scripts/release --phase apt"
 }
 
@@ -232,7 +236,7 @@ phase_apt() {
   local version
   version="$(conf_version)"
   local deb="radicle-desktop_${version}_amd64.deb"
-  local src="$PROJECT_DIR/releases/v$version/$deb"
+  local src="$PROJECT_DIR/releases/$version/$deb"
 
   step "Staging the Debian package for signing"
   [[ -f "$src" ]] || fail "$src not found — run --phase build first"
@@ -261,12 +265,12 @@ phase_apt() {
     RADICLE_APT_SIGNING_KEY=/src/keys/signing-key ./import-deb $deb
 
     # Back on the host:
-    git checkout -b release-v$version
+    git checkout -b release-$version
     git add db/ dists/ pool/
     git commit -m "Update radicle-desktop to $version"
     git push rad HEAD:refs/patches
     # After peer approval:
-    git checkout main && git merge --ff-only release-v$version && git push
+    git checkout main && git merge --ff-only release-$version && git push
     make publish
 EOF
   next "scripts/release --phase publish"
@@ -275,7 +279,7 @@ EOF
 phase_publish() {
   local version
   version="$(conf_version)"
-  local release_dir="$PROJECT_DIR/releases/v$version"
+  local release_dir="$PROJECT_DIR/releases/$version"
   local remote="/var/www/$FILES_HOST/releases/radicle-desktop"
   local key target
   key="$(rad path)/keys/radicle"
@@ -307,15 +311,15 @@ phase_publish() {
 phase_tag() {
   local version
   version="$(conf_version)"
-  step "Tagging canonical release v$version"
+  step "Tagging canonical release $version"
 
   local sha
   sha="$(release_commit_sha "$version")"
-  [[ -n "$sha" ]] || fail "could not find the 'Release v$version' commit (is the patch merged into master?)"
+  [[ -n "$sha" ]] || fail "could not find the 'desktop: Release $version' commit (is the patch merged into master?)"
   info "Tagging commit: ${sha:-<release-commit-sha>}"
 
   local tag="releases/desktop/$version"
-  run git -C "$PROJECT_DIR" tag "$tag" "${sha:-<release-commit-sha>}" -m "Release $version"
+  run git -C "$PROJECT_DIR" tag "$tag" "${sha:-<release-commit-sha>}" -m "desktop: Release $version"
   run git -C "$PROJECT_DIR" push rad "refs/tags/$tag"
   run rad sync
 
@@ -324,12 +328,12 @@ phase_tag() {
 
   step "Announce on Zulip"
   local entry
-  entry="$(awk -v v="### v$version" '
+  entry="$(awk -v v="### $version" '
     $0 == v {grab=1}
-    grab && NR>1 && /^### v/ && $0 != v {exit}
+    grab && NR>1 && /^### / && $0 != v {exit}
     grab {print}
   ' "$CHANGELOG")"
-  [[ -n "$entry" ]] || fail "no '### v$version' section found in CHANGELOG.md"
+  [[ -n "$entry" ]] || fail "no '### $version' section found in CHANGELOG.md"
 
   echo
   bold "    Copy the message below into the announcements channel:"
@@ -339,10 +343,10 @@ phase_tag() {
   echo "$entry"
   echo "    --------------------------------------------------------------------"
   echo
-  info "Post it under a topic named: radicle-desktop v$version"
+  info "Post it under a topic named: radicle-desktop $version"
   info "Then resolve the previous release topic."
   echo
-  bold "Release v$version complete."
+  bold "Release $version complete."
 }
 
 # ---- Dispatch ----

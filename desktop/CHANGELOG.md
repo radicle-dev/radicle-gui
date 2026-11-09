@@ -1,4 +1,4 @@
-### v0.18.0
+### 0.18.0
 
 **Features**
 
@@ -28,7 +28,7 @@
 - [brandonoxendine](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkpwnLQxFBQXyMK3Es91s8A7Ew7G11BFFyng1dqZR8QhG3)
 - [ioannis](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkfcWogpi5oLMvhvkk1M91CcrQhWgvbxbWCPDXxWATu8fG)
 
-### v0.17.0
+### 0.17.0
 
 **Features**
 
@@ -80,7 +80,7 @@
 - [brandonoxendine](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkpwnLQxFBQXyMK3Es91s8A7Ew7G11BFFyng1dqZR8QhG3)
 - [efstajas](https://radicle.network/nodes/iris.radicle.network/users/z6MkqG3Pu18RWuZ8GrqGQ9s4yoi5rfhcLq9rpo1ZZX8en994)
 
-### v0.16.0
+### 0.16.0
 
 **Features**
 
@@ -124,7 +124,7 @@
 - [brandonoxendine](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkpwnLQxFBQXyMK3Es91s8A7Ew7G11BFFyng1dqZR8QhG3)
 - [upbeat-molar](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkmRaBHeJuJKQE21aRVSe2uW3j5T7gQQAEAY7UF4tr5jRn)
 
-### v0.15.0
+### 0.15.0
 
 **Features**
 
@@ -148,7 +148,7 @@
 
 - [brandonoxendine](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkpwnLQxFBQXyMK3Es91s8A7Ew7G11BFFyng1dqZR8QhG3)
 
-### v0.14.0
+### 0.14.0
 
 **Features**
 
@@ -169,7 +169,7 @@
 - [hlatimer266](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkkwiqeqFrjPNvSNuNACpynpwiuVHqF8YHwGLzCBSfNJzZ)
 - [justarandomgeek](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkwfrBy9mKTfcVELcV4wc6zfN379FPMnAqsxnwt4j2TdQ2)
 
-### v0.13.0
+### 0.13.0
 
 **Features**
 
@@ -191,7 +191,7 @@
 - List scroll position is now restored when navigating back and forth through
   history
 
-### v0.12.0
+### 0.12.0
 
 **Features**
 
@@ -207,7 +207,7 @@
 - Fixed the Linux AppImage failing to launch on non-Debian distributions
 - Fixed duplicate CI job runs by deduplicating them by run ID
 
-### v0.11.0
+### 0.11.0
 
 **Features**
 
@@ -261,7 +261,7 @@
 - [lorenz](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkkPvBfjP4bQmco5Dm7UGsX2ruDBieEHi8n9DVJWX5sTEz)
 - [yarikoptic](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkfCGiLM9j7AstSVNGhqtz9zkAhfb863etsbkRnXsipuRr)
 
-### v0.10.0
+### 0.10.0
 
 - Fixed app loading indicator
 - Sidebar scroll position is now preserved when navigating between views
@@ -272,7 +272,7 @@
 
 - [lorenz](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkkPvBfjP4bQmco5Dm7UGsX2ruDBieEHi8n9DVJWX5sTEz)
 
-### v0.9.0
+### 0.9.0
 
 - Redesigned the entire app with a new UI kit — typography, colors, icons,
   avatars, and border radii have all been updated for a more polished,
@@ -297,7 +297,7 @@
 - [brandonhaslegs](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkpwnLQxFBQXyMK3Es91s8A7Ew7G11BFFyng1dqZR8QhG3)
 - [julien](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkgvaRdahQZfnf7ccMHByeHtTYrMrM3MuSGYawF6ZL6DNj)
 
-### v0.8.0
+### 0.8.0
 
 - CI job run statuses are now shown for the default branch and in patch revision
   commit lists
@@ -312,12 +312,12 @@
 
 - [geigerzaehler](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6Mki9XNNHeVRnYS88U59iCBzKUp2xWM3f4zvA3cXuKJFvWF)
 
-### v0.7.1
+### 0.7.1
 
 - Fixed a bug in patch and notification lists caused by a library
   incompatibility
 
-### v0.7.0
+### 0.7.0
 
 - Source code can now be browsed directly within the app
 - Draft reviews and their comments can now be deleted
@@ -328,13 +328,13 @@
 
 - [geigerzaehler](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6Mki9XNNHeVRnYS88U59iCBzKUp2xWM3f4zvA3cXuKJFvWF)
 
-### v0.6.1
+### 0.6.1
 
 - Fixed a bug where the app wouldn't onboard new users or locked identities
 - Fixed regression where the current version of the app wasn't including the
   commit it was built from
 
-### v0.6.0
+### 0.6.0
 
 - UI polish: scrollbars now auto-hide across the app
 - Fixed button overflow in issue and patch sidebars
@@ -346,7 +346,7 @@
 
 - [geigerzaehler](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6Mki9XNNHeVRnYS88U59iCBzKUp2xWM3f4zvA3cXuKJFvWF)
 
-### v0.5.0
+### 0.5.0
 
 - The app is now officially available via Arch packaging
 - Fuzzy search now supports repo IDs, descriptions, and issue/patch IDs
@@ -368,12 +368,12 @@
 - [lorenz](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkkPvBfjP4bQmco5Dm7UGsX2ruDBieEHi8n9DVJWX5sTEz)
 - [tippfehlr](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MksSTAFPKk7eQju9aGzK64qpfiSnKQ1tJWv1rdzRd5bMHU)
 
-### v0.4.1
+### 0.4.1
 
 - Fixed a bug in the release pipeline to update the latest artifacts
 - Added WSL2 installation instructions to https://radworks.garden
 
-### v0.4.0
+### 0.4.0
 
 - Notification inbox is now accessible from any view without navigating away
 - App icon now shows a badge with the unread notification count and polls for
@@ -393,7 +393,7 @@
 - [tshepang](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkfPSKW7AgQqXSi8fgEJMduHpm9ABmsPYwPhMeF7PssonK)
 - [youthlic](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MktsSuE4bVYbuTtEPjmhrQWA7dMri7GUg9Qp9o8tRCsmhu)
 
-### v0.3.0
+### 0.3.0
 
 - New onboarding guide to help users get started faster
 - Repo homepage now shows README and project info for quick overview
@@ -401,7 +401,7 @@
 - Settings now show version and commit hash for easier support
 - Fixed notification count and comment placement bugs
 
-### v0.2.0
+### 0.2.0
 
 - Added font size controls for enhanced readability and accessibility
 - Introduced contextual explainers in key areas to guide users and improve
@@ -409,6 +409,6 @@
 - Enhanced contrast in both dark and light modes to improve legibility and
   visual clarity
 
-### v0.1.0
+### 0.1.0
 
 - First public release
