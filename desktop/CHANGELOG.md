@@ -1,3 +1,33 @@
+### v0.18.0
+
+**Features**
+
+- Issue and patch lists now have a right-click menu
+- Added "Pin" to the sidebar repository context menu
+- The latest commit in a patch revision is now marked
+- Revisions with no changes now explain why they're empty
+- Tags are now sorted by version, newest first
+- The Releases view now opens on Delegates
+
+- Experimental: Added boards, with a board view and commands to manage them
+
+**Bug fixes**
+
+- Fixed math rendering in Markdown
+- Fixed breadcrumb labels wrapping on long titles
+- The sidebar repository header label now truncates when the sidebar is narrow
+- List search now stays usable in narrow windows
+- Added a monospace fallback for JetBrains Mono
+- Worded switches now have wider side padding
+- Fixed GTK plugin loading and link opening in the Linux AppImage
+
+**Shout-out to our contributors 🙏✨**
+
+- [2color](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MktwkohCx8aHZ1QCjVZUiLmX92oPZFxRiFZkbq32Tk5Tkm)
+- [alessio](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6Mkp67KWsEULs8E1ufmwP3JwgU7uvZueB3E16tHnBNK742d)
+- [brandonoxendine](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkpwnLQxFBQXyMK3Es91s8A7Ew7G11BFFyng1dqZR8QhG3)
+- [ioannis](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkfcWogpi5oLMvhvkk1M91CcrQhWgvbxbWCPDXxWATu8fG)
+
 ### v0.17.0
 
 **Features**
