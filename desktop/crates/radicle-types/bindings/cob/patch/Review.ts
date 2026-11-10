@@ -2,6 +2,7 @@
 import type { Author } from "../Author";
 import type { CodeLocation } from "../thread/CodeLocation";
 import type { Comment } from "../thread/Comment";
+import type { Embed } from "../thread/Embed";
 import type { Verdict } from "./Verdict";
 
 export type Review = {
@@ -12,4 +13,5 @@ export type Review = {
   comments: Array<Comment<CodeLocation>>;
   timestamp: number;
   labels: Array<string>;
+  embeds: Array<Embed>;
 };

@@ -29,6 +29,7 @@
     fullFileLoader,
     gitStatusEntries,
   } from "@app/lib/diffText";
+  import { embedMap } from "@app/lib/embeds";
   import { nodeRunning } from "@app/lib/events";
   import {
     cachedGetDiff,
@@ -180,7 +181,7 @@
     }
   }
 
-  async function saveSummary(newSummary: string) {
+  async function saveSummary(newSummary: string, embeds: Embed[]) {
     try {
       savingSummary = true;
       await invoke("edit_patch", {
@@ -192,6 +193,7 @@
           summary: newSummary,
           verdict: review.verdict,
           labels: review.labels,
+          embeds,
         },
         opts: { announce: $nodeRunning && $announce },
       });
@@ -241,6 +243,7 @@
           summary: review.summary ?? "",
           verdict,
           labels: review.labels,
+          embeds: review.embeds,
         },
         opts: { announce: $nodeRunning && $announce },
       });
@@ -957,11 +960,12 @@
         <ExtendedTextarea
           {rid}
           body={review.summary ?? ""}
+          embeds={embedMap(review.embeds)}
           focus
           submitCaption={savingSummary ? "Saving…" : "Save"}
           disableSubmit={savingSummary}
-          submit={async ({ comment }) => {
-            await saveSummary(comment);
+          submit={async ({ comment, embeds }) => {
+            await saveSummary(comment, Array.from(embeds.values()));
           }}
           close={() => (editingSummary = false)} />
       </div>
@@ -974,7 +978,7 @@
             content={review.summary ?? ""}
             toggleTaskItem={isOwnPublishedReview
               ? async content => {
-                  await saveSummary(content);
+                  await saveSummary(content, review.embeds);
                 }
               : undefined} />
         {:else}

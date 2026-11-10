@@ -56,6 +56,7 @@ export function review(props: Partial<Review> = {}): Review {
     comments: [],
     timestamp: 0,
     labels: [],
+    embeds: [],
     ...props,
   };
 }

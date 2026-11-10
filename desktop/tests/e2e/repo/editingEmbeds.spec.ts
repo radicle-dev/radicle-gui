@@ -3,6 +3,9 @@ import type { Revision } from "@bindings/cob/patch/Revision";
 import type { Locator, Page } from "@playwright/test";
 import type { RadiclePeer } from "@tests/support/peerManager.js";
 
+import * as Fs from "node:fs/promises";
+import * as Path from "node:path";
+
 import { api, saveEmbed } from "@tests/support/api.js";
 import { createProject } from "@tests/support/collaboration.js";
 import { expect, test, waitForCommand } from "@tests/support/fixtures.js";
@@ -55,6 +58,43 @@ async function patchWithEmbed(page: Page, peer: RadiclePeer) {
     opts,
   });
   return { rid, patchId, embed, link };
+}
+
+async function reviewWithEmbed(page: Page, peer: RadiclePeer) {
+  const { rid, patchId } = await createProject(peer);
+  const { embed, link } = await megaphone(page, peer, rid);
+  const reviewId = (await api(page, peer, "create_patch_review", {
+    args: {
+      rid,
+      revision: patchId,
+      verdict: "accept",
+      summary: "Looks fine",
+      labels: [],
+      // Only reviews with comments get a page of their own.
+      comments: [{ body: "Loud enough", location: null }],
+    },
+  })) as string;
+  await api(page, peer, "edit_patch", {
+    rid,
+    cobId: patchId,
+    action: {
+      type: "review.edit",
+      review: reviewId,
+      summary: `Looks fine\n\n${link}`,
+      verdict: "accept",
+      labels: [],
+      embeds: [embed],
+    },
+    opts,
+  });
+  await page.goto(`/repos/${rid}/patches/${patchId}?review=${reviewId}`);
+  await expect(page.getByText("Looks fine")).toBeVisible();
+
+  const storedEmbeds = async () =>
+    (await storedRevision(page, peer, rid, patchId)).reviews?.find(
+      review => review.id === reviewId,
+    )?.embeds;
+  return { embed, link, storedEmbeds };
 }
 
 async function saveEdit(page: Page, command: string, body: string) {
@@ -189,4 +229,88 @@ test("editing a patch description on the changes tab keeps its embeds", async ({
     .description;
   expect(description.at(-1)?.body).toContain("so make it loud");
   expect(description.at(-1)?.embeds).toEqual([embed]);
+});
+
+test("editing a review summary keeps its embeds", async ({ page, peer }) => {
+  const { embed, link, storedEmbeds } = await reviewWithEmbed(page, peer);
+
+  await page.getByText("Looks fine").hover();
+  await page.getByTitle("Edit summary").click();
+  await saveEdit(page, "edit_patch", `Too loud\n\n${link}`);
+
+  await expect(page.getByText("Too loud")).toBeVisible();
+  expect(await storedEmbeds()).toEqual([embed]);
+});
+
+test("ticking a task in a review of an older revision keeps its embeds", async ({
+  page,
+  peer,
+}) => {
+  const { rid, repoFolder, patchId } = await createProject(peer);
+  const { embed, link } = await megaphone(page, peer, rid);
+  const reviewId = (await api(page, peer, "create_patch_review", {
+    args: {
+      rid,
+      revision: patchId,
+      verdict: "accept",
+      summary: "Before merging",
+      labels: [],
+      comments: [],
+    },
+  })) as string;
+  await api(page, peer, "edit_patch", {
+    rid,
+    cobId: patchId,
+    action: {
+      type: "review.edit",
+      review: reviewId,
+      summary: `Before merging:\n\n- [ ] Rename the file\n\n${link}`,
+      verdict: "accept",
+      labels: [],
+      embeds: [embed],
+    },
+    opts,
+  });
+  await Fs.writeFile(
+    Path.join(repoFolder, "notes.txt"),
+    "one\ntwo\nTHREE!\nfour\nfive\n",
+  );
+  await peer.git(["commit", "-am", "Shout louder"], { cwd: repoFolder });
+  await peer.git(
+    [
+      "push",
+      "-o",
+      "patch.message=Shout louder",
+      "rad",
+      `HEAD:refs/heads/patches/${patchId}`,
+    ],
+    { cwd: repoFolder },
+  );
+
+  await page.goto(`/repos/${rid}/patches/${patchId}`);
+  const rename = page.getByRole("checkbox", { name: "Rename the file" });
+  await waitForCommand(page, "edit_patch", () => rename.click());
+  await expect(rename).toBeChecked();
+
+  const revisions = (await api(page, peer, "revisions_by_patch", {
+    rid,
+    id: patchId,
+  })) as Revision[];
+  const review = revisions
+    .flatMap(revision => revision.reviews ?? [])
+    .find(review => review.id === reviewId);
+  expect(review?.summary).toContain("- [x] Rename the file");
+  expect(review?.embeds).toEqual([embed]);
+});
+
+test("changing a review's verdict keeps its embeds", async ({ page, peer }) => {
+  const { embed, storedEmbeds } = await reviewWithEmbed(page, peer);
+
+  await page.getByRole("button", { name: /Accepted/ }).click();
+  await waitForCommand(page, "edit_patch", () =>
+    page.getByRole("button", { name: /Reject$/ }).click(),
+  );
+
+  await expect(page.getByRole("button", { name: /Rejected/ })).toBeVisible();
+  expect(await storedEmbeds()).toEqual([embed]);
 });

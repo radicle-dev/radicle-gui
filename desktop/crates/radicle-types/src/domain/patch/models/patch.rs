@@ -325,6 +325,7 @@ pub struct Review {
     timestamp: cob::common::Timestamp,
     #[ts(as = "Vec<String>")]
     labels: Vec<cob::Label>,
+    embeds: Vec<cobs::thread::Embed>,
 }
 
 impl Review {
@@ -346,6 +347,7 @@ impl Review {
                 })
                 .collect::<Vec<_>>(),
             timestamp: review.timestamp(),
+            embeds: review.embeds().iter().cloned().map(Into::into).collect(),
         }
     }
 }

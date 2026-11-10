@@ -606,6 +606,7 @@
     reviewId: string,
     summary: string,
     review: { verdict?: Verdict; labels?: string[] },
+    embeds: Embed[],
   ) {
     try {
       await invoke("edit_patch", {
@@ -617,6 +618,7 @@
           summary,
           verdict: review.verdict,
           labels: review.labels ?? [],
+          embeds,
         },
         opts: { announce: $nodeRunning && $announce },
       });
@@ -1426,6 +1428,10 @@
           r => r.id === opId,
         )}
         {@const hasReviewComments = (reviewRecord?.comments?.length ?? 0) > 0}
+        {@const reviewEmbeds =
+          [revision, ...revisions]
+            .flatMap(r => r.reviews ?? [])
+            .find(r => r.id === opId)?.embeds ?? []}
         {@const reviewOp = data.op}
         <ReviewItem
           {rid}
@@ -1436,7 +1442,7 @@
           toggleTaskItem={data.op.author.did ===
           didFromPublicKey(config.publicKey)
             ? async summary => {
-                await editReviewSummary(opId, summary, reviewOp);
+                await editReviewSummary(opId, summary, reviewOp, reviewEmbeds);
               }
             : undefined}
           onViewFullReview={hasReviewComments
