@@ -19,6 +19,7 @@
   import type { CommentOwner } from "@app/lib/codeCommentActions";
   import { commentActions } from "@app/lib/codeCommentActions";
   import type { CodeComments } from "@app/lib/codeComments";
+  import { draftAttachmentsDisabled } from "@app/lib/codeComments";
   import { resolutionsByComment } from "@app/lib/commentResolutions";
   import { STANDALONE_COMMENTS } from "@app/lib/commentSources";
   import { diffOptions } from "@app/lib/diffOptions.svelte";
@@ -525,7 +526,7 @@
       // to it.)
       canReply: !draftReview,
       hideThreadFileHeader: true,
-      disableAttachments: "Publish your review to attach files",
+      disableAttachments: draftAttachmentsDisabled,
     };
   });
 

@@ -314,3 +314,34 @@ test("changing a review's verdict keeps its embeds", async ({ page, peer }) => {
   await expect(page.getByRole("button", { name: /Rejected/ })).toBeVisible();
   expect(await storedEmbeds()).toEqual([embed]);
 });
+
+test("files can't be attached when editing a draft review comment", async ({
+  page,
+  peer,
+}) => {
+  const { rid, patchId } = await createProject(peer);
+  await page.goto(`/repos/${rid}/patches/${patchId}?view=changes`);
+  await page
+    .locator(
+      '[data-unified] [data-column-number="3"]:not([data-line-type="change-deletion"])',
+    )
+    .hover();
+  await page.locator("[data-utility-button]").click();
+  await page.getByPlaceholder("Leave a comment").fill("Loud enough");
+  await page
+    .getByLabel("extended-textarea")
+    .filter({ has: page.getByPlaceholder("Leave a comment") })
+    .getByRole("button", { name: /^Start review/ })
+    .click();
+
+  await page.getByText("Loud enough").hover();
+  const toggle = page.getByTitle("Comment actions").last();
+  await toggle.click();
+  await toggle
+    .locator(`xpath=following::*[@role="button"][normalize-space()="Edit"][1]`)
+    .click();
+
+  await expect(
+    page.locator('[id^="edit-"]').getByRole("button", { name: "Attach" }),
+  ).toBeDisabled();
+});

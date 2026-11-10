@@ -48,6 +48,8 @@
     // activity timeline for the outer rail to connect to.
     inline?: boolean;
     draft?: boolean;
+    // See `ExtendedTextarea`.
+    disableAttachments?: boolean | string;
     origin?: CommentOrigin;
     // Rendered on the root comment's authorship line while it is hovered. The
     // replies do not get it: it says something about the thread, not a comment.
@@ -73,6 +75,7 @@
     canResolve = false,
     inline = false,
     draft = false,
+    disableAttachments,
     origin,
     hoverNote,
     highlightedCommentId,
@@ -220,6 +223,7 @@
           timestamp={reply.edits[0].timestamp}
           body={reply.edits.slice(-1)[0].body}
           embeds={embedMap(reply.embeds)}
+          {disableAttachments}
           editComment={canModifyComment(reply.author.did) &&
             editComment?.bind(null, reply.id)}
           reactOnComment={reactOnComment?.bind(null, reply.id)}
@@ -274,6 +278,7 @@
       timestamp={root.edits.slice(-1)[0].timestamp}
       body={root.edits.slice(-1)[0].body}
       embeds={embedMap(root.embeds)}
+      {disableAttachments}
       editComment={canModifyComment(root.author.did) &&
         editComment?.bind(null, root.id)}
       reactOnComment={reactOnComment?.bind(null, root.id)}

@@ -210,6 +210,7 @@ export const draftReviewStorage = {
     });
   },
 
+  // Draft comments have no embeds, see `draftAttachmentsDisabled`.
   addComment(
     id: string,
     comment: {

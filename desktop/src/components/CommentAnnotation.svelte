@@ -5,6 +5,7 @@
 
   import partial from "lodash/partial";
 
+  import { draftAttachmentsDisabled } from "@app/lib/codeComments";
   import {
     formatAnchor,
     formatAnchorLines,
@@ -112,6 +113,9 @@
           resolvedBy={comments.resolvedBy}
           inline
           draft={isDraftThread}
+          disableAttachments={isDraftThread
+            ? draftAttachmentsDisabled
+            : undefined}
           origin={comments.threadOrigins?.[thread.root.id]}
           reactOnComment={isDraftThread ? undefined : comments.reactOnComment}
           createReply={(comments.canReply ?? true)

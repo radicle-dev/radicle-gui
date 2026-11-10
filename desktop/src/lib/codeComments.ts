@@ -77,3 +77,8 @@ export interface CodeComments {
   rid: string;
   threads: Thread<CodeLocation>[];
 }
+
+// Drafts are kept in local storage and publish only their bodies. An
+// uploaded file stays unreferenced in the repo until a COB lists it, so
+// the node's `git gc` can prune it, and peers never receive it.
+export const draftAttachmentsDisabled = "Publish your review to attach files";
