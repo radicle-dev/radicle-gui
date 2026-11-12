@@ -128,7 +128,13 @@ describe("dispatch", () => {
     return event;
   }
 
+  function hold(modifier: string, target: EventTarget = document) {
+    press({ key: modifier }, target);
+    vi.advanceTimersByTime(400);
+  }
+
   beforeEach(() => {
+    vi.useFakeTimers();
     stopListening = listenForShortcuts();
   });
 
@@ -139,6 +145,7 @@ describe("dispatch", () => {
     stopListening();
     modal.forceHide();
     document.body.replaceChildren();
+    vi.useRealTimers();
   });
 
   test("runs a matching binding with the combo index and prevents default", () => {
@@ -284,7 +291,7 @@ describe("dispatch", () => {
   test("stops listening once the listener is removed", () => {
     const run = vi.fn();
     bind({ shortcut: "help", run });
-    press({ key: "Control" });
+    hold("Control");
     stopListening();
 
     press({ key: "?" });
@@ -301,17 +308,23 @@ describe("dispatch", () => {
     [true, "Meta"],
   ])("modifierHeld follows mac %s %s", (mac, modifier) => {
     platform.mac = mac;
-    press({ key: mac ? "Control" : "Meta" });
+    hold(mac ? "Control" : "Meta");
     expect(modifierHeld.value).toBe(false);
 
-    press({ key: modifier });
+    hold(modifier);
     expect(modifierHeld.value).toBe(true);
-    document.dispatchEvent(new KeyboardEvent("keyup", { key: "Shift" }));
+    document.dispatchEvent(
+      new KeyboardEvent("keyup", {
+        key: "Shift",
+        ctrlKey: !mac,
+        metaKey: mac,
+      }),
+    );
     expect(modifierHeld.value).toBe(true);
     document.dispatchEvent(new KeyboardEvent("keyup", { key: modifier }));
     expect(modifierHeld.value).toBe(false);
 
-    press({ key: modifier });
+    hold(modifier);
     window.dispatchEvent(new Event("blur"));
     expect(modifierHeld.value).toBe(false);
   });
@@ -324,7 +337,7 @@ describe("dispatch", () => {
     if (attribute) input.setAttribute(attribute, "");
     document.body.append(input);
 
-    press({ key: "Control" }, input);
+    hold("Control", input);
 
     expect(modifierHeld.value).toBe(held);
   });
@@ -332,8 +345,57 @@ describe("dispatch", () => {
   test("modifierHeld stays false while a modal is open", () => {
     modal.show({ component: vi.fn(), props: {} });
 
-    press({ key: "Control" });
+    hold("Control");
 
+    expect(modifierHeld.value).toBe(false);
+  });
+
+  test("modifierHeld waits for the modifier to be held", () => {
+    press({ key: "Control" });
+    vi.advanceTimersByTime(399);
+    expect(modifierHeld.value).toBe(false);
+
+    press({ key: "Control", ctrlKey: true, repeat: true });
+    vi.advanceTimersByTime(1);
+    expect(modifierHeld.value).toBe(true);
+  });
+
+  test("modifierHeld stays false during a chord", () => {
+    press({ key: "Control" });
+    press({ key: "Shift", ctrlKey: true, shiftKey: true });
+    vi.advanceTimersByTime(400);
+
+    expect(modifierHeld.value).toBe(false);
+  });
+
+  test("modifierHeld stays false when another modifier went down first", () => {
+    press({ key: "Shift", shiftKey: true });
+    press({ key: "Control", ctrlKey: true, shiftKey: true });
+    vi.advanceTimersByTime(400);
+
+    expect(modifierHeld.value).toBe(false);
+  });
+
+  test("modifierHeld clears when another modifier joins", () => {
+    hold("Control");
+    press({ key: "Shift", ctrlKey: true, shiftKey: true });
+
+    expect(modifierHeld.value).toBe(false);
+  });
+
+  test("modifierHeld clears on any keyup without the modifier", () => {
+    hold("Control");
+    document.dispatchEvent(new KeyboardEvent("keyup", { key: "Escape" }));
+
+    expect(modifierHeld.value).toBe(false);
+  });
+
+  test("modifierHeld clears when a lost keyup shows on the pointer", () => {
+    hold("Control");
+    document.dispatchEvent(new PointerEvent("pointermove", { ctrlKey: true }));
+    expect(modifierHeld.value).toBe(true);
+
+    document.dispatchEvent(new PointerEvent("pointermove"));
     expect(modifierHeld.value).toBe(false);
   });
 });

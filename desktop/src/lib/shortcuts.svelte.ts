@@ -127,6 +127,8 @@ export interface Binding {
 
 let registered = $state.raw<Binding[]>([]);
 let modifierDown = $state(false);
+let hintTimer: ReturnType<typeof setTimeout> | undefined;
+const hintDelayMs = 400;
 
 // Whether Mod is held down in a state where Mod shortcuts would run.
 export const modifierHeld = {
@@ -232,6 +234,16 @@ function isModifierKey(event: KeyboardEvent): boolean {
   return event.key === (isMac() ? "Meta" : "Control");
 }
 
+function isModHeld(event: KeyboardEvent | PointerEvent): boolean {
+  return isMac() ? event.metaKey : event.ctrlKey;
+}
+
+function otherModifiersHeld(event: KeyboardEvent): boolean {
+  return (
+    event.shiftKey || event.altKey || (isMac() ? event.ctrlKey : event.metaKey)
+  );
+}
+
 // Fields marked with `data-mod-shortcuts`, like filters, hold nothing worth
 // protecting, so shortcuts with Mod still work from them.
 function blocksShortcuts(event: KeyboardEvent, modDown: boolean): boolean {
@@ -246,10 +258,19 @@ function blocksShortcuts(event: KeyboardEvent, modDown: boolean): boolean {
 
 function onKeydown(event: KeyboardEvent) {
   const modalOpen = get(modalStore) !== undefined;
-  if (isModifierKey(event)) {
-    modifierDown = !modalOpen && !blocksShortcuts(event, true);
+  const modDown = isModHeld(event);
+  if (isModifierKey(event) && !otherModifiersHeld(event)) {
+    if (!event.repeat && !modalOpen && !blocksShortcuts(event, true)) {
+      clearTimeout(hintTimer);
+      hintTimer = setTimeout(() => {
+        modifierDown = true;
+      }, hintDelayMs);
+    }
+  } else if (!modDown || otherModifiersHeld(event)) {
+    hideHints();
+  } else {
+    clearTimeout(hintTimer);
   }
-  const modDown = isMac() ? event.metaKey : event.ctrlKey;
   // Keys a component already handled, and anything typed into a field, are
   // left alone.
   if (
@@ -292,23 +313,37 @@ function onKeydown(event: KeyboardEvent) {
   }
 }
 
+function hideHints() {
+  clearTimeout(hintTimer);
+  hintTimer = undefined;
+  modifierDown = false;
+}
+
 function onKeyup(event: KeyboardEvent) {
-  if (isModifierKey(event)) {
-    modifierDown = false;
+  if (!isModHeld(event)) {
+    hideHints();
   }
 }
 
-function onBlur() {
-  modifierDown = false;
+function onPointer(event: PointerEvent) {
+  if (!isModHeld(event)) {
+    hideHints();
+  }
 }
 
 export function listenForShortcuts(): () => void {
   document.addEventListener("keydown", onKeydown);
   document.addEventListener("keyup", onKeyup);
-  window.addEventListener("blur", onBlur);
+  document.addEventListener("pointermove", onPointer);
+  document.addEventListener("pointerdown", onPointer);
+  document.addEventListener("visibilitychange", hideHints);
+  window.addEventListener("blur", hideHints);
   return () => {
     document.removeEventListener("keydown", onKeydown);
     document.removeEventListener("keyup", onKeyup);
-    window.removeEventListener("blur", onBlur);
+    document.removeEventListener("pointermove", onPointer);
+    document.removeEventListener("pointerdown", onPointer);
+    document.removeEventListener("visibilitychange", hideHints);
+    window.removeEventListener("blur", hideHints);
   };
 }
