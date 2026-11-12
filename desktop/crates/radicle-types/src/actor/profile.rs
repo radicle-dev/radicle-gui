@@ -78,9 +78,19 @@ const LINK_FIELDS: &[&str] = &["url", "label"];
 /// Text as it is displayed or compared: NFC, trimmed, without control or
 /// invisible characters.
 fn clean_text(value: &str) -> String {
+    clean(value, |_| false)
+}
+
+/// Text of several lines: cleaned as `clean_text` does, except that its line
+/// breaks stay.
+fn clean_lines(value: &str) -> String {
+    clean(value, |c| c == '\n')
+}
+
+fn clean(value: &str, kept: impl Fn(char) -> bool) -> String {
     value
         .nfc()
-        .filter(|c| !c.is_control() && !is_invisible(*c))
+        .filter(|c| kept(*c) || (!c.is_control() && !is_invisible(*c)))
         .collect::<String>()
         .trim()
         .to_string()
@@ -185,7 +195,8 @@ impl ActorProfile {
         self.cleaned()
     }
 
-    /// Every string cleaned with `clean_text`, empty optional fields dropped.
+    /// Every string cleaned with `clean_text`, the bio with `clean_lines`,
+    /// empty optional fields dropped.
     fn cleaned(mut self) -> Self {
         fn clean(value: Option<String>) -> Option<String> {
             value.map(|v| clean_text(&v)).filter(|v| !v.is_empty())
@@ -193,7 +204,7 @@ impl ActorProfile {
         self.display_name = clean_text(&self.display_name);
         self.full_name = clean(self.full_name);
         self.pronouns = clean(self.pronouns);
-        self.bio = clean(self.bio);
+        self.bio = self.bio.map(|v| clean_lines(&v)).filter(|v| !v.is_empty());
         self.location = clean(self.location);
         self.timezone = clean(self.timezone);
         self.avatar = clean(self.avatar);
@@ -296,13 +307,16 @@ pub fn read_profile(
     if entry.kind() != Some(git::raw::ObjectType::Blob) {
         return Ok(ProfileFile::Missing);
     }
+    // The size comes from the object's header, so a file over the limit is
+    // never loaded.
+    let (size, _) = repo.odb()?.read_header(entry.id())?;
+    if size > MAX_PROFILE_BYTES {
+        return Ok(ProfileFile::Unreadable);
+    }
     let object = entry.to_object(repo)?;
     let Some(blob) = object.as_blob() else {
         return Ok(ProfileFile::Missing);
     };
-    if blob.size() > MAX_PROFILE_BYTES {
-        return Ok(ProfileFile::Unreadable);
-    }
 
     Ok(
         ActorProfile::from_json(blob.content()).map_or(ProfileFile::Unreadable, |read| {

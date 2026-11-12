@@ -100,6 +100,21 @@ fn profile_text_is_cleaned_for_display() {
     assert_eq!(hidden.display_name, "alice");
 }
 
+#[test]
+fn a_bio_keeps_its_line_breaks() {
+    let cleaned = ActorProfile {
+        bio: Some(" Rust dev\r\n\u{0}Berlin\n".to_string()),
+        location: Some("Ber\nlin".to_string()),
+        ..profile("Al\nice")
+    }
+    .normalized();
+
+    assert_eq!(cleaned.bio.as_deref(), Some("Rust dev\nBerlin"));
+    // Every other field is one line.
+    assert_eq!(cleaned.display_name, "Alice");
+    assert_eq!(cleaned.location.as_deref(), Some("Berlin"));
+}
+
 /// A tree with `json` as its only file, at the profile path, whatever it
 /// holds.
 fn profile_file_tree<'r>(repo: &'r git::raw::Repository, json: &[u8]) -> git::raw::Tree<'r> {
@@ -162,6 +177,12 @@ fn profile_files_are_read_by_version() {
         ProfileFile::Unreadable
     );
     assert_eq!(read_file(b"not json"), ProfileFile::Unreadable);
+
+    // A file over the size limit is not read at all, whatever it holds.
+    let mut padded = br#"{"version":1,"displayName":"Alice"}"#.to_vec();
+    assert!(matches!(read_file(&padded), ProfileFile::Read(_)));
+    padded.resize(MAX_PROFILE_BYTES + 1, b' ');
+    assert_eq!(read_file(&padded), ProfileFile::Unreadable);
 
     let newer = br#"{ "version": 2, "displayName": "alice", "mood": "sunny", "links": [{ "url": "https://x", "icon": "y" }] }"#;
     let read = read_back(newer);
