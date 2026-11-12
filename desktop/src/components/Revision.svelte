@@ -109,7 +109,12 @@
     // hidden from the diff.
     hiddenCommentSources?: string[];
     filesExpanded?: boolean;
-    onViewChanges?: (revisionId: string) => void;
+    // Opens the Changes tab on a revision; `compareFrom` diffs its head against
+    // that commit instead of its base.
+    onViewChanges?: (revisionId: string, compareFrom?: string) => void;
+    // The commit the Changes tab diffs the revision's head against, when it is
+    // not the base. Cleared here once the diff on screen is another range.
+    compareFrom?: string;
     // The revision and commit the patch is marked merged at, if any.
     merge?: { revision: string; commit: string };
     // The patch view's own header, forwarded to the Changes tab so it can render
@@ -140,6 +145,7 @@
     hiddenCommentSources = [],
     filesExpanded = $bindable(true),
     onViewChanges,
+    compareFrom = $bindable(),
     merge,
     chrome,
     tabs,
@@ -152,6 +158,11 @@
   /// can collapse or expand every file.
   export function setAllFilesCollapsed(collapsed: boolean) {
     changes?.setAllFilesCollapsed(collapsed);
+  }
+
+  /// Forwarded to the Changes tab so the tab bar can end a comparison.
+  export function showRevisionChanges() {
+    changes?.showRevisionChanges();
   }
 
   /// Forwarded to the Changes tab so the tab bar's stepper can walk the comments
@@ -174,6 +185,23 @@
   // Timeline order, as delivered — see `revisionPosition`.
   const latestRevisionId = $derived(revisions.at(-1)?.id);
   const firstRevisionId = $derived(revisions[0]?.id);
+
+  // What each revision's compare menu offers, by revision id: its own base and
+  // the revision before it. Empty when there is no Changes tab to open them in.
+  const compareMenus = $derived(
+    Object.fromEntries(
+      (onViewChanges ? revisions : []).map((rev, index) => [
+        rev.id,
+        {
+          base: rev.base,
+          head: rev.head,
+          previous: revisions[index - 1],
+          onCompare: (from?: string) => onViewChanges?.(rev.id, from),
+        },
+      ]),
+    ),
+  );
+
   const targetBranch = $derived(
     patchTargetBranch === undefined
       ? undefined
@@ -1154,6 +1182,7 @@
               onOpenChanges={onViewChanges
                 ? () => onViewChanges?.(revId)
                 : undefined}
+              compare={compareMenus[revId]}
               {expanded}
               hideAuthor={opts.hideAuthor}
               bodyExternal
@@ -1406,7 +1435,8 @@
               onToggle={toggleable ? () => toggleRevision(revId) : undefined}
               onOpenChanges={onViewChanges
                 ? () => onViewChanges?.(revId)
-                : undefined} />
+                : undefined}
+              compare={compareMenus[revId]} />
           </div>
         {:else}
           <PatchActivityItem
@@ -1418,7 +1448,8 @@
             onToggle={toggleable ? () => toggleRevision(revId) : undefined}
             onOpenChanges={onViewChanges
               ? () => onViewChanges?.(revId)
-              : undefined} />
+              : undefined}
+            compare={compareMenus[revId]} />
         {/if}
       {:else if data.op.type === "review"}
         {@const opId = data.op.id}
@@ -1507,7 +1538,8 @@
         op={data.op}
         firstRevision
         openedAsDraft={data.openedAsDraft}
-        hideAuthor={opts.hideAuthor} />
+        hideAuthor={opts.hideAuthor}
+        compare={compareMenus[data.op.id]} />
     {:else if data.kind === "olderRevisions"}
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <div
@@ -1583,6 +1615,7 @@
     onViewRevision={onViewChanges}
     {chrome}
     {tabs}
+    bind:compareFrom
     bind:showingRevisionDiff
     bind:filesExpanded
     bind:commentPosition />

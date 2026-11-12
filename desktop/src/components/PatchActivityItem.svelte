@@ -7,6 +7,8 @@
 </script>
 
 <script lang="ts">
+  import type { ComponentProps } from "svelte";
+
   import { slide } from "svelte/transition";
 
   import { itemDiff } from "@app/lib/cobActivity";
@@ -26,6 +28,7 @@
   import Markdown from "@app/components/Markdown.svelte";
   import NodeId from "@app/components/NodeId.svelte";
   import ReviewProgressChip from "@app/components/ReviewProgressChip.svelte";
+  import RevisionCompareMenu from "@app/components/RevisionCompareMenu.svelte";
 
   interface Props {
     op: FlattenedPatchOperation;
@@ -37,6 +40,8 @@
     onViewFullReview?: () => void;
     onOpenReview?: () => void;
     onOpenChanges?: () => void;
+    // A revision's range and what to do with it, for the compare menu.
+    compare?: ComponentProps<typeof RevisionCompareMenu>;
     rid?: string;
     patchId?: string;
     latest?: boolean;
@@ -55,6 +60,7 @@
     onViewFullReview,
     onOpenReview,
     onOpenChanges,
+    compare,
     rid,
     patchId,
     latest = false,
@@ -422,6 +428,9 @@
         </div>
         {#if expanded}
           {@render copyLinkButton()}
+        {/if}
+        {#if compare}
+          <RevisionCompareMenu {...compare} />
         {/if}
       </div>
       {#if !firstRevision && desc.body && expanded && !bodyExternal}

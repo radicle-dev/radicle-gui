@@ -77,6 +77,10 @@
     // The revision and commit the patch is marked merged at, if any.
     merge?: { revision: string; commit: string };
     onViewRevision?: (revisionId: string) => void;
+    // The commit to diff the revision's head against instead of its base, such
+    // as the previous revision's head. Read when the tab opens and cleared here
+    // once the diff on screen is anything else: another revision or a commit.
+    compareFrom?: string;
   }
 
   /* eslint-disable prefer-const */
@@ -101,6 +105,7 @@
     revisions = [],
     merge,
     onViewRevision,
+    compareFrom = $bindable(),
   }: Props = $props();
   /* eslint-enable prefer-const */
 
@@ -112,7 +117,7 @@
   // Parent reuses this component across patch revisions; a sibling $effect
   // resets base and head when patchId changes.
   // svelte-ignore state_referenced_locally
-  let base = $state(revision.base);
+  let base = $state(compareFrom ?? revision.base);
   // svelte-ignore state_referenced_locally
   let head = $state(revision.head);
 
@@ -133,6 +138,7 @@
       selectedCommitData = undefined;
       editingDescription = false;
       base = nextBase;
+      compareFrom = undefined;
       head = nextHead;
     });
   });
@@ -152,6 +158,7 @@
   }) {
     head = headId;
     base = baseId;
+    compareFrom = undefined;
     selectedCommit = commitId;
     selectedCommitData = commit;
     filesExpanded = showFiles;
@@ -334,8 +341,11 @@
   // list alone decides it: when the head is a strict ancestor of the base, the
   // tree diff between them is the base's newer commits in reverse, not the
   // patch's changes.
+  // A comparison is another range: an empty revision still differs from the
+  // one before it.
   const emptyRevision = $derived(
-    commitListRange === `${revision.base}..${revision.head}` &&
+    compareFrom === undefined &&
+      commitListRange === `${revision.base}..${revision.head}` &&
       commitList.length === 0,
   );
   const earlierRevision = $derived(
@@ -352,7 +362,8 @@
       `${revision.base}..${revision.head}`,
       selectedCommit,
     );
-    if (only) {
+    // A comparison is a range of its own, which selecting the commit would end.
+    if (only && compareFrom === undefined) {
       selectRevision({
         headId: revision.head,
         baseId: revision.base,
@@ -409,6 +420,13 @@
     diffView?.scrollToFilesTop();
   }
 
+  /// Go back to the revision's own changes, which ends a comparison. Driven
+  /// from the tab bar, which the patch view renders.
+  export function showRevisionChanges() {
+    selectRevision({ headId: revision.head, baseId: revision.base });
+    void scrollToDiff();
+  }
+
   /// Collapse or expand every file. Driven from the tab bar, which the patch
   /// view renders.
   export function setAllFilesCollapsed(collapsed: boolean) {
@@ -461,7 +479,8 @@
   useShortcuts(
     {
       shortcut: "previousCommit",
-      enabled: () => commitList.length > 1,
+      // The commits column is hidden during a comparison.
+      enabled: () => commitList.length > 1 && compareFrom === undefined,
       run: () => {
         const current = commitList.findIndex(c => c.id === selectedCommit);
         selectCommitAt(stepCommitIndex(current, commitList.length, -1));
@@ -469,7 +488,8 @@
     },
     {
       shortcut: "nextCommit",
-      enabled: () => commitList.length > 1,
+      // The commits column is hidden during a comparison.
+      enabled: () => commitList.length > 1 && compareFrom === undefined,
       run: () => {
         const current = commitList.findIndex(c => c.id === selectedCommit);
         selectCommitAt(stepCommitIndex(current, commitList.length, 1));
@@ -980,6 +1000,8 @@
   codeComments={diffCodeComments}
   commentCommit={isRevisionDiff ? head : undefined}
   header={diffHeader}
-  overlayLeft={emptyRevision ? undefined : commitsColumn}
+  overlayLeft={emptyRevision || compareFrom !== undefined
+    ? undefined
+    : commitsColumn}
   {filesHeader}
   stickyTop={tabs} />

@@ -38,6 +38,7 @@
     absoluteTimestamp,
     authorForNodeId,
     didFromPublicKey,
+    formatOid,
     formatTimestamp,
     patchStatusLabel,
     publicKeyFromDid,
@@ -186,6 +187,11 @@
   // When opening a specific revision's changes from the timeline, the target
   // survives the view switch (the reset effect below honours it once).
   let pendingRevisionId: string | undefined;
+  let pendingCompareFrom: string | undefined;
+  // The commit the Changes tab diffs the selected revision's head against, when
+  // it is not the base: the previous revision's head, from the compare menu.
+  // Set here only on the way into the tab; the tab ends the comparison itself.
+  let compareFrom: string | undefined = $state();
 
   // Warm the Changes-tab data for the selected revision in the background, so
   // opening the tab is instant instead of showing a fetch delay. Both halves of
@@ -442,7 +448,9 @@
     if (patchView !== lastPatchView) {
       lastPatchView = patchView;
       selectedRevisionId = pendingRevisionId ?? revisions.slice(-1)[0].id;
+      compareFrom = pendingCompareFrom;
       pendingRevisionId = undefined;
+      pendingCompareFrom = undefined;
     }
   });
 
@@ -964,6 +972,10 @@
                   selectedRevision.id,
                   config.publicKey,
                 );
+                // A review is written on the revision's own changes.
+                if (compareFrom !== undefined) {
+                  revisionComponent?.showRevisionChanges();
+                }
                 setView("changes");
               }}
               title={hasOwnPublishedReviewOnSelected
@@ -1151,7 +1163,18 @@
                 Back to latest revision
               </Button>
             {/if}
-            {#if orderedRevisions.length > 1}
+            {#if compareFrom !== undefined}
+              <Button
+                variant="outline"
+                title="Show the revision's own changes"
+                onclick={() => revisionComponent?.showRevisionChanges()}>
+                Compare
+                <span class="txt-id">
+                  {formatOid(compareFrom)}..{formatOid(selectedRevision.head)}
+                </span>
+                <Icon name="close" />
+              </Button>
+            {:else if orderedRevisions.length > 1}
               <Popover
                 popoverPadding="0"
                 placement="bottom-start"
@@ -1405,14 +1428,21 @@
         draftReviewId={ownDraftReview?.id}
         {draftRevisionIds}
         hiddenCommentSources={[...hiddenCommentSources]}
-        onViewChanges={revisionId => {
-          pendingRevisionId = revisionId;
+        onViewChanges={(revisionId, from) => {
+          // Only a view switch takes the pending pair, so one set on the
+          // Changes tab would wait for a later, unrelated switch.
+          if (patchView !== "changes") {
+            pendingRevisionId = revisionId;
+            pendingCompareFrom = from;
+          }
           selectedRevisionId = revisionId;
+          compareFrom = from;
           setView("changes");
         }}
         merge={patch.state.status === "merged" ? patch.state : undefined}
         chrome={patchHeader}
         {tabs}
+        bind:compareFrom
         bind:showingRevisionDiff
         bind:filesExpanded
         bind:commentPosition />
