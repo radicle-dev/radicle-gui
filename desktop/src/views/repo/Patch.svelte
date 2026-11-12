@@ -9,12 +9,10 @@
   import type { Revision } from "@bindings/cob/patch/Revision";
   import type { Config } from "@bindings/config/Config";
   import type { Stats } from "@bindings/diff/Stats";
-  import type { Commit } from "@bindings/repo/Commit";
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
   import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
   import countBy from "lodash/countBy";
-  import mapValues from "lodash/mapValues";
   import { SvelteSet } from "svelte/reactivity";
 
   import { commentSourcesOf } from "@app/lib/commentSources";
@@ -32,11 +30,7 @@
   import { patchContributions } from "@app/lib/patchContributions";
   import type { ReviewEntry } from "@app/lib/reviewSummary";
   import { revisionTitle } from "@app/lib/revisionDescription";
-  import {
-    newCommitsByRevision,
-    orderRevisions,
-    revisionNumbers,
-  } from "@app/lib/revisionList";
+  import { orderRevisions, revisionNumbers } from "@app/lib/revisionList";
   import { revisionListSettings } from "@app/lib/revisionListSettings";
   import * as roles from "@app/lib/roles";
   import * as router from "@app/lib/router";
@@ -234,7 +228,7 @@
   let commentPosition = $state({ index: -1, total: 0 });
 
   let commentSourcesExpanded = $state(false);
-  let commitCountsByRevisionId: Record<string, number> = $state({});
+  let commitCountsByRevisionId: Record<string, number | undefined> = $state({});
   let statsByRevisionId: Record<string, Stats> = $state({});
   let columnMenuOpen = $state(false);
   let columnMenuEl: HTMLElement | undefined = $state();
@@ -366,22 +360,26 @@
 
   $effect(() => {
     const ridLocal = repo.rid;
-    const ordered = orderedRevisions;
     void Promise.all(
-      ordered.map(async (rev): Promise<[string, Commit[]]> => {
-        try {
-          const commits = await cachedListCommits(ridLocal, rev.base, rev.head);
-          return [rev.id, commits];
-        } catch {
-          return [rev.id, []];
-        }
-      }),
+      orderedRevisions.map(
+        async (rev): Promise<[string, number | undefined]> => [
+          rev.id,
+          // Every commit in the revision, as the Changes view counts them. A
+          // list that failed to load has no count, which is not zero.
+          await cachedListCommits(ridLocal, rev.base, rev.head).then(
+            commits => commits.length,
+            error => {
+              console.error(
+                `Failed to load commits for revision ${rev.id} (${rev.base}..${rev.head})`,
+                error,
+              );
+              return undefined;
+            },
+          ),
+        ],
+      ),
     ).then(entries => {
-      const commits = Object.fromEntries(entries);
-      commitCountsByRevisionId = mapValues(
-        newCommitsByRevision(ordered, id => commits[id] ?? []),
-        added => added.length,
-      );
+      commitCountsByRevisionId = Object.fromEntries(entries);
     });
   });
   // Per-revision diff stats for the dropdown: one request each, so they are

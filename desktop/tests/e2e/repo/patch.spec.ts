@@ -23,7 +23,7 @@ async function createPatch(peer: RadiclePeer) {
     [],
     { cwd: repoFolder },
   );
-  return { rid, patchId };
+  return { rid, patchId, repoFolder };
 }
 
 async function openChanges(page: Page, peer: RadiclePeer) {
@@ -151,6 +151,27 @@ test("a comment-only review needs a summary", async ({ page, peer }) => {
   await expect(publish).toBeDisabled();
   await page.getByPlaceholder("Add a review summary").fill("Some notes");
   await expect(publish).toBeEnabled();
+});
+
+test("the revision picker counts a revision's commits as the Changes view does", async ({
+  page,
+  peer,
+}) => {
+  const { rid, patchId, repoFolder } = await createPatch(peer);
+  // A second revision that keeps the first one's commit and adds another.
+  await Fs.appendFile(Path.join(repoFolder, "notes.txt"), "six\n");
+  await peer.git(["commit", "-am", "Add a sixth line"], { cwd: repoFolder });
+  await peer.git(["push", "rad", `HEAD:refs/heads/patches/${patchId}`], {
+    cwd: repoFolder,
+  });
+  await page.goto(`/repos/${rid}/patches/${patchId}?view=changes`);
+
+  await expect(page.getByText("2 commits on base")).toBeVisible();
+  await page.getByRole("button", { name: /Revision 2 of 2/ }).click();
+  // The second revision's row, which ends with its commit count.
+  await expect(
+    page.getByRole("button", { name: /Add a sixth line.* icon-commit 2$/ }),
+  ).toBeVisible();
 });
 
 test("shows reviews from other peers", async ({ page }) => {
