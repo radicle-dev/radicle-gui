@@ -36,6 +36,7 @@
   } from "@app/lib/invoke";
   import type { PatchActivityData } from "@app/lib/patchTimeline";
   import { patchTimeline } from "@app/lib/patchTimeline";
+  import { revisionRange } from "@app/lib/revisionCompare";
   import {
     groupCommitsByAuthor,
     isCommitListDescription,
@@ -112,8 +113,11 @@
     // Opens the Changes tab on a revision; `compareFrom` diffs its head against
     // that commit instead of its base.
     onViewChanges?: (revisionId: string, compareFrom?: string) => void;
-    // The commit the Changes tab diffs the revision's head against, when it is
-    // not the base. Cleared here once the diff on screen is another range.
+    // The commit the Changes tab diffs the revision's head against when it
+    // opens, instead of its base.
+    initialCompareFrom?: string;
+    // Output: the commit the Changes tab diffs the revision's head against,
+    // while that is not its base.
     compareFrom?: string;
     // The revision and commit the patch is marked merged at, if any.
     merge?: { revision: string; commit: string };
@@ -145,6 +149,7 @@
     hiddenCommentSources = [],
     filesExpanded = $bindable(true),
     onViewChanges,
+    initialCompareFrom,
     compareFrom = $bindable(),
     merge,
     chrome,
@@ -160,9 +165,10 @@
     changes?.setAllFilesCollapsed(collapsed);
   }
 
-  /// Forwarded to the Changes tab so the tab bar can end a comparison.
-  export function showRevisionChanges() {
-    changes?.showRevisionChanges();
+  /// Forwarded to the Changes tab so the tab bar and revision picker can start
+  /// or end a comparison.
+  export function compare(from?: string) {
+    changes?.compare(from);
   }
 
   /// Forwarded to the Changes tab so the tab bar's stepper can walk the comments
@@ -186,21 +192,17 @@
   const latestRevisionId = $derived(revisions.at(-1)?.id);
   const firstRevisionId = $derived(revisions[0]?.id);
 
-  // What each revision's compare menu offers, by revision id: its own base and
-  // the revision before it. Empty when there is no Changes tab to open them in.
-  const compareMenus = $derived(
-    Object.fromEntries(
-      (onViewChanges ? revisions : []).map((rev, index) => [
-        rev.id,
-        {
-          base: rev.base,
-          head: rev.head,
-          previous: revisions[index - 1],
-          onCompare: (from?: string) => onViewChanges?.(rev.id, from),
-        },
-      ]),
-    ),
-  );
+  // What a revision's compare menu offers: its own base and the revision
+  // before it. Nothing when there is no Changes tab to open them in.
+  function compareMenu(revId: string) {
+    const range = onViewChanges && revisionRange(revisions, revId);
+    return (
+      range && {
+        ...range,
+        onCompare: (from?: string) => onViewChanges?.(revId, from),
+      }
+    );
+  }
 
   const targetBranch = $derived(
     patchTargetBranch === undefined
@@ -1182,7 +1184,7 @@
               onOpenChanges={onViewChanges
                 ? () => onViewChanges?.(revId)
                 : undefined}
-              compare={compareMenus[revId]}
+              compare={compareMenu(revId)}
               {expanded}
               hideAuthor={opts.hideAuthor}
               bodyExternal
@@ -1436,7 +1438,7 @@
               onOpenChanges={onViewChanges
                 ? () => onViewChanges?.(revId)
                 : undefined}
-              compare={compareMenus[revId]} />
+              compare={compareMenu(revId)} />
           </div>
         {:else}
           <PatchActivityItem
@@ -1449,7 +1451,7 @@
             onOpenChanges={onViewChanges
               ? () => onViewChanges?.(revId)
               : undefined}
-            compare={compareMenus[revId]} />
+            compare={compareMenu(revId)} />
         {/if}
       {:else if data.op.type === "review"}
         {@const opId = data.op.id}
@@ -1539,7 +1541,7 @@
         firstRevision
         openedAsDraft={data.openedAsDraft}
         hideAuthor={opts.hideAuthor}
-        compare={compareMenus[data.op.id]} />
+        compare={compareMenu(data.op.id)} />
     {:else if data.kind === "olderRevisions"}
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <div
@@ -1615,6 +1617,7 @@
     onViewRevision={onViewChanges}
     {chrome}
     {tabs}
+    {initialCompareFrom}
     bind:compareFrom
     bind:showingRevisionDiff
     bind:filesExpanded

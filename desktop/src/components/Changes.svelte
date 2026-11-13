@@ -77,9 +77,11 @@
     // The revision and commit the patch is marked merged at, if any.
     merge?: { revision: string; commit: string };
     onViewRevision?: (revisionId: string) => void;
-    // The commit to diff the revision's head against instead of its base, such
-    // as the previous revision's head. Read when the tab opens and cleared here
-    // once the diff on screen is anything else: another revision or a commit.
+    // The commit to diff the revision's head against when the tab opens,
+    // instead of its base.
+    initialCompareFrom?: string;
+    // Output: the commit the diff on screen compares the revision's head
+    // against, while that is not its base.
     compareFrom?: string;
   }
 
@@ -105,6 +107,7 @@
     revisions = [],
     merge,
     onViewRevision,
+    initialCompareFrom,
     compareFrom = $bindable(),
   }: Props = $props();
   /* eslint-enable prefer-const */
@@ -117,7 +120,7 @@
   // Parent reuses this component across patch revisions; a sibling $effect
   // resets base and head when patchId changes.
   // svelte-ignore state_referenced_locally
-  let base = $state(compareFrom ?? revision.base);
+  let base = $state(initialCompareFrom ?? revision.base);
   // svelte-ignore state_referenced_locally
   let head = $state(revision.head);
 
@@ -138,7 +141,6 @@
       selectedCommitData = undefined;
       editingDescription = false;
       base = nextBase;
-      compareFrom = undefined;
       head = nextHead;
     });
   });
@@ -158,7 +160,6 @@
   }) {
     head = headId;
     base = baseId;
-    compareFrom = undefined;
     selectedCommit = commitId;
     selectedCommitData = commit;
     filesExpanded = showFiles;
@@ -174,6 +175,21 @@
   $effect(() => {
     if (showingRevisionDiff !== isRevisionDiff) {
       showingRevisionDiff = isRevisionDiff;
+    }
+  });
+
+  // A comparison is the revision's head diffed against another commit than its
+  // base, which only `compare` sets up.
+  const comparedFrom = $derived(
+    selectedCommit === undefined &&
+      head === revision.head &&
+      base !== revision.base
+      ? base
+      : undefined,
+  );
+  $effect(() => {
+    if (compareFrom !== comparedFrom) {
+      compareFrom = comparedFrom;
     }
   });
 
@@ -344,7 +360,7 @@
   // A comparison is another range: an empty revision still differs from the
   // one before it.
   const emptyRevision = $derived(
-    compareFrom === undefined &&
+    comparedFrom === undefined &&
       commitListRange === `${revision.base}..${revision.head}` &&
       commitList.length === 0,
   );
@@ -363,7 +379,7 @@
       selectedCommit,
     );
     // A comparison is a range of its own, which selecting the commit would end.
-    if (only && compareFrom === undefined) {
+    if (only && comparedFrom === undefined) {
       selectRevision({
         headId: revision.head,
         baseId: revision.base,
@@ -420,10 +436,11 @@
     diffView?.scrollToFilesTop();
   }
 
-  /// Go back to the revision's own changes, which ends a comparison. Driven
-  /// from the tab bar, which the patch view renders.
-  export function showRevisionChanges() {
-    selectRevision({ headId: revision.head, baseId: revision.base });
+  /// Diff the revision's head against `from`, or against its base when absent,
+  /// which ends a comparison. Driven from the patch view's tab bar and revision
+  /// picker.
+  export function compare(from?: string) {
+    selectRevision({ headId: revision.head, baseId: from ?? revision.base });
     void scrollToDiff();
   }
 
@@ -479,8 +496,7 @@
   useShortcuts(
     {
       shortcut: "previousCommit",
-      // The commits column is hidden during a comparison.
-      enabled: () => commitList.length > 1 && compareFrom === undefined,
+      enabled: () => commitList.length > 1 && comparedFrom === undefined,
       run: () => {
         const current = commitList.findIndex(c => c.id === selectedCommit);
         selectCommitAt(stepCommitIndex(current, commitList.length, -1));
@@ -488,8 +504,7 @@
     },
     {
       shortcut: "nextCommit",
-      // The commits column is hidden during a comparison.
-      enabled: () => commitList.length > 1 && compareFrom === undefined,
+      enabled: () => commitList.length > 1 && comparedFrom === undefined,
       run: () => {
         const current = commitList.findIndex(c => c.id === selectedCommit);
         selectCommitAt(stepCommitIndex(current, commitList.length, 1));
@@ -1000,7 +1015,7 @@
   codeComments={diffCodeComments}
   commentCommit={isRevisionDiff ? head : undefined}
   header={diffHeader}
-  overlayLeft={emptyRevision || compareFrom !== undefined
+  overlayLeft={emptyRevision || comparedFrom !== undefined
     ? undefined
     : commitsColumn}
   {filesHeader}

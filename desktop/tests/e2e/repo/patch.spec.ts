@@ -153,17 +153,38 @@ test("a comment-only review needs a summary", async ({ page, peer }) => {
   await expect(publish).toBeEnabled();
 });
 
-test("the revision picker counts a revision's commits as the Changes view does", async ({
-  page,
-  peer,
-}) => {
+// A second revision that keeps the first one's commit and adds another.
+async function createTwoRevisionPatch(peer: RadiclePeer) {
   const { rid, patchId, repoFolder } = await createPatch(peer);
-  // A second revision that keeps the first one's commit and adds another.
   await Fs.appendFile(Path.join(repoFolder, "notes.txt"), "six\n");
   await peer.git(["commit", "-am", "Add a sixth line"], { cwd: repoFolder });
   await peer.git(["push", "rad", `HEAD:refs/heads/patches/${patchId}`], {
     cwd: repoFolder,
   });
+  return { rid, patchId };
+}
+
+function addedLine(page: Page, text: string) {
+  return page.locator('[data-line-type="change-addition"]', { hasText: text });
+}
+
+// The second revision diffed against the first only adds the sixth line.
+async function expectComparedToPrevious(page: Page) {
+  await expect(addedLine(page, "six")).toBeVisible();
+  await expect(addedLine(page, "THREE")).toHaveCount(0);
+}
+
+async function endComparison(page: Page) {
+  await page.getByTitle("Show the revision's own changes").click();
+  await expect(addedLine(page, "THREE")).toBeVisible();
+  await expect(page.getByTitle("Show the revision's own changes")).toBeHidden();
+}
+
+test("the revision picker counts a revision's commits as the Changes view does", async ({
+  page,
+  peer,
+}) => {
+  const { rid, patchId } = await createTwoRevisionPatch(peer);
   await page.goto(`/repos/${rid}/patches/${patchId}?view=changes`);
 
   await expect(page.getByText("2 commits on base")).toBeVisible();
@@ -172,6 +193,43 @@ test("the revision picker counts a revision's commits as the Changes view does",
   await expect(
     page.getByRole("button", { name: /Add a sixth line.* icon-commit 2$/ }),
   ).toBeVisible();
+});
+
+test("compares a revision with the previous one from the activity tab", async ({
+  page,
+  peer,
+}) => {
+  const { rid, patchId } = await createTwoRevisionPatch(peer);
+  await page.goto(`/repos/${rid}/patches/${patchId}`);
+
+  // The timeline lists the second revision last.
+  await page.getByTitle("Compare revision").last().click();
+  await page
+    .getByRole("button", { name: /^Compare to previous revision/ })
+    .click();
+  await expect(page).toHaveURL(/view=changes/);
+  await expectComparedToPrevious(page);
+
+  await endComparison(page);
+});
+
+test("compares a revision with the previous one from the revision picker", async ({
+  page,
+  peer,
+}) => {
+  const { rid, patchId } = await createTwoRevisionPatch(peer);
+  await page.goto(`/repos/${rid}/patches/${patchId}?view=changes`);
+
+  await page.getByRole("button", { name: /Revision 2 of 2/ }).click();
+  await page
+    .getByRole("button", { name: /Add a sixth line/ })
+    .click({ button: "right" });
+  await page
+    .getByRole("menuitem", { name: /^Compare to previous revision/ })
+    .click();
+  await expectComparedToPrevious(page);
+
+  await endComparison(page);
 });
 
 test("shows reviews from other peers", async ({ page }) => {

@@ -5,6 +5,7 @@
     children: Snippet;
     selected: boolean;
     onclick?: () => void;
+    oncontextmenu?: (event: MouseEvent) => void;
     disabled?: boolean;
     title?: string;
     styleGap?: string;
@@ -14,6 +15,7 @@
 
   const {
     onclick,
+    oncontextmenu,
     children,
     selected,
     disabled = false,
@@ -76,6 +78,7 @@
       return;
     }
     onclick();
-  }}>
+  }}
+  {oncontextmenu}>
   {@render children()}
 </div>

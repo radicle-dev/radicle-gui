@@ -13,6 +13,7 @@
 
   import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
   import countBy from "lodash/countBy";
+  import { tick } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
 
   import { commentSourcesOf } from "@app/lib/commentSources";
@@ -29,6 +30,7 @@
   import { setPatchActivitySource } from "@app/lib/patchActivityContext";
   import { patchContributions } from "@app/lib/patchContributions";
   import type { ReviewEntry } from "@app/lib/reviewSummary";
+  import { compareRange, revisionRange } from "@app/lib/revisionCompare";
   import { revisionTitle } from "@app/lib/revisionDescription";
   import { orderRevisions, revisionNumbers } from "@app/lib/revisionList";
   import { revisionListSettings } from "@app/lib/revisionListSettings";
@@ -38,7 +40,6 @@
     absoluteTimestamp,
     authorForNodeId,
     didFromPublicKey,
-    formatOid,
     formatTimestamp,
     patchStatusLabel,
     publicKeyFromDid,
@@ -61,6 +62,7 @@
   import ReviewProgressChip from "@app/components/ReviewProgressChip.svelte";
   import ReviewSummary from "@app/components/ReviewSummary.svelte";
   import RevisionComponent from "@app/components/Revision.svelte";
+  import RevisionCompareContextMenu from "@app/components/RevisionCompareContextMenu.svelte";
   import ScrollArea from "@app/components/ScrollArea.svelte";
   import ShareButton from "@app/components/ShareButton.svelte";
   import Spinner from "@app/components/Spinner.svelte";
@@ -187,10 +189,10 @@
   // When opening a specific revision's changes from the timeline, the target
   // survives the view switch (the reset effect below honours it once).
   let pendingRevisionId: string | undefined;
-  let pendingCompareFrom: string | undefined;
-  // The commit the Changes tab diffs the selected revision's head against, when
-  // it is not the base: the previous revision's head, from the compare menu.
-  // Set here only on the way into the tab; the tab ends the comparison itself.
+  // The comparison the Changes tab opens with, read once when it mounts.
+  let pendingCompareFrom: string | undefined = $state();
+  // The commit the Changes tab diffs the selected revision's head against,
+  // while that is not its base. The tab keeps this up to date.
   let compareFrom: string | undefined = $state();
 
   // Warm the Changes-tab data for the selected revision in the background, so
@@ -448,7 +450,7 @@
     if (patchView !== lastPatchView) {
       lastPatchView = patchView;
       selectedRevisionId = pendingRevisionId ?? revisions.slice(-1)[0].id;
-      compareFrom = pendingCompareFrom;
+      compareFrom = undefined;
       pendingRevisionId = undefined;
       pendingCompareFrom = undefined;
     }
@@ -534,6 +536,26 @@
 
   function selectRevision(revId: string) {
     selectedRevisionId = revId;
+  }
+
+  // The revision picker row that was right-clicked, for its compare menu.
+  let revisionContextMenu:
+    { x: number; y: number; target: HTMLElement; revId: string } | undefined =
+    $state();
+  const revisionContextMenuRange = $derived.by(() => {
+    if (!revisionContextMenu) return undefined;
+    return revisionRange(orderedRevisions, revisionContextMenu.revId);
+  });
+
+  async function compareRevision(revId: string, from?: string) {
+    closeFocused();
+    if (revId !== selectedRevisionId) {
+      selectedRevisionId = revId;
+      // Let the Changes tab take the new revision before starting the
+      // comparison, as switching revisions ends one.
+      await tick();
+    }
+    revisionComponent?.compare(from);
   }
   const hasOwnPublishedReviewOnSelected = $derived(
     selectedRevision.reviews?.some(r => r.author.did === ownDid) ?? false,
@@ -974,7 +996,7 @@
                 );
                 // A review is written on the revision's own changes.
                 if (compareFrom !== undefined) {
-                  revisionComponent?.showRevisionChanges();
+                  revisionComponent?.compare();
                 }
                 setView("changes");
               }}
@@ -1167,10 +1189,10 @@
               <Button
                 variant="outline"
                 title="Show the revision's own changes"
-                onclick={() => revisionComponent?.showRevisionChanges()}>
+                onclick={() => revisionComponent?.compare()}>
                 Compare
                 <span class="txt-id">
-                  {formatOid(compareFrom)}..{formatOid(selectedRevision.head)}
+                  {compareRange(compareFrom, selectedRevision.head)}
                 </span>
                 <Icon name="close" />
               </Button>
@@ -1322,6 +1344,15 @@
                           onclick={() => {
                             void selectRevision(rev.id);
                             closeFocused();
+                          }}
+                          oncontextmenu={event => {
+                            event.preventDefault();
+                            revisionContextMenu = {
+                              x: event.clientX,
+                              y: event.clientY,
+                              target: event.currentTarget as HTMLElement,
+                              revId: rev.id,
+                            };
                           }}>
                           {#if listSettings.showNumber}
                             <span class="revision-number">
@@ -1436,12 +1467,12 @@
             pendingCompareFrom = from;
           }
           selectedRevisionId = revisionId;
-          compareFrom = from;
           setView("changes");
         }}
         merge={patch.state.status === "merged" ? patch.state : undefined}
         chrome={patchHeader}
         {tabs}
+        initialCompareFrom={pendingCompareFrom}
         bind:compareFrom
         bind:showingRevisionDiff
         bind:filesExpanded
@@ -1559,3 +1590,14 @@
     {/if}
   </div>
 </Layout>
+
+{#if revisionContextMenu && revisionContextMenuRange}
+  {@const { revId, x, y, target } = revisionContextMenu}
+  <RevisionCompareContextMenu
+    {x}
+    {y}
+    {target}
+    {...revisionContextMenuRange}
+    onCompare={from => void compareRevision(revId, from)}
+    onclose={() => (revisionContextMenu = undefined)} />
+{/if}

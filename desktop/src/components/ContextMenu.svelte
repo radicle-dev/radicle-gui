@@ -34,9 +34,11 @@
     target?: HTMLElement;
     onclose: () => void;
     children: Snippet;
+    // Raises the menu above a popover it is opened from.
+    styleZIndex?: string;
   }
 
-  const { x, y, target, onclose, children }: Props = $props();
+  const { x, y, target, onclose, children, styleZIndex }: Props = $props();
 
   const getViewport = getScrollViewport();
 
@@ -214,6 +216,7 @@
   use:portal
   bind:this={menuEl}
   class="menu"
+  style:z-index={styleZIndex}
   role="menu"
   tabindex="-1"
   onclick={onMenuClick}
