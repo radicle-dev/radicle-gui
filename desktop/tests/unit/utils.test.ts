@@ -261,6 +261,22 @@ describe("explorer links", () => {
     );
   });
 
+  test("keeps a host written into the template", () => {
+    const publicExplorer =
+      "https://radicle.network/nodes/oak.radicle.garden/$rid$path";
+    const preferredSeeds = [`${nid}@seed1.oak.radicle.garden:8776`];
+    const node = "https://radicle.network/nodes/oak.radicle.garden";
+    expect(explorerLink(repo, config({ publicExplorer, preferredSeeds }))).toBe(
+      `${node}/${rid}`,
+    );
+    expect(
+      explorerLink(
+        { type: "did", node: nid },
+        config({ publicExplorer, preferredSeeds }),
+      ),
+    ).toBe(`${node}/users/did:key:${nid}`);
+  });
+
   test("explorerHost returns the host of the template", () => {
     expect(explorerHost(config({}))).toBe("radicle.network");
   });

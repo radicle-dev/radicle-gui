@@ -1,9 +1,23 @@
 import { describe, expect, test } from "vitest";
 
 import type { RadUri } from "@app/lib/radUri";
+
+// Most cases care about the path, not the template, so they build the
+// explorer's default `/nodes/$host/$rid$path` shape from a base URL.
+function explorerUrl(
+  reference: Parameters<typeof explorerUrlFromTemplate>[0],
+  base: string,
+  host: string,
+) {
+  return explorerUrlFromTemplate(
+    reference,
+    `${base.replace(/\/+$/, "")}/nodes/$host/$rid$path`,
+    host,
+  );
+}
 import {
   cobListType,
-  explorerUrl,
+  explorerUrl as explorerUrlFromTemplate,
   filePath,
   fileReference,
   formatRadUri,
@@ -392,6 +406,45 @@ describe("explorer URLs", () => {
     expect(
       parseExplorerUrl(`${base}/rad:${repo00}/issues/e9cf5263`),
     ).toBeUndefined();
+  });
+});
+
+describe("explorer templates", () => {
+  const did = { type: "did", node: node01 } as const;
+  const patch = parseReference(`rad:${repo00}/cob/${patchType}/${oid}`)!;
+
+  test("keeps a host written into the template", () => {
+    const template =
+      "https://radicle.network/nodes/oak.radicle.garden/$rid$path";
+    const node = "https://radicle.network/nodes/oak.radicle.garden";
+    expect(explorerUrlFromTemplate(patch, template, "seed")).toBe(
+      `${node}/rad:${repo00}/patches/${oid}`,
+    );
+    expect(explorerUrlFromTemplate(did, template, "seed")).toBe(
+      `${node}/users/did:key:${node01}`,
+    );
+  });
+
+  test("fills a template of another shape", () => {
+    const template = "https://example.com/$host/repos/$rid$path";
+    expect(explorerUrlFromTemplate(patch, template, "seed")).toBe(
+      `https://example.com/seed/repos/rad:${repo00}/patches/${oid}`,
+    );
+    expect(explorerUrlFromTemplate(did, template, "seed")).toBe(
+      `https://example.com/seed/repos/users/did:key:${node01}`,
+    );
+  });
+
+  test("has no user page without $rid", () => {
+    expect(
+      explorerUrlFromTemplate(did, "https://example.com/$host/$path", "seed"),
+    ).toBeUndefined();
+  });
+
+  test("keeps replacement patterns in the host literal", () => {
+    expect(
+      explorerUrlFromTemplate(patch, "https://x/nodes/$host/$rid$path", "a$&b"),
+    ).toBe(`https://x/nodes/a$&b/rad:${repo00}/patches/${oid}`);
   });
 });
 

@@ -359,17 +359,7 @@ export function explorerLink(
   reference: RadReference,
   config: Config,
 ): string | undefined {
-  return explorerUrl(reference, explorerBase(config), explorerSeed(config));
-}
-
-function explorerBase(config: Config): string {
-  const nodes = config.publicExplorer.indexOf("/nodes/$host");
-  if (nodes !== -1) return config.publicExplorer.slice(0, nodes);
-  try {
-    return new URL(config.publicExplorer).origin;
-  } catch {
-    return config.publicExplorer;
-  }
+  return explorerUrl(reference, config.publicExplorer, explorerSeed(config));
 }
 
 function explorerSeed(config: Config): string {
