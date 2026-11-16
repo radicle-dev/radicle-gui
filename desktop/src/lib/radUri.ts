@@ -348,13 +348,22 @@ function explorerResourcePath(uri: RadUri): string | undefined {
   }
 }
 
+// Fills the `publicExplorer` template the way heartwood's `ExplorerUrl` does:
+// `$host` becomes `host`, `$rid` the repo and `$path` the resource. A template
+// without `$host` names its own node. User pages have no `$rid`, so they hang
+// off whatever precedes `$rid` in the template.
 export function explorerUrl(
   reference: RadReference,
-  base: string,
+  template: string,
   host: string,
 ): string | undefined {
-  const node = `${base.replace(/\/+$/, "")}/nodes/${host}`;
+  // Replacer functions keep `$&` and friends in a value literal, as heartwood's
+  // `str::replace` does.
+  const url = template.replaceAll("$host", () => host);
   if (reference.type === "did") {
+    const rid = url.indexOf("$rid");
+    if (rid === -1) return undefined;
+    const node = url.slice(0, rid).replace(/\/+$/, "");
     return `${node}/users/${formatDid(reference.node)}`;
   }
 
@@ -366,7 +375,11 @@ export function explorerUrl(
       ? `#${reference.uri.fragment}`
       : "";
 
-  return `${node}/rad:${reference.uri.repo}${path}${fragment}`;
+  return (
+    url
+      .replaceAll("$rid", () => `rad:${reference.uri.repo}`)
+      .replaceAll("$path", () => path) + fragment
+  );
 }
 
 function decodeSegment(segment: string): string {
