@@ -8,6 +8,8 @@
     formatTimestamp,
   } from "@app/lib/utils";
 
+  import CobTeaser from "@app/components/CobTeaser.svelte";
+  import CountBadge from "@app/components/CountBadge.svelte";
   import DelegateBadge from "@app/components/DelegateBadge.svelte";
   import Icon from "@app/components/Icon.svelte";
   import Id from "@app/components/Id.svelte";
@@ -22,30 +24,10 @@
 
   const { delegateIds, release, rid }: Props = $props();
 
-  const title = $derived(release.title || release.tagName || release.id);
+  const releaseTitle = $derived(release.title || release.tagName || release.id);
 </script>
 
 <style>
-  .release-teaser {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.25rem;
-    min-height: 5rem;
-    background-color: var(--color-surface-canvas);
-    padding: 1rem;
-    cursor: pointer;
-    font: var(--txt-body-l-regular);
-    word-break: break-word;
-    width: 100%;
-  }
-  .release-teaser:hover {
-    background-color: var(--color-surface-subtle);
-  }
-  .icon {
-    padding: 0;
-    margin-right: 1rem;
-    color: var(--color-text-tertiary);
-  }
   .tag {
     font: var(--txt-body-s-regular);
     color: var(--color-text-tertiary);
@@ -54,24 +36,10 @@
     padding: 0 0.375rem;
     white-space: nowrap;
   }
-  .counter {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    font: var(--txt-body-m-regular);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: var(--border-radius-sm);
-    height: 1.5rem;
-    padding: 0 0.5rem;
-    color: var(--color-text-tertiary);
-  }
 </style>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<div
-  tabindex="0"
-  role="button"
-  class="release-teaser"
+<CobTeaser
+  chipColor="var(--color-text-tertiary)"
   onclick={() => {
     void push({
       resource: "repo.release",
@@ -79,36 +47,32 @@
       release: release.id,
     });
   }}>
-  <div class="global-chip icon">
+  {#snippet icon()}
     <Icon name="parcel" />
-  </div>
-  <div
-    class="global-flex"
-    style:flex-direction="column"
-    style:align-items="flex-start">
+  {/snippet}
+  {#snippet heading()}
     <div class="global-flex" style:flex-wrap="wrap">
-      <InlineTitle content={title} />
+      <InlineTitle content={releaseTitle} />
       {#if release.tagName}
         <span class="tag">{release.tagName}</span>
       {/if}
     </div>
-    <div class="global-flex txt-body-m-regular" style:flex-wrap="wrap">
-      <NodeId {...authorForNodeId(release.creator)} />
-      {#if delegateIds.has(release.creator.did)}
-        <DelegateBadge />
-      {/if}
-      created
-      <Id id={release.id} clipboard={release.id} label="release ID" />
-      <span title={absoluteTimestamp(release.createdAt)}>
-        {formatTimestamp(release.createdAt)}
-      </span>
-    </div>
-  </div>
-
-  <div class="global-flex" style:margin-left="auto">
-    <div class="counter" title="Artifacts">
-      <Icon name="attach" />
-      {release.artifacts.length}
-    </div>
-  </div>
-</div>
+  {/snippet}
+  {#snippet meta()}
+    <NodeId {...authorForNodeId(release.creator)} />
+    {#if delegateIds.has(release.creator.did)}
+      <DelegateBadge />
+    {/if}
+    created
+    <Id id={release.id} clipboard={release.id} label="release ID" />
+    <span title={absoluteTimestamp(release.createdAt)}>
+      {formatTimestamp(release.createdAt)}
+    </span>
+  {/snippet}
+  {#snippet badges()}
+    <CountBadge
+      icon="attach"
+      count={release.artifacts.length}
+      title="Artifacts" />
+  {/snippet}
+</CobTeaser>

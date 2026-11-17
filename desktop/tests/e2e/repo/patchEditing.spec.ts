@@ -4,6 +4,7 @@ import type { RadiclePeer } from "@tests/support/peerManager.js";
 import { createProject } from "@tests/support/collaboration.js";
 import {
   expect,
+  goto,
   reload,
   test,
   waitForCommand,
@@ -98,7 +99,7 @@ test("the title and description can be edited", async ({ page, peer }) => {
   });
   await expect(title).toBeVisible();
 
-  await page.goto(`/repos/${rid}/patches/${patchId}?view=changes`);
+  await goto(page, `/repos/${rid}/patches/${patchId}?view=changes`);
   await page.getByText("Readers skim").hover();
   await page.getByTitle("Edit description").click();
   const editor = page.getByRole("textbox", { name: "textarea-comment" });
