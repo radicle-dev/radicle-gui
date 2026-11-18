@@ -2,7 +2,7 @@
 
 Monorepo for Radicle's graphical interfaces. It holds two projects, each with
 its own Cargo workspace, toolchain files, checks and conventions, and the UI
-code they share. One npm workspace at the root holds all three packages:
+code they share. One npm workspace at the root holds all four packages:
 
 - **Explorer** (`explorer/`): the Svelte web app for browsing Radicle
   repositories, its TypeScript HTTP client, and the `radicle-httpd` and
@@ -11,6 +11,9 @@ code they share. One npm workspace at the root holds all three packages:
 - **Shared UI** (`shared/ui/`): the `@radicle-gui/ui` package with Svelte
   components, helpers, design tokens and fonts used by both apps. See
   `shared/ui/AGENTS.md`.
+- **Shared core** (`shared/core/`): the `@radicle-gui/core` package with
+  domain logic as plain TypeScript, such as query keys and the data that ref
+  updates affect. See `shared/core/AGENTS.md`.
 
 This file covers what applies to both. Each project's `AGENTS.md` is the
 source of truth for anything inside it.
@@ -22,9 +25,10 @@ source of truth for anything inside it.
 | `explorer/` | Web app, HTTP client, `radicle-httpd` and `radicle-search` |
 | `desktop/` | Tauri app: Svelte frontend in `src/`, Rust in `crates/` |
 | `shared/ui/` | UI code shared by both apps |
+| `shared/core/` | Domain logic shared by both apps and `shared/ui`, without Svelte or the DOM |
 | `package.json`, `package-lock.json`, `.npmrc`, `.nvmrc` | The npm workspace, its lockfile and npm and Node settings |
 | `docs/adr/` | Decisions that affect the whole repository |
-| `.github/workflows/` | GitHub CI: `explorer-*.yml` for explorer, `desktop-*.yml` for desktop, `shared-ui.yml` for the shared UI |
+| `.github/workflows/` | GitHub CI: `explorer-*.yml` for explorer, `desktop-*.yml` for desktop, `shared-ui.yml` and `shared-core.yml` for the shared packages |
 | `.buildkite/` | Radicle CI pipelines (explorer only) |
 | `.ryph/` | Dev machine image and setup for agents, see `.ryph/environment.md` |
 

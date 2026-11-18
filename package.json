@@ -2,6 +2,7 @@
   "name": "radicle-gui",
   "private": true,
   "workspaces": [
+    "shared/core",
     "shared/ui",
     "explorer",
     "desktop"

@@ -64,9 +64,28 @@ the components:
   heartwood
 - Define them in `lib/types.ts`, named after domain concepts such as `Author`
   or `Reaction`. The first extraction that needs a domain type creates the
-  file. ADR 4 moves them to `@radicle-gui/core` once that package exists
+  file. ADR 4 moves them to `@radicle-gui/core`
 - Apps pass their own objects when the shapes match, and map them in one place
   where they don't. Never import an app's types here
+
+## Query cache
+
+`lib/query.svelte.ts` wraps TanStack Query for the apps' views, as decided in
+`docs/adr/0005-reactivity.md`. Only the apps use it; shared components keep
+taking props.
+
+- `createQuery` observes one key in the cache. `onInvalidate` runs a
+  component's own refresh when its key is invalidated, for data the cache
+  doesn't hold, and several components may listen on one key
+- A route loader calls `markLoading` on a key before reading what a component
+  then refreshes with `onInvalidate`, so that an invalidation during the load
+  refreshes it at mount. `invalidatedSinceLoading` tells whether one came
+- Invalidate with `invalidate` rather than the client's
+  `invalidateQueries`, so that a fetch in flight doesn't leave data from
+  before the change looking fresh. Use the client's only to join a refetch
+  already in flight
+- `pinned` holds a value the user is reading until they ask for the latest
+- Keys come from `@radicle-gui/core/keys`, never ad-hoc arrays
 
 ## Stylesheets and fonts
 

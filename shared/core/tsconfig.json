@@ -1,0 +1,16 @@
+{
+  "include": ["src", "tests"],
+  "compilerOptions": {
+    "noEmit": true,
+    "target": "es2024",
+    "lib": ["es2024"],
+    "types": [],
+    "module": "es2022",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@radicle-gui/core",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit && eslint --max-warnings 0 . && prettier '**/*.@(ts|js|json)' --check",
+    "format": "prettier '**/*.@(ts|js|json)' --write && eslint --fix .",
+    "test:unit": "TZ='UTC' vitest run"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.7.0",
+    "prettier": "^3.9.5",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.64.0",
+    "vitest": "^4.1.12"
+  }
+}
