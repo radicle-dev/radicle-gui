@@ -37,6 +37,11 @@ export const keys = {
   patch: (rid: string, id: string) => ["repo", rid, "patch", id] as const,
   patchDetails: (rid: string) => ["repo", rid, "patch"] as const,
   releases: (rid: string) => ["repo", rid, "releases"] as const,
+  releaseList: (rid: string, scope: string) =>
+    ["repo", rid, "releases", "list", scope] as const,
+  release: (rid: string, id: string) =>
+    ["repo", rid, "releases", "release", id] as const,
+  releaseCount: (rid: string) => ["repo", rid, "releases", "count"] as const,
   boards: (rid: string) => ["repo", rid, "boards"] as const,
   jobs: (rid: string) => ["repo", rid, "jobs"] as const,
   repos: () => ["repos"] as const,

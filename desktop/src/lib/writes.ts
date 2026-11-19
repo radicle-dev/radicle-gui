@@ -12,6 +12,18 @@ interface WriteArgs {
   args?: { rid?: unknown };
 }
 
+const releaseWrites = [
+  "create_or_open_release",
+  "delete_release",
+  "attest_artifact",
+  "redact_artifact",
+  "register_artifact",
+  "add_artifact_location",
+  "remove_artifact_location",
+  "set_artifact_metadata",
+  "remove_artifact_metadata",
+];
+
 // Write commands whose effect on the cache is mapped below. Other writes change
 // data the cache doesn't hold.
 export const mappedWrites = [
@@ -29,6 +41,7 @@ export const mappedWrites = [
   "unseed",
   "clean",
   "clear_notifications",
+  ...releaseWrites,
 ];
 
 // The keys a command's write affects, so that the user's own changes show
@@ -84,6 +97,8 @@ export function writtenKeys(
     case "clear_notifications":
       return [keys.notifications()];
     default:
-      return [];
+      return releaseWrites.includes(cmd) && typeof rid === "string"
+        ? [keys.releases(rid)]
+        : [];
   }
 }

@@ -578,6 +578,7 @@ export async function loadReleases(
   route: RepoReleasesRoute,
 ): Promise<LoadedRepoReleasesRoute> {
   const scope = route.scope ?? "trusted";
+  markLoading(queryClient, keys.releaseList(route.rid, scope));
   const [sidebarData, repo, releases, releaseCounts] = await Promise.all([
     loadSidebarData(),
     load(repoInfo(route.rid)),
@@ -606,6 +607,7 @@ export async function loadReleases(
 export async function loadRelease(
   route: RepoReleaseRoute,
 ): Promise<LoadedRepoReleaseRoute | LoadedRepoReleasesRoute> {
+  markLoading(queryClient, keys.release(route.rid, route.release));
   const [sidebarData, repo, release] = await Promise.all([
     loadSidebarData(),
     load(repoInfo(route.rid)),

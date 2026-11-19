@@ -204,8 +204,18 @@
   // Kept while navigating inside the repo, so the badge doesn't flicker.
   let releaseCount = $state<number | undefined>(undefined);
   let countedRid: string | undefined = undefined;
+  // Bumped when the active repo's releases change, to count them again.
+  let releasesChanged = $state(0);
+  onInvalidate(
+    queryClient,
+    () => keys.releaseCount(activeRepo?.rid ?? ""),
+    async () => {
+      releasesChanged++;
+    },
+  );
 
   $effect(() => {
+    void releasesChanged;
     const rid = activeRepo?.rid;
     if (rid === undefined) {
       releaseCount = undefined;

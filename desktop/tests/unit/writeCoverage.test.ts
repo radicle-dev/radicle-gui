@@ -85,25 +85,17 @@ const outsideCache = [
   "retire_actor",
   "update_actor_profile",
   "withdraw_actor_revision",
-  // Writes outside the cache: boards, releases, artifacts, embeds, files and
-  // notifications, which their views reload themselves.
-  "add_artifact_location",
-  "attest_artifact",
+  // Writes outside the cache. The board shows its own writes as they land,
+  // and a reload after each would make cards jump while the user moves more.
+  // Artifact seeding, embeds and files aren't in the cache.
   "create_board",
-  "create_or_open_release",
-  "delete_release",
   "download_artifact",
-  "redact_artifact",
-  "register_artifact",
-  "remove_artifact_location",
-  "remove_artifact_metadata",
   "rename_board",
   "save_diff_to_disk",
   "save_embed_by_bytes",
   "save_embed_by_path",
   "save_embed_to_disk",
   "seed_artifact",
-  "set_artifact_metadata",
   "set_board_columns",
   "unseed_artifact",
   "update_board",

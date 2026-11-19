@@ -5,10 +5,15 @@
   import type { Config } from "@bindings/config/Config";
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
+  import { keys } from "@radicle-gui/core/keys";
+  import { onInvalidate } from "@radicle-gui/ui/lib/query.svelte";
+  import { onDestroy } from "svelte";
+
   import { pickFiles, pickFolder } from "@app/lib/artifactPickers";
   import { basename } from "@app/lib/embeds";
   import { invoke } from "@app/lib/invoke";
   import { show } from "@app/lib/modal";
+  import { queryClient } from "@app/lib/query";
   import { artifactView, releaseWarning } from "@app/lib/releases";
   import * as router from "@app/lib/router";
   import type { Picked, StagedArtifact } from "@app/lib/stageArtifacts";
@@ -200,10 +205,16 @@
         title,
         shared: release.artifacts.some(a => a.author.did !== ownDid),
         confirm: async () => {
-          await invoke("delete_release", {
-            rid: repo.rid,
-            releaseId: release.id,
-          });
+          deleting = true;
+          try {
+            await invoke("delete_release", {
+              rid: repo.rid,
+              releaseId: release.id,
+            });
+          } catch (error) {
+            deleting = false;
+            throw error;
+          }
           await router.push({ resource: "repo.releases", rid: repo.rid });
         },
       },
@@ -211,6 +222,16 @@
   }
 
   let seededCids = $state<Set<string>>(new Set());
+  // Deleting it here navigates by itself, as does leaving the view while a
+  // refresh is under way.
+  let deleting = false;
+  onDestroy(() => {
+    deleting = true;
+  });
+
+  // Other people's changes to the release, such as new artifacts or
+  // attestations, show as they arrive.
+  onInvalidate(queryClient, () => keys.release(repo.rid, release.id), refresh);
 
   async function refreshSeeded() {
     try {
@@ -246,6 +267,9 @@
       });
       if (updated) {
         release = updated;
+      } else if (!deleting) {
+        // Deleted elsewhere while shown.
+        await router.push({ resource: "repo.releases", rid: repo.rid });
       }
     } catch (error) {
       console.error("Refreshing the release failed", error);
