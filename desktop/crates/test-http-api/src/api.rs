@@ -1697,13 +1697,14 @@ async fn edit_patch_handler(
 #[serde(rename_all = "camelCase")]
 struct CreatePatchReviewBody {
     pub args: models::patch::CreateReviewArgs,
+    pub opts: CobOptions,
 }
 
 async fn create_patch_review_handler(
     Ctx(ctx): Ctx,
-    Json(CreatePatchReviewBody { args }): Json<CreatePatchReviewBody>,
+    Json(CreatePatchReviewBody { args, opts }): Json<CreatePatchReviewBody>,
 ) -> impl IntoResponse {
-    let review_id = ctx.create_patch_review(args)?;
+    let review_id = ctx.create_patch_review(args, opts)?;
 
     Ok::<_, Error>(Json(review_id))
 }

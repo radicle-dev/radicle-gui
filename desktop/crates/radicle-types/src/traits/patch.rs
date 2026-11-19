@@ -88,8 +88,10 @@ pub trait PatchesMut: Profile {
     fn create_patch_review(
         &self,
         args: models::patch::CreateReviewArgs,
+        opts: cobs::CobOptions,
     ) -> Result<cob::patch::ReviewId, Error> {
         let profile = self.profile();
+        let mut node = Node::new(profile.home().socket_from_env());
         let repo = profile.storage.repository(args.rid)?;
         let signer = profile.signer()?;
         let mut patches = profile.patches_mut(&repo, &signer)?;
@@ -116,16 +118,28 @@ pub trait PatchesMut: Profile {
             args.labels,
         )?;
 
-        for comment in args.comments {
-            patch.review_comment(
-                review_id,
-                comment.body,
-                comment.location.map(Into::into),
-                None,
-                vec![],
-            )?;
+        // The review is written by now, so it is announced even if a comment
+        // fails: a retry can't add the missing comments, as it would hit the
+        // check above.
+        let comments = args.comments.into_iter().try_for_each(|comment| {
+            patch
+                .review_comment(
+                    review_id,
+                    comment.body,
+                    comment.location.map(Into::into),
+                    None,
+                    vec![],
+                )
+                .map(|_| ())
+        });
+
+        if opts.announce()
+            && let Err(e) = node.announce_refs_for(args.rid, [profile.public_key])
+        {
+            log::error!("Not able to announce changes: {}", e)
         }
 
+        comments?;
         Ok(review_id)
     }
 

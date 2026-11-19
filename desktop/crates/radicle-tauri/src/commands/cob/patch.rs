@@ -76,8 +76,9 @@ pub fn delete_patch(
 pub fn create_patch_review(
     ctx: tauri::State<AppState>,
     args: models::patch::CreateReviewArgs,
+    opts: cobs::CobOptions,
 ) -> Result<ReviewId, Error> {
-    ctx.create_patch_review(args)
+    ctx.create_patch_review(args, opts)
 }
 
 #[tauri::command]

@@ -73,6 +73,7 @@ async function reviewWithEmbed(page: Page, peer: RadiclePeer) {
       // Only reviews with comments get a page of their own.
       comments: [{ body: "Loud enough", location: null }],
     },
+    opts: { announce: false },
   })) as string;
   await api(page, peer, "edit_patch", {
     rid,
@@ -257,6 +258,7 @@ test("ticking a task in a review of an older revision keeps its embeds", async (
       labels: [],
       comments: [],
     },
+    opts: { announce: false },
   })) as string;
   await api(page, peer, "edit_patch", {
     rid,

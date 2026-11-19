@@ -253,7 +253,7 @@ export const draftReviewStorage = {
     });
   },
 
-  async publish(id: string) {
+  async publish(id: string, announce: boolean) {
     const draftReviewStored = storage.value[id];
     if (!draftReviewStored) {
       throw new Error(
@@ -276,6 +276,7 @@ export const draftReviewStorage = {
           location: storedComment.location ?? null,
         })),
       } satisfies CreateReviewArgs,
+      opts: { announce },
     });
 
     draftReviewStorage.delete(id);

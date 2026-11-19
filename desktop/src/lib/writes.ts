@@ -32,8 +32,8 @@ export const mappedWrites = [
 ];
 
 // The keys a command's write affects, so that the user's own changes show
-// whether or not the node announces them: it doesn't with announcing off, for
-// reviews, or while it is stopped. Views that apply pinned state still wait
+// whether or not the node announces them: it doesn't with announcing off or
+// while it is stopped. Views that apply pinned state still wait
 // for their own refetch.
 export function writtenKeys(
   cmd: string,

@@ -8,10 +8,12 @@
 
   import type { DraftReview } from "@app/lib/draftReviewStorage";
   import { draftReviewStorage } from "@app/lib/draftReviewStorage";
+  import { nodeRunning } from "@app/lib/events";
   import { motion } from "@app/lib/motion";
   import { formatAnchor } from "@app/lib/pierreComments";
   import { isPublishableReview, verdictBadge } from "@app/lib/utils";
 
+  import { announce } from "@app/components/AnnounceSwitch.svelte";
   import Button from "@app/components/Button.svelte";
   import Icon from "@app/components/Icon.svelte";
   import Popover from "@app/components/Popover.svelte";
@@ -204,7 +206,10 @@
         labels: draftReview.labels,
       });
       const revisionId = draftReview.revisionId;
-      await draftReviewStorage.publish(draftReview.id);
+      await draftReviewStorage.publish(
+        draftReview.id,
+        $nodeRunning && $announce,
+      );
       await onPublish(revisionId);
     } catch (error) {
       // The draft is only discarded once the review is on the network, so

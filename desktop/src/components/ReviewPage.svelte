@@ -15,6 +15,7 @@
   import type { Config } from "@bindings/config/Config";
   import type { FileDiff } from "@bindings/diff/FileDiff";
 
+  import { pinned } from "@radicle-gui/ui/lib/query.svelte";
   import { untrack } from "svelte";
 
   import type { CommentOwner } from "@app/lib/codeCommentActions";
@@ -67,6 +68,7 @@
   import Icon from "@app/components/Icon.svelte";
   import Id from "@app/components/Id.svelte";
   import Markdown from "@app/components/Markdown.svelte";
+  import NewerBanner from "@app/components/NewerBanner.svelte";
   import NodeId from "@app/components/NodeId.svelte";
   import PierreDiff from "@app/components/PierreDiff.svelte";
   import PierreTree from "@app/components/PierreTree.svelte";
@@ -203,6 +205,7 @@
       savingSummary = false;
       editingSummary = false;
       await loadPatch();
+      pinnedSummary.apply();
     }
   }
 
@@ -531,7 +534,19 @@
 
   const verdict = $derived(review.verdict);
   const timestamp = $derived(review.timestamp);
-  const summary = $derived(review.summary?.trim() ?? "");
+  // The summary is what the reader reads, so an edit by its author doesn't
+  // replace it until the reader asks for it, as with an issue's description.
+  // Comments and the verdict follow the patch as it changes.
+  const pinnedSummary = pinned(() => review.summary ?? "");
+  // svelte-ignore state_referenced_locally
+  let pinnedReviewId = review.id;
+  $effect.pre(() => {
+    if (review.id !== pinnedReviewId) {
+      pinnedReviewId = review.id;
+      pinnedSummary.apply();
+    }
+  });
+  const summary = $derived(pinnedSummary.current.trim());
   const backCaption = $derived(
     fromView === "changes" ? "Back to changes" : "Back to activity",
   );
@@ -955,6 +970,12 @@
       {/if}
     </div>
 
+    {#if pinnedSummary.stale && !editingSummary}
+      <NewerBanner
+        message="The summary has been edited."
+        margin="0 0 0.5rem"
+        onShow={() => pinnedSummary.apply()} />
+    {/if}
     {#if editingSummary}
       <div>
         <ExtendedTextarea
@@ -975,7 +996,7 @@
           <Markdown
             {rid}
             breaks
-            content={review.summary ?? ""}
+            content={pinnedSummary.current}
             toggleTaskItem={isOwnPublishedReview
               ? async content => {
                   await saveSummary(content, review.embeds);

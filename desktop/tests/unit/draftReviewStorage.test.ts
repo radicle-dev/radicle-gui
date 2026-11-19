@@ -193,7 +193,7 @@ describe("draftReviewStorage", () => {
       const where = location("a.ts", "new", 3);
       drafts.addComment(id, { body: "nit", location: where });
 
-      await drafts.publish(id);
+      await drafts.publish(id, true);
 
       expect(invoke).toHaveBeenCalledWith("create_patch_review", {
         args: {
@@ -204,6 +204,7 @@ describe("draftReviewStorage", () => {
           labels: ["ok"],
           comments: [{ body: "nit", location: where }],
         },
+        opts: { announce: true },
       });
       expect(drafts.get(id, alice)).toBeUndefined();
     });
@@ -224,7 +225,7 @@ describe("draftReviewStorage", () => {
       );
       const drafts = await load();
 
-      await drafts.publish("old");
+      await drafts.publish("old", false);
 
       expect(invoke.mock.calls[0][1].args.comments).toEqual([
         { body: "general remark", location: null },
@@ -236,14 +237,14 @@ describe("draftReviewStorage", () => {
       const drafts = await load();
       const id = drafts.create("rad:repo", "patch", "rev", aliceNid);
 
-      await expect(drafts.publish(id)).rejects.toThrow("offline");
+      await expect(drafts.publish(id, false)).rejects.toThrow("offline");
       expect(drafts.get(id, alice)?.id).toBe(id);
     });
 
     test("rejects a draft that doesn't exist", async () => {
       const drafts = await load();
 
-      await expect(drafts.publish("missing")).rejects.toThrow(
+      await expect(drafts.publish("missing", false)).rejects.toThrow(
         "Review missing does not exist",
       );
       expect(invoke).not.toHaveBeenCalled();
