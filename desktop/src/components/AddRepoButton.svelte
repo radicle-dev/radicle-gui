@@ -3,12 +3,11 @@
 </script>
 
 <script lang="ts">
-  import type { RepoSummary } from "@bindings/repo/RepoSummary";
-
   import { z } from "zod";
 
   import { nodeRunning } from "@app/lib/events";
-  import { invoke } from "@app/lib/invoke";
+  import { cachedListReposWithActors, invoke } from "@app/lib/invoke";
+  import { repoListScope } from "@app/lib/repoListScope";
   import { seedTarget } from "@app/lib/seedRepo";
   import useLocalStorage from "@app/lib/useLocalStorage.svelte";
   import { twemoji } from "@app/lib/utils";
@@ -24,11 +23,10 @@
 
   interface Props {
     reload: () => Promise<void>;
-    repos: RepoSummary[];
     seededNotReplicated: string[];
   }
 
-  const { reload, repos, seededNotReplicated }: Props = $props();
+  const { reload, seededNotReplicated }: Props = $props();
 
   let popoverExpanded: boolean = $state(false);
   let rid = $state("");
@@ -61,10 +59,13 @@
       return;
     }
 
+    // The project list hides actor repositories, so this check uses the full
+    // list.
+    const stored = await cachedListReposWithActors(repoListScope.value);
     const target = seedTarget(
       rid,
       seededNotReplicated,
-      repos.map(r => r.rid),
+      stored.map(r => r.rid),
     );
     if ("error" in target) {
       validationMessage = target.error;

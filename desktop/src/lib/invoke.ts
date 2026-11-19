@@ -1,3 +1,4 @@
+import type { ActorInfo } from "@bindings/actor/ActorInfo";
 import type { AliasSuggestion } from "@bindings/cob/AliasSuggestion";
 import type { DiffOptions } from "@bindings/cob/DiffOptions";
 import type { Issue } from "@bindings/cob/issue/Issue";
@@ -17,6 +18,8 @@ import type { TreePath } from "@bindings/repo/TreePath";
 import { cached } from "@radicle-gui/ui/lib/cached";
 import * as tauri from "@tauri-apps/api/core";
 
+import { labs } from "@app/lib/labs";
+import { projectsOf } from "@app/lib/projects";
 import type { RepoListScope } from "@app/lib/repoListScope";
 
 export async function invoke<T = null>(
@@ -416,15 +419,39 @@ export const cachedGetCommitDiff = cached(
  * is cached with a short TTL; mutations that change it (adding, seeding,
  * unseeding) go through invalidateReposSummary().
  */
-export const cachedListReposSummary = cached(
+export const cachedListReposWithActors = cached(
   (show: RepoListScope) =>
     invoke<RepoSummary[]>("list_repos_summary", { show }),
   show => `list_repos_summary:${show}`,
   { max: 2, ttl: 30_000 },
 );
 
+/**
+ * The repositories to list as projects, see `projectsOf`. Whatever lists
+ * repositories calls this; `cachedListReposWithActors` is for telling what is
+ * in storage.
+ */
+export async function cachedListReposSummary(
+  show: RepoListScope,
+): Promise<RepoSummary[]> {
+  return projectsOf(await cachedListReposWithActors(show), labs.actorRepos);
+}
+
+/**
+ * Finding the local actor scans storage like the repo list does, and every
+ * route loads it while the lab is on, so it shares the list's caching and
+ * invalidation; a save or create clears it as well.
+ */
+export const cachedActor = cached(
+  () => invoke<ActorInfo | null>("actor"),
+  () => "actor",
+  { max: 1, ttl: 30_000 },
+);
+
+// The sidebar loads the repositories and the actor together, so both go.
 export function invalidateReposSummary(): void {
-  cachedListReposSummary.clear();
+  cachedListReposWithActors.clear();
+  cachedActor.clear();
 }
 
 export async function writeToClipboard(

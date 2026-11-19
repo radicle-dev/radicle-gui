@@ -390,10 +390,12 @@
 
   async function reloadRepos() {
     invalidateReposSummary();
-    [repos, seededNotReplicated] = await Promise.all([
+    const [reloaded, fetching] = await Promise.all([
       cachedListReposSummary(repoListScope.value),
       invoke<string[]>("seeded_not_replicated"),
     ]);
+    repos = reloaded;
+    seededNotReplicated = fetching;
   }
 
   // The route loader already fetched the list for the scope in force, so the
@@ -1127,7 +1129,7 @@
     data-flip
     onclick={e => e.stopPropagation()}
     role="none">
-    <AddRepoButton reload={reloadRepos} {repos} {seededNotReplicated} />
+    <AddRepoButton reload={reloadRepos} {seededNotReplicated} />
   </span>
 </div>
 

@@ -31,6 +31,8 @@ pub struct RepoSummary {
     /// False for a repository that is in storage but not seeded, which
     /// `rad ls --all` shows as "local".
     pub seeding: bool,
+    /// The repository is an actor's, a profile and not a project.
+    pub actor: bool,
 }
 
 #[derive(Serialize, TS)]

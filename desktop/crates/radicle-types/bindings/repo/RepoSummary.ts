@@ -9,4 +9,8 @@ export type RepoSummary = {
    * `rad ls --all` shows as "local".
    */
   seeding: boolean;
+  /**
+   * The repository is an actor's, a profile and not a project.
+   */
+  actor: boolean;
 };

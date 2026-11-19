@@ -9,7 +9,10 @@
   interface Props {
     title: string;
     width: string;
-    icon: ComponentProps<typeof Icon>["name"];
+    icon?: ComponentProps<typeof Icon>["name"];
+    // The confirm button's style: ghost for a destructive step, secondary
+    // for the step the dialog is there to take.
+    variant?: "ghost" | "secondary";
     label: string;
     busyLabel: string;
     failure?: string;
@@ -24,6 +27,7 @@
     title,
     width,
     icon,
+    variant = "ghost",
     label,
     busyLabel,
     failure = "Something went wrong.",
@@ -123,11 +127,13 @@
     {#if canConfirm}
       <Button variant="outline" onclick={hide}>Cancel</Button>
       <Button
-        variant="ghost"
+        {variant}
         disabled={working || disabled}
         onclick={() => void run()}>
         <span class="confirm-label">
-          <Icon name={icon} />
+          {#if icon}
+            <Icon name={icon} />
+          {/if}
           {working ? busyLabel : label}
         </span>
       </Button>

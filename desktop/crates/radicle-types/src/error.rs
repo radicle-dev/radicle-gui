@@ -154,6 +154,17 @@ pub enum Error {
     #[error("revision not found: {0}")]
     RevisionNotFound(String),
 
+    /// Reading or writing an actor repository.
+    #[error(transparent)]
+    Actor(#[from] crate::actor::Error),
+    /// Reading a payload of an identity document.
+    #[error(transparent)]
+    Payload(#[from] radicle::identity::doc::PayloadError),
+
+    /// Changing an identity.
+    #[error(transparent)]
+    Identity(#[from] radicle::cob::identity::Error),
+
     /// Commit not found in the repository.
     #[error("commit not found: {0}")]
     CommitNotFound(radicle::git::Oid),
@@ -271,6 +282,7 @@ impl Error {
                 "AliasError.InvalidAlias"
             }
             Error::FileTooLarge(_) => "PayloadError.TooLarge",
+            Error::Actor(error) => error.code(),
             Error::ReviewExists => "PatchError.ReviewExists",
             Error::CommitNotFound(_) => "RepoError.CommitNotFound",
             Error::InvalidLocation(_) => "ArtifactError.InvalidLocation",

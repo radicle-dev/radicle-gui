@@ -13,6 +13,7 @@ use radicle::storage;
 use radicle::storage::{ReadRepository, ReadStorage, RepositoryInfo, WriteStorage};
 use radicle::{git, identity, node};
 
+use crate::actor;
 use crate::cobs;
 use crate::diff;
 use crate::diff::Diff;
@@ -426,6 +427,7 @@ pub trait Repo: Profile {
                 name: data.name,
                 private: doc.is_private(),
                 seeding,
+                actor: is_actor(storage, rid, &doc),
             });
         }
 
@@ -1096,7 +1098,15 @@ pub trait Repo: Profile {
         let profile = self.profile();
         let mut node = radicle::Node::new(profile.home().socket_from_env());
 
-        profile.seed(rid, node::policy::Scope::All, &mut node)?;
+        // A scope the user already set for the repository stays as it is.
+        let scope = match (*profile.policies()?).seed_policy(&rid)? {
+            Some(node::policy::SeedPolicy {
+                policy: node::policy::SeedingPolicy::Allow { scope },
+                ..
+            }) => scope,
+            _ => node::policy::Scope::All,
+        };
+        profile.seed(rid, scope, &mut node)?;
 
         // The policy alone only fetches once a seed next announces the repo,
         // which a quiet one may not do for a long time. Fetch now, like
@@ -1207,6 +1217,28 @@ fn seed_candidates(
         )
         .filter(|(nid, _)| seen.insert(*nid))
         .collect()
+}
+
+/// Whether `rid`, with `doc` as its current document, is an actor's
+/// repository: both its first document and `doc` hold a valid actor payload.
+/// Reads the first document of a repository whose current one holds such a
+/// payload, and of no other.
+fn is_actor(storage: &storage::git::Storage, rid: identity::RepoId, doc: &Doc) -> bool {
+    if actor::ActorPayload::of(doc).is_none() {
+        return false;
+    }
+
+    let root = storage
+        .repository(rid)
+        .and_then(|repo| Ok(repo.identity_doc_at(repo.identity_root()?)?));
+
+    match root {
+        Ok(root) => actor::ActorPayload::of(&root.doc).is_some(),
+        Err(e) => {
+            log::warn!("Not able to tell whether {rid} is an actor's: {e}");
+            false
+        }
+    }
 }
 
 fn is_radicle_metadata(repo: &git2::Repository, oid: git::Oid) -> bool {

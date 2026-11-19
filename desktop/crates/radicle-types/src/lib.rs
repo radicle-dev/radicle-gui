@@ -1,4 +1,5 @@
 use traits::Profile;
+use traits::actor::Actor;
 use traits::artifact_node::ArtifactNode;
 use traits::board::Boards;
 use traits::cobs::Cobs;
@@ -12,6 +13,7 @@ use traits::release_mut::ReleasesMut;
 use traits::repo::Repo;
 use traits::thread::Thread;
 
+pub mod actor;
 pub mod artifact;
 pub mod auth;
 pub mod binaries;
@@ -34,6 +36,7 @@ pub struct AppState {
 
 impl Boards for AppState {}
 impl Repo for AppState {}
+impl Actor for AppState {}
 impl Thread for AppState {}
 impl Cobs for AppState {}
 impl Identity for AppState {}

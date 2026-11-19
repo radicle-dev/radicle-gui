@@ -634,7 +634,9 @@
         <div class="body">
           <div class="nav">
             {#if !mini}
-              <IdentityButton config={sidebarData.config} />
+              <IdentityButton
+                config={sidebarData.config}
+                actor={sidebarData.actor} />
             {/if}
 
             <a

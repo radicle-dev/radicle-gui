@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::body::Bytes;
-use axum::extract::{FromRequestParts, Request, State};
+use axum::extract::{DefaultBodyLimit, FromRequestParts, Request, State};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::post;
@@ -22,6 +22,7 @@ use radicle::node::{NOTIFICATIONS_DB_FILE, NodeId};
 use radicle::storage::{ReadRepository as _, ReadStorage as _};
 use radicle::{git, identity};
 use radicle_types as types;
+use radicle_types::actor::ActorProfile;
 use radicle_types::cobs::CobOptions;
 use radicle_types::cobs::FromRadicleAction;
 use radicle_types::cobs::issue;
@@ -37,6 +38,7 @@ use radicle_types::domain::patch::traits::PatchService;
 use radicle_types::error::Error;
 use radicle_types::outbound::sqlite::Sqlite;
 use radicle_types::traits::Profile;
+use radicle_types::traits::actor::Actor;
 use radicle_types::traits::artifact_node::ArtifactNode;
 use radicle_types::traits::board::Boards;
 use radicle_types::traits::cobs::Cobs;
@@ -62,6 +64,7 @@ impl Boards for Context {}
 impl Repo for Context {}
 impl Cobs for Context {}
 impl Identity for Context {}
+impl Actor for Context {}
 impl Inbox for Context {}
 impl Thread for Context {}
 impl Issues for Context {}
@@ -177,6 +180,43 @@ pub fn router(shared: Shared) -> Router {
         .route("/update_board", post(update_board_handler))
         .route("/rename_board", post(rename_board_handler))
         .route("/set_board_columns", post(set_board_columns_handler))
+        // A save carries its pictures in the body.
+        .route(
+            "/create_actor",
+            post(create_actor_handler).layer(DefaultBodyLimit::max(PROFILE_BODY_BYTES)),
+        )
+        .route(
+            "/update_actor_profile",
+            post(update_actor_profile_handler).layer(DefaultBodyLimit::max(PROFILE_BODY_BYTES)),
+        )
+        .route("/joinable_actor", post(joinable_actor_handler))
+        .route("/join_actor", post(join_actor_handler))
+        .route("/approve_enrollment", post(approve_enrollment_handler))
+        .route(
+            "/approve_actor_revision",
+            post(approve_actor_revision_handler),
+        )
+        .route(
+            "/withdraw_actor_revision",
+            post(withdraw_actor_revision_handler),
+        )
+        .route(
+            "/reject_actor_revision",
+            post(reject_actor_revision_handler),
+        )
+        .route("/remove_actor_key", post(remove_actor_key_handler))
+        .route("/actors_of_key", post(actors_of_key_handler))
+        .route(
+            "/closed_actor_revisions",
+            post(closed_actor_revisions_handler),
+        )
+        .route(
+            "/actor_profile_history",
+            post(actor_profile_history_handler),
+        )
+        .route("/leave_actor", post(leave_actor_handler))
+        .route("/cancel_leave", post(cancel_leave_handler))
+        .route("/retire_actor", post(retire_actor_handler))
         .route_layer(middleware::from_fn_with_state(
             Arc::new(Mutex::new(())),
             serialize_writes,
@@ -201,6 +241,8 @@ pub fn router(shared: Shared) -> Router {
         .route("/list_repo_refs", post(list_repo_refs_handler))
         .route("/list_canonical_tags", post(list_canonical_tags_handler))
         .route("/identity_by_repo", post(identity_handler))
+        .route("/actor", post(actor_handler))
+        .route("/decode_enrollment", post(decode_enrollment_handler))
         .route("/version", post(version_handler))
         .route("/git_info", post(git_info_handler))
         .route("/diff_stats", post(diff_stats_handler))
@@ -466,6 +508,175 @@ async fn identity_handler(
     let identity = ctx.identity_by_repo(rid)?;
 
     Ok::<_, Error>(Json(identity))
+}
+
+async fn actor_handler(Ctx(ctx): Ctx) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.actor()?))
+}
+
+/// Room for an avatar and a banner at their limits, as base64.
+const PROFILE_BODY_BYTES: usize = 8 * 1024 * 1024;
+
+#[derive(Deserialize)]
+struct ActorProfileBody {
+    pub profile: ActorProfile,
+    #[serde(default)]
+    pub images: types::actor::ProfileImages,
+    pub opts: types::cobs::CobOptions,
+}
+
+async fn create_actor_handler(
+    Ctx(ctx): Ctx,
+    Json(ActorProfileBody {
+        profile,
+        images,
+        opts,
+    }): Json<ActorProfileBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.create_actor(profile, images, opts)?))
+}
+
+async fn update_actor_profile_handler(
+    Ctx(ctx): Ctx,
+    Json(ActorProfileBody {
+        profile,
+        images,
+        opts,
+    }): Json<ActorProfileBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.update_actor_profile(profile, images, opts)?))
+}
+
+async fn joinable_actor_handler(
+    Ctx(ctx): Ctx,
+    Json(RepoBody { rid }): Json<RepoBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.joinable_actor(rid)?))
+}
+
+async fn join_actor_handler(
+    Ctx(ctx): Ctx,
+    Json(RepoBody { rid }): Json<RepoBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.join_actor(rid)?))
+}
+
+#[derive(Deserialize)]
+struct CodeBody {
+    pub code: String,
+}
+
+async fn decode_enrollment_handler(
+    Ctx(ctx): Ctx,
+    Json(CodeBody { code }): Json<CodeBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.decode_enrollment(code)?))
+}
+
+#[derive(Deserialize)]
+struct EnrollmentBody {
+    pub code: String,
+    pub controller: bool,
+    pub opts: types::cobs::CobOptions,
+}
+
+async fn approve_enrollment_handler(
+    Ctx(ctx): Ctx,
+    Json(EnrollmentBody {
+        code,
+        controller,
+        opts,
+    }): Json<EnrollmentBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.approve_enrollment(code, controller, opts)?))
+}
+
+#[derive(Deserialize)]
+struct RevisionBody {
+    pub id: radicle::git::Oid,
+    pub opts: types::cobs::CobOptions,
+}
+
+async fn approve_actor_revision_handler(
+    Ctx(ctx): Ctx,
+    Json(RevisionBody { id, opts }): Json<RevisionBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.approve_actor_revision(id, opts)?))
+}
+
+async fn withdraw_actor_revision_handler(
+    Ctx(ctx): Ctx,
+    Json(RevisionBody { id, opts }): Json<RevisionBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.withdraw_actor_revision(id, opts)?))
+}
+
+async fn reject_actor_revision_handler(
+    Ctx(ctx): Ctx,
+    Json(RevisionBody { id, opts }): Json<RevisionBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.reject_actor_revision(id, opts)?))
+}
+
+#[derive(Deserialize)]
+struct KeyBody {
+    pub did: identity::Did,
+    pub opts: types::cobs::CobOptions,
+}
+
+async fn remove_actor_key_handler(
+    Ctx(ctx): Ctx,
+    Json(KeyBody { did, opts }): Json<KeyBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.remove_actor_key(did, opts)?))
+}
+
+async fn actors_of_key_handler(Ctx(ctx): Ctx) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.actors_of_key()?))
+}
+
+async fn closed_actor_revisions_handler(Ctx(ctx): Ctx) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.closed_actor_revisions()?))
+}
+
+#[derive(Deserialize)]
+struct PageBody {
+    pub skip: Option<usize>,
+    pub take: Option<usize>,
+}
+
+async fn actor_profile_history_handler(
+    Ctx(ctx): Ctx,
+    Json(PageBody { skip, take }): Json<PageBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.actor_profile_history(skip, take)?))
+}
+
+#[derive(Deserialize)]
+struct RepoWriteBody {
+    pub rid: identity::RepoId,
+    pub opts: types::cobs::CobOptions,
+}
+
+async fn leave_actor_handler(
+    Ctx(ctx): Ctx,
+    Json(RepoWriteBody { rid, opts }): Json<RepoWriteBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.leave_actor(rid, opts)?))
+}
+
+async fn cancel_leave_handler(
+    Ctx(ctx): Ctx,
+    Json(RepoWriteBody { rid, opts }): Json<RepoWriteBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.cancel_leave(rid, opts)?))
+}
+
+async fn retire_actor_handler(
+    Ctx(ctx): Ctx,
+    Json(RepoWriteBody { rid, opts }): Json<RepoWriteBody>,
+) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.retire_actor(rid, opts)?))
 }
 
 async fn list_repo_refs_handler(
