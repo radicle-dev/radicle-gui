@@ -3,7 +3,7 @@ use std::sync::Once;
 use tauri::{AppHandle, Emitter, Manager};
 
 use radicle::cob::cache::COBS_DB_FILE;
-use radicle::node::{Handle, NOTIFICATIONS_DB_FILE, Node};
+use radicle::node::{Handle, NOTIFICATIONS_DB_FILE, Node, POLICIES_DB_FILE};
 
 use radicle_types::binaries::GitInfo;
 use radicle_types::config::{Config, Version};
@@ -43,7 +43,16 @@ pub(crate) fn startup(app: AppHandle) -> Result<Config, Error> {
     let cobs_db =
         radicle_types::outbound::sqlite::Sqlite::reader(profile.cobs().join(COBS_DB_FILE))?;
 
-    crate::notifications::spawn(app.app_handle().clone(), inbox_db.clone());
+    crate::db_changes::spawn(
+        app.app_handle().clone(),
+        vec![
+            (
+                profile.node().join(NOTIFICATIONS_DB_FILE),
+                "notifications_changed",
+            ),
+            (profile.node().join(POLICIES_DB_FILE), "policies_changed"),
+        ],
+    );
     let inbox_service = domain::inbox::service::Service::new(inbox_db);
     let patch_service = domain::patch::service::Service::new(cobs_db.clone());
     let issue_service = domain::issue::service::Service::new(cobs_db);

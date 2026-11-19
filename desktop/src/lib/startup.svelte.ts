@@ -43,6 +43,10 @@ const invalidate = batch(100, false);
 // job updates often, so job lists refresh at most every few seconds.
 const invalidateJobs = batch(5_000, true);
 
+function isRepoInfo(key: Key): boolean {
+  return key[0] === "repo" && key[2] === "info";
+}
+
 function isJobs(key: Key): boolean {
   return key[0] === "repo" && key[2] === "jobs";
 }
@@ -103,6 +107,14 @@ export const createEventEmittersOnce = once(async (): Promise<UnlistenFn> => {
     // Another process changed the notifications, such as by clearing some.
     listen("notifications_changed", () => {
       invalidate([keys.notifications()]);
+    }),
+    // Seeding or unseeding with the `rad` CLI or another instance of the app
+    // changes the repository list and each repository's seeded state.
+    listen("policies_changed", () => {
+      invalidate([keys.repos()]);
+      void queryClient.invalidateQueries({
+        predicate: query => isRepoInfo(query.queryKey as Key),
+      });
     }),
     // The backend may have missed events while it wasn't subscribed.
     listen("ref_resync", () => {

@@ -1,5 +1,5 @@
 mod commands;
-mod notifications;
+mod db_changes;
 mod ref_updates;
 
 use std::sync::atomic::{AtomicBool, Ordering};
