@@ -11,6 +11,8 @@
   import type { Config } from "@bindings/config/Config";
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
+  import { keys } from "@radicle-gui/core/keys";
+  import { onInvalidate } from "@radicle-gui/ui/lib/query.svelte";
   import { onDestroy, untrack } from "svelte";
   import { flip } from "svelte/animate";
   import { cubicOut } from "svelte/easing";
@@ -60,6 +62,7 @@
   import { invoke } from "@app/lib/invoke";
   import { show } from "@app/lib/modal";
   import { motion } from "@app/lib/motion";
+  import { queryClient } from "@app/lib/query";
   import * as roles from "@app/lib/roles";
   import * as router from "@app/lib/router";
   import type { SidebarData } from "@app/lib/router/definitions";
@@ -116,7 +119,12 @@
 
   let saveError: string | undefined = $state();
 
+  // Writes that have finished, so that a reload which started before one can
+  // tell that its result is older than what the board shows.
+  let settledWrites = 0;
+
   async function reload() {
+    const writesBefore = settledWrites;
     try {
       const [nextBoards, nextIssues, nextPatches] = await Promise.all([
         invoke<Board[]>("list_boards", { rid: repo.rid }),
@@ -126,6 +134,12 @@
         }),
         invoke<PaginatedQuery<Patch[]>>("list_patches", { rid: repo.rid }),
       ]);
+      // A write finished or the user started moving cards meanwhile, so
+      // the result may be older than what they see; try again once idle.
+      if (settledWrites !== writesBefore || busy) {
+        reloadWhenIdle = true;
+        return;
+      }
       boards = nextBoards;
       issues = nextIssues.content;
       patches = nextPatches.content;
@@ -147,6 +161,7 @@
         removes: batch.removes,
         opts: { announce },
       });
+      settledWrites++;
       if (batch.rid === repo.rid) replaceBoard(update.board);
       return update.rejected;
     },
@@ -157,6 +172,7 @@
         action: { type: "lifecycle", state },
         opts: { announce },
       });
+      settledWrites++;
     },
     async reload(rid) {
       if (rid === repo.rid) await reload();
@@ -278,6 +294,32 @@
 
   // Columns saved but not yet echoed back by the board.
   let pendingColumns: Column[] | undefined = $state();
+
+  // Other people's changes to the board, and to its issues and patches, reload
+  // it. Not while the user is moving cards, or before their moves are saved,
+  // so that cards don't jump back under them; the reload waits until then.
+  let reloadWhenIdle = $state(false);
+  let reloading = $state(false);
+  const busy = $derived(
+    dnd.current !== undefined ||
+      pendingColumns !== undefined ||
+      queue.queued.length > 0 ||
+      queue.writing.length > 0,
+  );
+  async function requestReload() {
+    reloadWhenIdle = true;
+  }
+  $effect(() => {
+    if (!reloadWhenIdle || busy || reloading) return;
+    reloadWhenIdle = false;
+    reloading = true;
+    void reload().finally(() => {
+      reloading = false;
+    });
+  });
+  onInvalidate(queryClient, () => keys.boards(repo.rid), requestReload);
+  onInvalidate(queryClient, () => keys.issues(repo.rid), requestReload);
+  onInvalidate(queryClient, () => keys.patches(repo.rid), requestReload);
   const columns: Column[] = $derived(
     dnd.columnPreview ?? pendingColumns ?? board?.columns ?? DEFAULT_COLUMNS,
   );

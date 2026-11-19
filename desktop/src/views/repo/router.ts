@@ -638,6 +638,13 @@ export async function loadRelease(
 export async function loadBoard(
   route: RepoBoardRoute,
 ): Promise<LoadedRepoBoardRoute> {
+  for (const key of [
+    keys.boards(route.rid),
+    keys.issues(route.rid),
+    keys.patches(route.rid),
+  ]) {
+    markLoading(queryClient, key);
+  }
   const [sidebarData, repo, boards, issues, patches, links] = await Promise.all(
     [
       loadSidebarData(),
