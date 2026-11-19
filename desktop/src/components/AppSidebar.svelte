@@ -640,16 +640,6 @@
               stylePadding="0">
               <span class="icon"><Icon name="arrow-right" /></span>
             </Button>
-            <Button
-              variant="naked"
-              title="Reload"
-              ariaLabel="Reload"
-              onclick={() => window.location.reload()}
-              styleWidth={isMini ? "2rem" : "1.5rem"}
-              styleHeight={isMini ? "2rem" : "1.5rem"}
-              stylePadding="0">
-              <span class="icon"><Icon name="refresh" /></span>
-            </Button>
           </span>
         </div>
 

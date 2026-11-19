@@ -135,7 +135,7 @@ test("a device in two profiles leaves one and waits for the approval", async ({
   // The wait is read from the profile, so another device's vote shows when
   // the page loads again.
   (joined.pending[0] as { rejected: string[] }).rejected = [aliceRemote];
-  await page.getByRole("button", { name: "Reload" }).click();
+  await page.reload();
   await expect(row(joinedRid)).toContainText("1 of 2 approved, 1 rejected.");
 
   // The other device may never answer, so the leave can be taken back.

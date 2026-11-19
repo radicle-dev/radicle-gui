@@ -135,8 +135,6 @@
       run: () => {
         // A reload would throw away whatever is being composed in a modal.
         if (!modalHasTextEntry()) {
-          // Matches the sidebar's reload button rather than re-fetching per
-          // route.
           window.location.reload();
         }
       },
