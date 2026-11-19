@@ -16,6 +16,7 @@ import type { RepoSummary } from "@bindings/repo/RepoSummary";
 import type { TreePath } from "@bindings/repo/TreePath";
 
 import { cached } from "@radicle-gui/ui/lib/cached";
+import { invalidate } from "@radicle-gui/ui/lib/query.svelte";
 import * as tauri from "@tauri-apps/api/core";
 
 import { labs } from "@app/lib/labs";
@@ -35,8 +36,10 @@ export async function invoke<T = null>(
     return result;
   } finally {
     // Also after a failure: a command can fail after writing part of a change.
-    for (const queryKey of writtenKeys(cmd, args, result)) {
-      void queryClient.invalidateQueries({ queryKey });
+    const written = writtenKeys(cmd, args, result);
+    if (written.length > 0) clearEntityCaches();
+    for (const queryKey of written) {
+      void invalidate(queryClient, { queryKey });
     }
   }
 }
@@ -309,6 +312,20 @@ export const cachedReleaseById = cached(
   { max: 200, ttl: 60_000 },
   missTtl,
 );
+
+// The caches above hold data that changes: references, hover cards and
+// mention candidates. They are dropped whenever data changes, so that they
+// show the same as the views around them.
+export function clearEntityCaches(): void {
+  cachedListIssueCandidates.clear();
+  cachedListPatchCandidates.clear();
+  cachedListReleaseCandidates.clear();
+  cachedRepoById.clear();
+  cachedIssueById.clear();
+  cachedPatchById.clear();
+  cachedReleaseById.clear();
+  cachedRepoSplitTreePath.clear();
+}
 
 async function repoCommit(rid: string, sha: string): Promise<Commit | null> {
   return withTestBackend(tauri.invoke, "repo_commit", { rid, sha });

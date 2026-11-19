@@ -5,11 +5,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { batch, onRefUpdate } from "@app/lib/startup.svelte";
 
-const { invalidateQueries } = vi.hoisted(() => ({
+const { invalidateQueries, clearEntityCaches } = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
+  clearEntityCaches: vi.fn(),
 }));
 vi.mock("@app/lib/query", () => ({ queryClient: { invalidateQueries } }));
-vi.mock("@app/lib/invoke", () => ({ invoke: vi.fn() }));
+vi.mock("@app/lib/invoke", () => ({ clearEntityCaches, invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 vi.mock("@app/lib/seedRepo", async () => {
   const { writable } = await import("svelte/store");
@@ -41,6 +42,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   invalidateQueries.mockReset();
+  clearEntityCaches.mockReset();
 });
 
 describe("batch", () => {
@@ -56,6 +58,7 @@ describe("batch", () => {
       keys.issues(rid),
       keys.patches(rid),
     ]);
+    expect(clearEntityCaches).toHaveBeenCalledTimes(1);
   });
 
   test("leaves job lists under a repository key to their own batch", () => {
@@ -77,6 +80,7 @@ describe("batch", () => {
 
     const [call] = invalidateQueries.mock.calls;
     expect(covers(call, keys.jobs(rid))).toBe(true);
+    expect(clearEntityCaches).not.toHaveBeenCalled();
   });
 
   test("an update naming no refs refreshes job lists in their own batch", () => {

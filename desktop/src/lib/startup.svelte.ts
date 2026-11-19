@@ -8,7 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import once from "lodash/once";
 import { get } from "svelte/store";
 
-import { invoke } from "@app/lib/invoke";
+import { clearEntityCaches, invoke } from "@app/lib/invoke";
 import { queryClient } from "@app/lib/query";
 import { fetchingRepos } from "@app/lib/seedRepo";
 
@@ -26,6 +26,7 @@ export function batch(delay: number, jobs: boolean): (affected: Key[]) => void {
       flush = undefined;
       const queryKeys = [...pending.values()];
       pending.clear();
+      if (!jobs) clearEntityCaches();
       for (const queryKey of queryKeys) {
         void queryClient.invalidateQueries({
           queryKey,
@@ -105,6 +106,7 @@ export const createEventEmittersOnce = once(async (): Promise<UnlistenFn> => {
     }),
     // The backend may have missed events while it wasn't subscribed.
     listen("ref_resync", () => {
+      clearEntityCaches();
       void queryClient.invalidateQueries();
     }),
   ]);
@@ -114,6 +116,7 @@ export const createEventEmittersOnce = once(async (): Promise<UnlistenFn> => {
   // have changed.
   const onFocus = () => {
     if (!get(nodeEvents)) {
+      clearEntityCaches();
       void queryClient.invalidateQueries({
         predicate: query => !isJobs(query.queryKey as Key),
       });
