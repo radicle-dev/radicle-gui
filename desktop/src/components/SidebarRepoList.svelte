@@ -57,14 +57,16 @@
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
   import type { CrossfadeParams } from "svelte/transition";
 
+  import { keys } from "@radicle-gui/core/keys";
   import RepoAvatar from "@radicle-gui/ui/components/RepoAvatar.svelte";
+  import { onInvalidate } from "@radicle-gui/ui/lib/query.svelte";
   import { onMount, untrack } from "svelte";
   import { flip } from "svelte/animate";
   import { backOut, cubicOut } from "svelte/easing";
   import { get } from "svelte/store";
   import { crossfade, fade, scale, slide } from "svelte/transition";
 
-  import { nodeRunning } from "@app/lib/events";
+  import { nodeEvents, nodeRunning } from "@app/lib/events";
   import type { FlipSnapshot } from "@app/lib/flip";
   import { captureFlip, playFlip } from "@app/lib/flip";
   import { dynamicInterval, resetDynamicInterval } from "@app/lib/interval";
@@ -78,6 +80,7 @@
   import { entityUrl } from "@app/lib/mentions";
   import { show } from "@app/lib/modal";
   import { motion } from "@app/lib/motion";
+  import { queryClient } from "@app/lib/query";
   import { repoListScope } from "@app/lib/repoListScope";
   import * as router from "@app/lib/router";
   import { seededRepos, seedRepo, setFetchingRepos } from "@app/lib/seedRepo";
@@ -185,8 +188,9 @@
     }
   });
 
+  // Without the node's events, poll while a seeded repo hasn't arrived yet.
   $effect(() => {
-    if (seededNotReplicated.length > 0) {
+    if (seededNotReplicated.length > 0 && !$nodeEvents) {
       dynamicInterval("seededNotReplicated", reloadRepos, 5_000);
     } else {
       resetDynamicInterval("seededNotReplicated");
@@ -387,6 +391,9 @@
     if ($seededRepos === 0) return;
     untrack(() => void reloadRepos());
   });
+
+  // Reloads when a seeded repo arrives, or an identity update renames one.
+  onInvalidate(queryClient, () => keys.repos(), reloadRepos);
 
   async function reloadRepos() {
     invalidateReposSummary();

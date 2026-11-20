@@ -10,6 +10,7 @@ import { get } from "svelte/store";
 
 import { invoke } from "@app/lib/invoke";
 import { queryClient } from "@app/lib/query";
+import { fetchingRepos } from "@app/lib/seedRepo";
 
 import { artifactNodeRunning, nodeEvents, nodeRunning } from "./events";
 
@@ -19,7 +20,6 @@ function batch(delay: number): (affected: Key[]) => void {
   const pending = new Map<string, Key>();
   let flush: ReturnType<typeof setTimeout> | undefined;
   return affected => {
-    if (affected.length === 0) return;
     for (const key of affected) pending.set(key.join("\0"), key);
     flush ??= setTimeout(() => {
       flush = undefined;
@@ -40,6 +40,12 @@ function onRefUpdate(update: RefUpdate) {
     ...affectedKeys(update),
     // The node writes notifications as it fetches.
     keys.notificationCount(),
+    // The repository list changes when a seeded repository arrives, or when an
+    // identity update renames one.
+    ...(get(fetchingRepos).includes(update.rid) ||
+    update.refs?.some(ref => ref.endsWith("refs/rad/id"))
+      ? [keys.repos()]
+      : []),
   ]);
 }
 
