@@ -101,6 +101,7 @@ export function createPaginatedList<T>(opts: PaginatedListOptions<T>) {
     }
     let superseded = false;
     let again = false;
+    let afterRefresh: Promise<void> | undefined;
     const prependedBefore = prepended;
     try {
       const page = await loader.run(async () =>
@@ -113,6 +114,9 @@ export function createPaginatedList<T>(opts: PaginatedListOptions<T>) {
       // virtualizer's auto load-more re-fire and abort that call in turn.
       if (page === undefined) {
         superseded = true;
+        // A refresh keeps only the first rows, so a load of every row, which
+        // a search waits for, runs again once it is done.
+        if (all && refreshing) afterRefresh = refreshing;
         return;
       }
 
@@ -145,8 +149,12 @@ export function createPaginatedList<T>(opts: PaginatedListOptions<T>) {
       if (!superseded) {
         loadingMore = false;
       }
-      // In `finally`, since the check above returns early.
+      // In `finally`, since the checks above return early.
       if (again) await loadMore(true);
+      if (afterRefresh) {
+        await afterRefresh;
+        await loadMore(true);
+      }
     }
   }
 
