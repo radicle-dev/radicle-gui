@@ -116,6 +116,10 @@ Adding or changing a Tauri command touches these layers in order:
    `crates/test-http-api/tests/parity.rs`, with the reason
 5. `src/` — call via `invoke<T>("command_name", args)`, import types from
    `@bindings`
+6. `src/lib/writes.ts` — a command that writes either names the cache keys it
+   affects in `writtenKeys` and `mappedWrites`, or is listed in `outsideCache`
+   in `tests/unit/writeCoverage.test.ts` with the reason; that test fails until
+   you do. Reads go in `outsideCache` too
 
 ### Tests for a feature
 
@@ -145,6 +149,24 @@ Ports have full default implementations, so a driver only implements `Profile`.
 Paginated list views (issues, patches, notifications) go through a domain
 `Service` backed by the SQLite adapter instead of the ports; new lists over
 large data sets should do the same.
+
+## Data and reactivity
+
+Read `docs/adr/0005-reactivity.md` first. In short:
+
+- Route loaders read cached data with `load(...)` from `@app/lib/cobQueries`,
+  and views read the same keys with `createQuery`, so that both share it. Keys
+  come from `@radicle-gui/core/keys`
+- Data a view keeps itself, such as a paginated list, refreshes with
+  `onInvalidate`. Its loader calls `markLoading` on the same key before it
+  reads, so that an update during the load isn't lost
+- The backend forwards the node's ref updates and the changes other processes
+  make to the node's databases, and `src/lib/startup.svelte.ts` invalidates the
+  keys they affect. `invoke()` invalidates the keys of the user's own writes
+  from `src/lib/writes.ts`, since the node doesn't announce every write
+- New data must not move what the user is looking at: keep scroll position,
+  selection and drafts, and pin what the user is reading with `pinned` when
+  replacing it would disturb them
 
 ## Boards
 

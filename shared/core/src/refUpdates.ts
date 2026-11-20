@@ -9,12 +9,22 @@ export interface RefUpdate {
   refs?: string[];
 }
 
-const ISSUE = "xyz.radicle.issue";
-const PATCH = "xyz.radicle.patch";
-const JOB = "xyz.radworks.job";
-// Releases are artifact COBs.
-const RELEASE = "dev.radicle.artifact";
-const BOARD = "works.monadic.board";
+// The type names of the COBs whose data has keys of its own.
+export const cobTypes = {
+  issue: "xyz.radicle.issue",
+  patch: "xyz.radicle.patch",
+  job: "xyz.radworks.job",
+  // Releases are artifact COBs.
+  release: "dev.radicle.artifact",
+  board: "works.monadic.board",
+} as const;
+const {
+  issue: ISSUE,
+  patch: PATCH,
+  job: JOB,
+  release: RELEASE,
+  board: BOARD,
+} = cobTypes;
 
 export function affectedKeys({ rid, refs }: RefUpdate): Key[] {
   if (refs === undefined) {

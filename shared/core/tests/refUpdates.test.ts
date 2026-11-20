@@ -68,4 +68,22 @@ describe("affectedKeys", () => {
       }),
     ).toEqual([keys.repo(rid)]);
   });
+
+  test("signed refs alone affect nothing", () => {
+    expect(
+      affectedKeys({
+        rid,
+        refs: [`refs/namespaces/${nid}/refs/rad/sigrefs`],
+      }),
+    ).toEqual([]);
+  });
+
+  test("an unknown COB type affects the whole repository", () => {
+    expect(
+      affectedKeys({
+        rid,
+        refs: [`refs/namespaces/${nid}/refs/cobs/org.example.thing/${issue}`],
+      }),
+    ).toEqual([keys.repo(rid)]);
+  });
 });

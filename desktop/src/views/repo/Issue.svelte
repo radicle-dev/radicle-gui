@@ -109,13 +109,18 @@
 
   const activityItems = $derived(issueTimeline(issue, activity));
 
-  // After the user's own changes, refetch and show them right away.
-  async function reload() {
-    await queryClient.invalidateQueries({
-      queryKey: query.queryKey,
-      refetchType: "all",
-    });
-    description.apply();
+  // After the user's own changes, refetch and show them right away. Only a
+  // change to the description itself shows its latest edit, so that acting on
+  // the rest of the issue doesn't swap the text the user is reading.
+  async function reload(commentId?: string) {
+    // Joins the refetch `invoke()` started after the write, if any.
+    await queryClient.invalidateQueries(
+      { queryKey: query.queryKey, refetchType: "all" },
+      { cancelRefetch: false },
+    );
+    if (commentId !== undefined && commentId === issue.body?.id) {
+      description.apply();
+    }
   }
 
   async function createComment(
@@ -152,7 +157,7 @@
     } catch (error) {
       console.error("Issue comment editing failed: ", error);
     } finally {
-      await reload();
+      await reload(id);
     }
   }
 
@@ -218,11 +223,12 @@
     } catch (error) {
       console.error("Editing reactions failed", error);
     } finally {
-      await reload();
+      await reload(commentId);
     }
   }
 
   async function deleteIssue() {
+    deleting = true;
     try {
       await invoke("delete_issue", {
         rid: repo.rid,

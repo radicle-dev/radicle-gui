@@ -92,13 +92,15 @@ test("create issue with only a title", async ({ page }) => {
   const save = page.getByRole("button", { name: /^Save/ });
   await expect(save).toBeDisabled();
 
-  await page.getByPlaceholder("Title").fill("An issue without a description");
+  // Not a prefix of another test's title in the same repository, whose issue
+  // the list may show too.
+  await page.getByPlaceholder("Title").fill("A title-only issue");
   await expect(save).toBeEnabled();
   await save.click();
 
   await expect(page).toHaveURL(/\/issues\/[0-9a-f]{40}/);
   await expect(
-    page.getByRole("button", { name: "An issue without a description" }),
+    page.getByRole("button", { name: "A title-only issue" }),
   ).toBeVisible();
 });
 

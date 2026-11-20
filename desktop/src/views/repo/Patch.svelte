@@ -113,9 +113,11 @@
       : loadedRevisions,
   );
 
-  // Deleted elsewhere while shown, so there is nothing left to show.
+  // Deleted elsewhere while shown, so there is nothing left to show. Deleting
+  // it here navigates by itself.
+  let deleting = false;
   $effect(() => {
-    if (detail.current.data?.patch === null) {
+    if (detail.current.data && !detail.current.data.patch && !deleting) {
       void router.push({ resource: "repo.patches", rid: repo.rid, status });
     }
   });
@@ -528,10 +530,11 @@
 
   // After the user's own changes, refetch and show them right away.
   async function loadPatch() {
-    await queryClient.invalidateQueries({
-      queryKey: query.queryKey,
-      refetchType: "all",
-    });
+    // Joins the refetch `invoke()` started after the write, if any.
+    await queryClient.invalidateQueries(
+      { queryKey: query.queryKey, refetchType: "all" },
+      { cancelRefetch: false },
+    );
   }
 
   // A draft review belongs to a single revision, mirroring the protocol's
@@ -607,19 +610,22 @@
   });
 
   async function deletePatch() {
+    deleting = true;
     try {
       await invoke("delete_patch", {
         rid: repo.rid,
         cobId: patch.id,
         opts: { announce: $nodeRunning && $announce },
       });
-      void router.push({
+      await router.push({
         resource: "repo.patches",
         rid: repo.rid,
         status: patch.state.status,
       });
     } catch (error) {
       console.error("Deleting patch failed", error);
+    } finally {
+      deleting = false;
     }
   }
 </script>
