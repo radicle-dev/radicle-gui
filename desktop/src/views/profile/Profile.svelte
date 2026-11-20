@@ -12,6 +12,7 @@
   import Topbar from "@app/components/Topbar.svelte";
   import Layout from "@app/views/repo/Layout.svelte";
 
+  import { createActor } from "./actor";
   import JoinActor from "./JoinActor.svelte";
   import Keys from "./Keys.svelte";
   import Notice from "./Notice.svelte";
@@ -24,7 +25,8 @@
   }
 
   const { sidebarData, tab }: Props = $props();
-  const actor = $derived(sidebarData.actor);
+  const current = createActor(() => sidebarData);
+  const actor = $derived(current.actor);
   const localDid = $derived(didFromPublicKey(sidebarData.config.publicKey));
 
   const tabs = $derived<
@@ -148,7 +150,7 @@
   {#if error.code === "ActorError.Ambiguous"}
     <ScrollArea style="height: 100%; min-width: 0;">
       <div class="inner">
-        <SeveralProfiles {localDid} {tab} message={error.message} />
+        <SeveralProfiles {localDid} message={error.message} />
       </div>
     </ScrollArea>
   {:else}
@@ -215,8 +217,8 @@
     </Topbar>
 
     <div class="body">
-      {#if sidebarData.actorError}
-        {@render failed(sidebarData.actorError)}
+      {#if current.actorError}
+        {@render failed(current.actorError)}
       {:else if tab === "profile"}
         {#if actor || editing}
           <ScrollArea style="height: 100%; min-width: 0;">

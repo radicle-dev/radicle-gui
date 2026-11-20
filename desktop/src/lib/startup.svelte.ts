@@ -1,3 +1,4 @@
+import type { ActorInfo } from "@bindings/actor/ActorInfo";
 import type { Key } from "@radicle-gui/core/keys";
 import type { RefUpdate } from "@radicle-gui/core/refUpdates";
 import type { UnlistenFn } from "@tauri-apps/api/event";
@@ -73,14 +74,18 @@ export function onRefUpdate(update: RefUpdate) {
     ...affected.filter(isJobsKey),
     ...(repoWide ? [keys.jobs(update.rid)] : []),
   ]);
+  const identityMoved =
+    repoWide || update.refs?.some(ref => ref.endsWith("refs/rad/id"));
   invalidateBatched([
     ...affected.filter(key => !isJobsKey(key)),
     // The repository list changes when a seeded repository arrives, or when an
     // identity update renames one.
-    ...(repoWide ||
-    !listed(update.rid) ||
-    update.refs?.some(ref => ref.endsWith("refs/rad/id"))
-      ? [keys.repos()]
+    ...(identityMoved || !listed(update.rid) ? [keys.repos()] : []),
+    // The actor's profile and keys live in its repository, and any identity
+    // update may add this device's key to an actor, as an approved join does.
+    ...(identityMoved ||
+    queryClient.getQueryData<ActorInfo | null>(keys.actor())?.rid === update.rid
+      ? [keys.actor()]
       : []),
   ]);
 }

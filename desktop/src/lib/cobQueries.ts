@@ -1,3 +1,4 @@
+import type { ActorInfo } from "@bindings/actor/ActorInfo";
 import type { Action as IssueAction } from "@bindings/cob/issue/Action";
 import type { Issue } from "@bindings/cob/issue/Issue";
 import type { Operation } from "@bindings/cob/Operation";
@@ -34,6 +35,13 @@ export function repoList(scope: string): QueryOptions<RepoList> {
       ]);
       return { repos, seededNotReplicated };
     },
+  };
+}
+
+export function localActor(): QueryOptions<ActorInfo | null> {
+  return {
+    queryKey: keys.actor(),
+    queryFn: () => invoke<ActorInfo | null>("actor"),
   };
 }
 

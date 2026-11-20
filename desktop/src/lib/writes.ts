@@ -12,6 +12,20 @@ interface WriteArgs {
   args?: { rid?: unknown };
 }
 
+// Each actor write changes the local actor; creating one also adds a
+// repository.
+const actorWrites = [
+  "update_actor_profile",
+  "approve_enrollment",
+  "approve_actor_revision",
+  "withdraw_actor_revision",
+  "reject_actor_revision",
+  "remove_actor_key",
+  "leave_actor",
+  "cancel_leave",
+  "retire_actor",
+];
+
 const releaseWrites = [
   "create_or_open_release",
   "delete_release",
@@ -41,6 +55,8 @@ export const mappedWrites = [
   "unseed",
   "clean",
   "clear_notifications",
+  "create_actor",
+  ...actorWrites,
   ...releaseWrites,
 ];
 
@@ -96,7 +112,10 @@ export function writtenKeys(
       return typeof rid === "string" ? [keys.repo(rid), keys.repos()] : [];
     case "clear_notifications":
       return [keys.notifications()];
+    case "create_actor":
+      return [keys.repos(), keys.actor()];
     default:
+      if (actorWrites.includes(cmd)) return [keys.actor()];
       return releaseWrites.includes(cmd) && typeof rid === "string"
         ? [keys.releases(rid)]
         : [];

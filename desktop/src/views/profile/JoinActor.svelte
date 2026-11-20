@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { ActorInfo } from "@bindings/actor/ActorInfo";
 
-  import { createQuery } from "@radicle-gui/ui/lib/query.svelte";
+  import { keys } from "@radicle-gui/core/keys";
+  import { createQuery, invalidate } from "@radicle-gui/ui/lib/query.svelte";
   import { untrack } from "svelte";
 
   import { repoList } from "@app/lib/cobQueries";
@@ -20,13 +21,7 @@
   import Spinner from "@app/components/Spinner.svelte";
   import TextInput from "@app/components/TextInput.svelte";
 
-  import {
-    describeActorError,
-    keyKind,
-    profileName,
-    reload,
-    roleText,
-  } from "./actor";
+  import { describeActorError, keyKind, profileName, roleText } from "./actor";
   import KeyChunks from "./KeyChunks.svelte";
   import Notice from "./Notice.svelte";
 
@@ -248,24 +243,22 @@
   }
 
   async function done() {
-    await reload("profile");
+    await invalidate(queryClient, { queryKey: keys.actor() });
     oncancel();
   }
 
-  // While the code waits to be approved, the page looks every few seconds
-  // for this key in a profile and moves on once it is.
+  // While the code waits to be approved, the profile page shows the profile
+  // as soon as the cache finds this key in one. The node's update of the
+  // profile's identity usually tells it, but an approval need not move the
+  // refs it watches, so the page also looks every few seconds.
   const APPROVAL_POLL_MS = 5000;
   $effect(() => {
     if (code === undefined) return;
 
-    return poll(async active => {
-      try {
-        const actor = await invoke<ActorInfo | null>("actor");
-        if (active() && actor) void reload("profile");
-      } catch (e) {
-        console.warn("Could not look for the approval", e);
-      }
-    }, APPROVAL_POLL_MS);
+    return poll(
+      () => invalidate(queryClient, { queryKey: keys.actor() }),
+      APPROVAL_POLL_MS,
+    );
   });
 </script>
 

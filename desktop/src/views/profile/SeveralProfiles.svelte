@@ -3,7 +3,6 @@
 
   import { invoke } from "@app/lib/invoke";
   import { show } from "@app/lib/modal";
-  import type { ProfileTab } from "@app/lib/router/definitions";
 
   import Button from "@app/components/Button.svelte";
   import CopyableId from "@app/components/CopyableId.svelte";
@@ -23,12 +22,11 @@
 
   interface Props {
     localDid: string;
-    tab: ProfileTab;
     // What the backend said when it found the key in several profiles.
     message: string;
   }
 
-  const { localDid, tab, message }: Props = $props();
+  const { localDid, message }: Props = $props();
 
   let actors = $state<ActorInfo[]>();
   let loadError = $state<string>();
@@ -81,13 +79,13 @@
         others: actor.keys.length - 1,
         confirm: async () => {
           try {
-            await change(
-              { command: "retire_actor", args: { rid: actor.rid } },
-              tab,
-            );
+            await change({
+              command: "retire_actor",
+              args: { rid: actor.rid },
+            });
           } finally {
-            // Not waited for: the page has reloaded by now, and this only
-            // refreshes the list where the device is still in several.
+            // Not waited for: this only refreshes the list where the device
+            // is still in several.
             void load();
           }
         },
@@ -105,7 +103,7 @@
     acting = true;
 
     try {
-      await change({ command, args: { rid: actor.rid } }, tab);
+      await change({ command, args: { rid: actor.rid } });
     } catch (e) {
       actionError = {
         rid: actor.rid,

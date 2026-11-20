@@ -95,7 +95,7 @@
     revokeError = undefined;
 
     try {
-      await change(write, "keys");
+      await change(write);
     } catch (error) {
       if (onerror) onerror(error);
       else
@@ -140,10 +140,10 @@
         rid: actor.rid,
         majority: actor.majority,
         confirm: (code: string, controller: boolean) =>
-          change(
-            { command: "approve_enrollment", args: { code, controller } },
-            "keys",
-          ),
+          change({
+            command: "approve_enrollment",
+            args: { code, controller },
+          }),
       },
     });
   }

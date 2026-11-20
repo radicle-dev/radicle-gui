@@ -20,8 +20,8 @@ import {
 import { keys } from "@radicle-gui/core/keys";
 import { markLoading } from "@radicle-gui/ui/lib/query.svelte";
 
-import { enterRepo, repoList } from "@app/lib/cobQueries";
-import { cachedActor, invoke, InvokeError } from "@app/lib/invoke";
+import { enterRepo, localActor, repoList } from "@app/lib/cobQueries";
+import { invoke, InvokeError } from "@app/lib/invoke";
 import { labs } from "@app/lib/labs";
 import { projectsOf } from "@app/lib/projects";
 import { queryClient } from "@app/lib/query";
@@ -121,7 +121,7 @@ export async function loadSidebarData(): Promise<SidebarData> {
 // allowed to stop a route from loading.
 async function loadActor(): Promise<Pick<SidebarData, "actor" | "actorError">> {
   try {
-    return { actor: await cachedActor() };
+    return { actor: await queryClient.fetchQuery(localActor()) };
   } catch (error) {
     if (error instanceof InvokeError) {
       return {

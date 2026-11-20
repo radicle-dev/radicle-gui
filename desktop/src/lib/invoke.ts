@@ -1,4 +1,3 @@
-import type { ActorInfo } from "@bindings/actor/ActorInfo";
 import type { AliasSuggestion } from "@bindings/cob/AliasSuggestion";
 import type { DiffOptions } from "@bindings/cob/DiffOptions";
 import type { Issue } from "@bindings/cob/issue/Issue";
@@ -14,7 +13,6 @@ import type { Job } from "@bindings/repo/Job";
 import type { RepoInfo } from "@bindings/repo/RepoInfo";
 import type { TreePath } from "@bindings/repo/TreePath";
 
-import { keys } from "@radicle-gui/core/keys";
 import { cached } from "@radicle-gui/ui/lib/cached";
 import { invalidate } from "@radicle-gui/ui/lib/query.svelte";
 import * as tauri from "@tauri-apps/api/core";
@@ -441,23 +439,6 @@ export const cachedGetCommitDiff = cached(
   (...[rid, sha]) => `get_commit_diff:${rid}:${sha}`,
   { max: 100 },
 );
-
-/**
- * Finding the local actor scans storage like the repo list does, and every
- * route loads it while the lab is on, so it is cached with a short TTL; a save
- * or create clears it through invalidateReposSummary().
- */
-export const cachedActor = cached(
-  () => invoke<ActorInfo | null>("actor"),
-  () => "actor",
-  { max: 1, ttl: 30_000 },
-);
-
-// The sidebar loads the repositories and the actor together, so both go.
-export function invalidateReposSummary(): void {
-  cachedActor.clear();
-  void queryClient.invalidateQueries({ queryKey: keys.repos() });
-}
 
 export async function writeToClipboard(
   text: string,

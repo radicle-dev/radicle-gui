@@ -72,24 +72,13 @@ const outsideCache = [
   "pick_artifact_directory",
   "pick_artifact_files",
   "startup",
-  // Actor writes, after which the profile page reloads itself. A join code
-  // only changes the actor once another device approves it.
-  "approve_actor_revision",
-  "approve_enrollment",
-  "cancel_leave",
-  "create_actor",
-  "join_actor",
-  "leave_actor",
-  "reject_actor_revision",
-  "remove_actor_key",
-  "retire_actor",
-  "update_actor_profile",
-  "withdraw_actor_revision",
   // Writes outside the cache. The board shows its own writes as they land,
   // and a reload after each would make cards jump while the user moves more.
-  // Artifact seeding, embeds and files aren't in the cache.
+  // Artifact seeding, embeds and files aren't in the cache. A join code only
+  // changes the actor once another device approves it.
   "create_board",
   "download_artifact",
+  "join_actor",
   "rename_board",
   "save_diff_to_disk",
   "save_embed_by_bytes",

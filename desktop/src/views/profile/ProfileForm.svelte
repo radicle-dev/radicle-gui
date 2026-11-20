@@ -117,8 +117,8 @@
   const shown = $derived(actor?.profile);
   const shownHead = $derived(actor?.head);
 
-  // The parent reuses this component across routes, so the form is rebuilt
-  // when the route brings a different profile, as after a save.
+  // The actor comes from the cache and changes in place, so the form is
+  // rebuilt when a different profile head arrives, as after a save.
   // svelte-ignore state_referenced_locally
   let form = $state<Form>(formFrom(actor?.profile));
 
@@ -391,19 +391,16 @@
     const updating = actor !== null;
 
     try {
-      await change(
-        {
-          command: updating ? "update_actor_profile" : "create_actor",
-          args: {
-            profile: profileFrom(form),
-            images: {
-              avatar: picked.avatar?.base64,
-              banner: picked.banner?.base64,
-            },
+      await change({
+        command: updating ? "update_actor_profile" : "create_actor",
+        args: {
+          profile: profileFrom(form),
+          images: {
+            avatar: picked.avatar?.base64,
+            banner: picked.banner?.base64,
           },
         },
-        "profile",
-      );
+      });
     } catch (error) {
       submitError = describeActorError(
         error,

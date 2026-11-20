@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
+  import { createActor } from "@app/views/profile/actor";
   import { keys } from "@radicle-gui/core/keys";
   import { onInvalidate } from "@radicle-gui/ui/lib/query.svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -57,6 +58,7 @@
   }
 
   const { sidebarData, activeRepo = undefined }: Props = $props();
+  const current = createActor(() => sidebarData);
 
   const COLLAPSE_MS = 200;
 
@@ -648,7 +650,7 @@
             {#if !mini}
               <IdentityButton
                 config={sidebarData.config}
-                actor={sidebarData.actor} />
+                actor={current.actor} />
             {/if}
 
             <a

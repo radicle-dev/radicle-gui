@@ -3,13 +3,18 @@ import type { ActorKey } from "@bindings/actor/ActorKey";
 import type { ActorProfile } from "@bindings/actor/ActorProfile";
 import type { ActorRevision } from "@bindings/actor/ActorRevision";
 import type { ProfileImages } from "@bindings/actor/ProfileImages";
+import type { Key } from "@radicle-gui/core/keys";
 
+import { isJobsKey, keys } from "@radicle-gui/core/keys";
+import { createQuery, invalidate } from "@radicle-gui/ui/lib/query.svelte";
 import { get } from "svelte/store";
 
+import { localActor } from "@app/lib/cobQueries";
 import { nodeRunning } from "@app/lib/events";
-import { invalidateReposSummary, invoke, InvokeError } from "@app/lib/invoke";
-import * as router from "@app/lib/router";
-import type { ProfileTab } from "@app/lib/router/definitions";
+import { invoke, InvokeError } from "@app/lib/invoke";
+import { labs } from "@app/lib/labs";
+import { queryClient } from "@app/lib/query";
+import type { SidebarData } from "@app/lib/router/definitions";
 import { formatTimestamp, publicKeyFromDid, truncateId } from "@app/lib/utils";
 
 import { announce } from "@app/components/AnnounceSwitch.svelte";
@@ -32,11 +37,41 @@ export function describeActorError(
   return error instanceof Error ? error.message : fallback;
 }
 
-// Reloads the profile page on `tab` from storage, so it shows what was
-// written.
-export async function reload(tab: ProfileTab): Promise<void> {
-  invalidateReposSummary();
-  await router.replace({ resource: "profile", tab });
+// The local actor as the cache has it, so that writes and the node's updates
+// show in place, and as the route loaded it until the cache has an answer.
+// Create it during component initialisation.
+export function createActor(
+  loaded: () => Pick<SidebarData, "actor" | "actorError">,
+): Pick<SidebarData, "actor" | "actorError"> {
+  const query = createQuery(queryClient, () => ({
+    ...localActor(),
+    enabled: labs.actorRepos,
+  }));
+
+  // The query's own error, when it has one the page can show.
+  const queryError = () => {
+    const { error } = query.current;
+    return error instanceof InvokeError
+      ? { code: error.code, message: error.message }
+      : undefined;
+  };
+
+  // A disabled query still holds what it last fetched, so with the lab off
+  // the route's values count.
+  return {
+    get actor() {
+      if (!labs.actorRepos) return loaded().actor;
+      const { data } = query.current;
+      if (queryError()) return null;
+      return data !== undefined ? data : loaded().actor;
+    },
+    get actorError() {
+      if (!labs.actorRepos) return loaded().actorError;
+      const error = queryError();
+      if (error) return error;
+      return query.current.data !== undefined ? undefined : loaded().actorError;
+    },
+  };
 }
 
 // The actor writes and what each takes; the options are added by `change`.
@@ -60,26 +95,30 @@ export type ActorWrite =
 // The votes on an open identity change.
 export type Vote = Extract<ActorWrite, { args: { id: string } }>["command"];
 
-// Runs an actor write, then reloads `tab` whether or not it went through: a
-// failure may come from state the page has not seen, and a write that went
-// through is not undone by a reload that did not. The write announces when
-// the node runs and the user has not turned announcing off.
-export async function change(
-  { command, args }: ActorWrite,
-  tab: ProfileTab,
-): Promise<void> {
+// Runs an actor write, which announces when the node runs and the user has
+// not turned announcing off. It returns once the actor is refetched, whether
+// or not the write went through, so callers see what it left. The actor's
+// repository is refetched too, since its identity and code change; most
+// writes don't name it, so it comes from the cache.
+export async function change({ command, args }: ActorWrite): Promise<void> {
   const opts = { announce: get(nodeRunning) && get(announce) };
-  const reloadQuietly = () =>
-    reload(tab).catch((e: unknown) =>
-      console.warn("Could not reload the profile", e),
-    );
+  const rid =
+    "rid" in args
+      ? args.rid
+      : queryClient.getQueryData<ActorInfo | null>(keys.actor())?.rid;
   try {
     await invoke<ActorInfo>(command, { ...args, opts });
-  } catch (error) {
-    await reloadQuietly();
-    throw error;
+  } finally {
+    await Promise.all([
+      invalidate(queryClient, { queryKey: keys.actor() }),
+      rid !== undefined &&
+        invalidate(queryClient, {
+          queryKey: keys.repo(rid),
+          // Job lists don't depend on the identity, and listing them is slow.
+          predicate: query => !isJobsKey(query.queryKey as Key),
+        }),
+    ]);
   }
-  await reloadQuietly();
 }
 
 // The keys that govern the actor's identity.

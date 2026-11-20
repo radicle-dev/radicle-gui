@@ -34,6 +34,8 @@ export const keys = {
   // The repository list for one scope, with the seeded repositories that
   // haven't arrived yet.
   repoList: (scope: string) => ["repos", scope] as const,
+  // The local actor, which is found by scanning every repository's identity.
+  actor: () => ["actor"] as const,
   notifications: () => ["notifications"] as const,
   notificationCount: () => ["notifications", "count"] as const,
   notificationList: () => ["notifications", "list"] as const,
