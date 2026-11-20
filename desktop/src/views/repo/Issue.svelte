@@ -223,7 +223,7 @@
     } catch (error) {
       console.error("Editing reactions failed", error);
     } finally {
-      await reload(commentId);
+      await reload();
     }
   }
 
