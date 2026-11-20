@@ -37,7 +37,7 @@
     lastRevisionWithChanges,
   } from "@app/lib/revisionList";
   import { useShortcuts } from "@app/lib/shortcuts.svelte";
-  import { pluralize } from "@app/lib/utils";
+  import { pluralize, publicKeyFromDid } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
   import CobCommitTeaser from "@app/components/CobCommitTeaser.svelte";
@@ -314,13 +314,50 @@
     if (index === undefined) return;
     const target = orderedComments[index];
     activeCommentId = target.id;
+    highlight(target.id);
+    diffView?.scrollToAnchor(target.anchor);
+  }
+
+  function highlight(commentId: string) {
     clearTimeout(highlightTimer);
-    highlightedCommentId = target.id;
+    highlightedCommentId = commentId;
     highlightTimer = setTimeout(() => {
       highlightedCommentId = undefined;
     }, 2400);
-    diffView?.scrollToAnchor(target.anchor);
   }
+
+  // A comment or reply from someone else that arrives while the diff is shown
+  // is ringed the same way, so that it can be spotted without moving the
+  // viewport. When several arrive at once, the last one is. The user's own
+  // comments and drafts appear where they just wrote them.
+  let knownCommentIds: Set<string> | undefined;
+  let knownDiff: string | undefined;
+  $effect(() => {
+    const comments = diffCodeComments;
+    const drafts = new Set(comments?.draftThreadIds ?? []);
+    const ids = (comments?.threads ?? [])
+      .filter(thread => !drafts.has(thread.root.id))
+      .flatMap(thread => [thread.root, ...thread.replies])
+      .filter(
+        comment =>
+          publicKeyFromDid(comment.author.did) !== comments?.config.publicKey,
+      )
+      .map(comment => comment.id);
+    const diff = `${base}..${head}`;
+    if (knownCommentIds && knownDiff === diff) {
+      const known = knownCommentIds;
+      const arrived = ids.filter(id => !known.has(id));
+      if (arrived.length > 0)
+        untrack(() => highlight(arrived[arrived.length - 1]));
+      // Comments stay known while hidden, so showing a comment source again
+      // doesn't ring its comments as new.
+      for (const id of ids) known.add(id);
+    } else {
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity -- never rendered
+      knownCommentIds = new Set(ids);
+      knownDiff = diff;
+    }
+  });
 
   // Pierre's context-expand markers hydrate a file lazily from these, so
   // nothing is fetched until the reader expands something.
