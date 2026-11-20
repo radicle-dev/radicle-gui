@@ -28,6 +28,7 @@ export const mappedWrites = [
   "seed",
   "unseed",
   "clean",
+  "clear_notifications",
 ];
 
 // The keys a command's write affects, so that the user's own changes show
@@ -80,6 +81,8 @@ export function writtenKeys(
     // Cleaning removes other peers' refs, which can change anything shown.
     case "clean":
       return typeof rid === "string" ? [keys.repo(rid), keys.repos()] : [];
+    case "clear_notifications":
+      return [keys.notifications()];
     default:
       return [];
   }

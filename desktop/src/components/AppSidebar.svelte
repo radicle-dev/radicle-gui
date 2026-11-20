@@ -273,8 +273,9 @@
     }
   });
 
-  // The node writes notifications as it fetches, so its events say when to
-  // count them again. Without them, the count is polled. Either way it is
+  // The backend says when the notifications change, whether the node wrote
+  // them while fetching or another process cleared some. Without the node's
+  // events, such as in the test backend, the count is polled. Either way it is
   // fetched once at start, since events can already be live then, such as
   // after the webview reloads.
   onMount(() => {

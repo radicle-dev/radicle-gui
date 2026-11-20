@@ -89,7 +89,6 @@ const outsideCache = [
   // notifications, which their views reload themselves.
   "add_artifact_location",
   "attest_artifact",
-  "clear_notifications",
   "create_board",
   "create_or_open_release",
   "delete_release",

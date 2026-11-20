@@ -76,6 +76,7 @@
 <div>
   <div
     class="header"
+    data-inbox-anchor
     class:txt-missing={hidden}
     style:margin-bottom={!hidden ? "1rem" : undefined}>
     <span class="txt-body-l-semibold">
@@ -122,7 +123,7 @@
   {#if !hidden}
     <div class="container">
       {#if groupedNotifications.length > 0}
-        {#each groupedNotifications as notificationGroup}
+        {#each groupedNotifications as notificationGroup (`${notificationGroup[0].type}:${notificationGroup[0].id}`)}
           <NotificationTeaser
             {clearByIds}
             {rid}

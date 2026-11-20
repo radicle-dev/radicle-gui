@@ -43,6 +43,7 @@ pub(crate) fn startup(app: AppHandle) -> Result<Config, Error> {
     let cobs_db =
         radicle_types::outbound::sqlite::Sqlite::reader(profile.cobs().join(COBS_DB_FILE))?;
 
+    crate::notifications::spawn(app.app_handle().clone(), inbox_db.clone());
     let inbox_service = domain::inbox::service::Service::new(inbox_db);
     let patch_service = domain::patch::service::Service::new(cobs_db.clone());
     let issue_service = domain::issue::service::Service::new(cobs_db);

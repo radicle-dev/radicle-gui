@@ -17,6 +17,8 @@ import {
   loadRepoCommits,
   loadRepoHome,
 } from "@app/views/repo/router";
+import { keys } from "@radicle-gui/core/keys";
+import { markLoading } from "@radicle-gui/ui/lib/query.svelte";
 
 import { enterRepo } from "@app/lib/cobQueries";
 import {
@@ -26,6 +28,7 @@ import {
   InvokeError,
 } from "@app/lib/invoke";
 import { labs } from "@app/lib/labs";
+import { queryClient } from "@app/lib/query";
 import { repoListScope } from "@app/lib/repoListScope";
 
 interface BootingRoute {
@@ -143,6 +146,7 @@ export async function loadProfile(
 }
 
 export async function loadInbox(): Promise<LoadedInboxRoute> {
+  markLoading(queryClient, keys.notificationList());
   const [sidebarData, notificationsByRepo] = await Promise.all([
     loadSidebarData(),
     invoke<NotificationsByRepo[]>("list_notifications", {

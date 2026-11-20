@@ -56,8 +56,6 @@ export function onRefUpdate(update: RefUpdate) {
   ]);
   invalidate([
     ...affected.filter(key => !isJobs(key)),
-    // The node writes notifications as it fetches.
-    keys.notificationCount(),
     // The repository list changes when a seeded repository arrives, or when an
     // identity update renames one.
     ...(get(fetchingRepos).includes(update.rid) ||
@@ -101,6 +99,10 @@ export const createEventEmittersOnce = once(async (): Promise<UnlistenFn> => {
       nodeEvents.set(event.payload);
     }),
     listen<RefUpdate>("ref_update", event => onRefUpdate(event.payload)),
+    // Another process changed the notifications, such as by clearing some.
+    listen("notifications_changed", () => {
+      invalidate([keys.notifications()]);
+    }),
     // The backend may have missed events while it wasn't subscribed.
     listen("ref_resync", () => {
       void queryClient.invalidateQueries();

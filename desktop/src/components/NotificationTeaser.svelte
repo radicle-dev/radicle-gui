@@ -112,6 +112,7 @@
   role="button"
   class:selected
   class="notification-teaser"
+  data-inbox-anchor
   onclick={() => {
     if (route) {
       revealRepoInSidebar(rid);

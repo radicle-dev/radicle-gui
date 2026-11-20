@@ -12,12 +12,12 @@
   import ConfirmClear from "@app/components/ConfirmClear.svelte";
   import FuzzySearch from "@app/components/FuzzySearch.svelte";
   import NotificationsByRepoComponent from "@app/components/NotificationsByRepo.svelte";
+  import { getScrollViewport } from "@app/components/ScrollArea.svelte";
 
   interface Props {
     clearAll: () => Promise<void>;
     clearByIds: (ids: string[]) => Promise<void>;
     clearByRepo: (rid: string) => Promise<void>;
-    loadNew: () => Promise<void>;
     notificationCount: number | undefined;
     notificationsByRepo: NotificationsByRepo[];
     showAll: (rid: string) => Promise<void>;
@@ -27,7 +27,6 @@
     clearAll,
     clearByIds,
     clearByRepo,
-    loadNew,
     notificationCount,
     notificationsByRepo,
     showAll,
@@ -118,11 +117,36 @@
     ),
   );
 
-  function loadedNotificationCount() {
-    return notificationsByRepo.reduce((acc, repo) => {
-      return acc + repo.count;
-    }, 0);
-  }
+  // Notifications arriving or being cleared elsewhere update the list in
+  // place. Unless the list is scrolled to the top, keep the first visible row
+  // where it is, as browsers' scroll anchoring does, so that nothing moves
+  // under the user's cursor. WebKit doesn't anchor on its own.
+  const viewport = getScrollViewport();
+  let anchors: { el: Element; top: number }[] = [];
+
+  $effect.pre(() => {
+    void notificationsByRepo;
+    const v = viewport();
+    if (!v || v.scrollTop === 0) {
+      anchors = [];
+      return;
+    }
+    const viewTop = v.getBoundingClientRect().top;
+    anchors = [...v.querySelectorAll("[data-inbox-anchor]")]
+      .map(el => ({ el, top: el.getBoundingClientRect().top }))
+      .filter(a => a.top >= viewTop);
+  });
+
+  $effect(() => {
+    void notificationsByRepo;
+    const v = viewport();
+    // The first row still shown, since cleared rows are gone.
+    const anchor = anchors.find(a => a.el.isConnected);
+    anchors = [];
+    if (v && anchor) {
+      v.scrollTop += anchor.el.getBoundingClientRect().top - anchor.top;
+    }
+  });
 </script>
 
 <style>
@@ -177,15 +201,6 @@
           {isFiltering ? matchedTotal : notificationCount}
         </span>
       </div>
-      {#if !isFiltering && notificationCount > loadedNotificationCount()}
-        <div
-          class="txt-missing txt-body-m-regular global-flex"
-          style:margin-left="1rem">
-          <Button variant="naked" onclick={loadNew}>
-            See {notificationCount - loadedNotificationCount()} new
-          </Button>
-        </div>
-      {/if}
       {#if isFiltering && excludedGroupIds.length > 0}
         <div
           class="txt-missing txt-body-m-regular global-flex"

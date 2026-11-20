@@ -22,6 +22,14 @@ pub struct Sqlite {
 }
 
 impl Sqlite {
+    /// A number that changes whenever another connection commits to the
+    /// database, such as another process on the same profile.
+    pub fn data_version(&self) -> Result<i64, Error> {
+        let mut statement = self.db.prepare("PRAGMA data_version")?;
+        statement.next()?;
+        Ok(statement.read::<i64, _>(0)?)
+    }
+
     /// How long to wait for the database lock to be released before failing a read.
     const DB_READ_TIMEOUT: time::Duration = time::Duration::from_secs(3);
 
@@ -317,6 +325,21 @@ mod test {
     use crate::domain::patch::traits::PatchStorage;
 
     use super::Sqlite;
+
+    #[test]
+    fn data_version_changes_with_another_connections_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notifications.db");
+        let writer = sql::Connection::open(&path).unwrap();
+        writer.execute("CREATE TABLE t (x INTEGER)").unwrap();
+
+        let reader = Sqlite::reader(&path).unwrap();
+        let before = reader.data_version().unwrap();
+        assert_eq!(reader.data_version().unwrap(), before);
+
+        writer.execute("INSERT INTO t VALUES (1)").unwrap();
+        assert_ne!(reader.data_version().unwrap(), before);
+    }
 
     const RID: &str = "rad:z3fpY7nttPPa6MBnAv2DccHzQJnqe";
     const NID: &str = "z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S";

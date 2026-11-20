@@ -1,11 +1,18 @@
 <script lang="ts">
   import type { NotificationsByRepo } from "@bindings/cob/inbox/NotificationsByRepo";
 
+  import { keys } from "@radicle-gui/core/keys";
+  import { onInvalidate } from "@radicle-gui/ui/lib/query.svelte";
+  import { untrack } from "svelte";
+
+  import { nodeEvents } from "@app/lib/events";
   import { invoke } from "@app/lib/invoke";
+  import { latestOnly } from "@app/lib/latestOnly";
   import {
     notificationCount,
     refreshNotificationCount,
   } from "@app/lib/notificationCount.svelte";
+  import { queryClient } from "@app/lib/query";
   import type { SidebarData } from "@app/lib/router/definitions";
 
   import InboxList from "@app/components/InboxList.svelte";
@@ -26,52 +33,80 @@
   });
 
   async function clearAll() {
-    try {
-      await invoke("clear_notifications", { params: { type: "all" } });
-    } finally {
-      await refreshNotificationCount();
-      await loadNotifications();
-    }
+    await invoke("clear_notifications", { params: { type: "all" } });
   }
 
   async function clearByRepo(rid: string) {
-    try {
-      await invoke("clear_notifications", {
-        params: { type: "repo", content: rid },
-      });
-    } finally {
-      await refreshNotificationCount();
-      await loadNotifications();
-    }
+    await invoke("clear_notifications", {
+      params: { type: "repo", content: rid },
+    });
   }
 
   async function clearByIds(ids: string[]) {
-    try {
-      await invoke("clear_notifications", {
-        params: { type: "ids", content: ids },
-      });
-    } finally {
-      await refreshNotificationCount();
-      await loadNotifications();
-    }
+    await invoke("clear_notifications", {
+      params: { type: "ids", content: ids },
+    });
   }
 
-  async function loadNotifications() {
-    notificationsByRepo = await invoke<NotificationsByRepo[]>(
-      "list_notifications",
-      { params: { take: 100 } },
-    );
+  // Repos the user expanded with "Show all", which reloads keep expanded.
+  let expanded: string[] = [];
+  // Only the latest load applies, so that a reload started before a clear
+  // can't bring back what the clear removed.
+  const applyLatest = latestOnly<NotificationsByRepo[]>(list => {
+    notificationsByRepo = list;
+  });
+
+  function loadNotifications() {
+    return applyLatest(async () => {
+      const [list, ...all] = await Promise.all([
+        invoke<NotificationsByRepo[]>("list_notifications", {
+          params: { take: 100 },
+        }),
+        ...expanded.map(rid =>
+          invoke<NotificationsByRepo[]>("list_notifications", {
+            params: { repos: [rid], all: true },
+          }),
+        ),
+      ]);
+      const full = new Map(all.flat().map(r => [r.rid, r]));
+      return list.map(r => full.get(r.rid) ?? r);
+    });
   }
 
   async function showAll(rid: string) {
-    const all = await invoke<NotificationsByRepo[]>("list_notifications", {
-      params: { repos: [rid], all: true },
-    });
-    notificationsByRepo = [
-      ...notificationsByRepo.filter(r => r.rid !== rid),
-      ...all,
-    ];
+    if (!expanded.includes(rid)) {
+      expanded = [...expanded, rid];
+    }
+    await loadNotifications();
   }
+
+  function loadedCount() {
+    return notificationsByRepo.reduce((acc, r) => acc + r.count, 0);
+  }
+
+  // Follow notifications that arrive or are cleared elsewhere, such as by the
+  // node or another instance of the app. The backend says when they change;
+  // new activity on an issue or patch already in the inbox leaves the count
+  // as it is.
+  // The count is refreshed along with the list, since the one this view was
+  // loaded with may be older than the list.
+  onInvalidate(
+    queryClient,
+    () => keys.notificationList(),
+    async () => {
+      await loadNotifications();
+      await refreshNotificationCount();
+    },
+  );
+  // Without the backend's events, such as in the test backend, only the
+  // polled count tells.
+  $effect(() => {
+    if ($nodeEvents) return;
+    const count = notificationCount.value;
+    if (count !== undefined && count !== untrack(loadedCount)) {
+      void loadNotifications().catch(console.error);
+    }
+  });
 </script>
 
 <style>
@@ -117,7 +152,6 @@
             {clearAll}
             {clearByIds}
             {clearByRepo}
-            loadNew={loadNotifications}
             notificationCount={notificationCount.value}
             {notificationsByRepo}
             {showAll} />

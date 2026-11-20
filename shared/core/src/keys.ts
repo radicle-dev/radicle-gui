@@ -40,7 +40,12 @@ export const keys = {
   boards: (rid: string) => ["repo", rid, "boards"] as const,
   jobs: (rid: string) => ["repo", rid, "jobs"] as const,
   repos: () => ["repos"] as const,
+  // The repository list for one scope, with the seeded repositories that
+  // haven't arrived yet.
+  repoList: (scope: string) => ["repos", scope] as const,
+  notifications: () => ["notifications"] as const,
   notificationCount: () => ["notifications", "count"] as const,
+  notificationList: () => ["notifications", "list"] as const,
 };
 
 // Lists of CI jobs, which scanning every job COB of a repository builds.
