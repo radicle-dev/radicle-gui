@@ -7,6 +7,25 @@ export const keys = {
   repo: (rid: string) => ["repo", rid] as const,
   repoInfo: (rid: string) => ["repo", rid, "info"] as const,
   code: (rid: string) => ["repo", rid, "code"] as const,
+  // The commit a revision resolves to; no revision means the default branch.
+  head: (rid: string, peer: string | undefined, revision: string | undefined) =>
+    ["repo", rid, "code", "head", peer ?? "", revision ?? ""] as const,
+  // When a route last resolved that revision, so that a ref update during the
+  // load can tell the view to check the head again.
+  headLoaded: (
+    rid: string,
+    peer: string | undefined,
+    revision: string | undefined,
+  ) =>
+    [
+      "repo",
+      rid,
+      "code",
+      "head",
+      peer ?? "",
+      revision ?? "",
+      "loaded",
+    ] as const,
   issues: (rid: string) => ["repo", rid, "issues"] as const,
   // One status's list; `status` is the filter as the view names it.
   issueList: (rid: string, status: string) =>

@@ -389,6 +389,10 @@ async function loadSourceContext(route: {
   peer?: string;
   revision?: string;
 }): Promise<SourceContext> {
+  markLoading(
+    queryClient,
+    keys.headLoaded(route.rid, route.peer, route.revision),
+  );
   const [sidebarData, repo, commit] = await Promise.all([
     loadSidebarData(),
     load(repoInfo(route.rid)),

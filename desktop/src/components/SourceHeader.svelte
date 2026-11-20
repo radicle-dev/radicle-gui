@@ -22,10 +22,21 @@
     baseRoute: SourceBaseRoute;
     active: "files" | "commits";
     extra?: Snippet;
+    // Shown just before the peer selector, about the revision it selects.
+    notice?: Snippet;
   }
 
-  const { repo, peer, revision, oid, commit, baseRoute, active, extra }: Props =
-    $props();
+  const {
+    repo,
+    peer,
+    revision,
+    oid,
+    commit,
+    baseRoute,
+    active,
+    extra,
+    notice,
+  }: Props = $props();
 
   // The commit count requires a full history walk on the backend, so it is
   // fetched after render instead of blocking navigation. The key guard keeps
@@ -127,6 +138,10 @@
     gap: 2px;
     margin-left: auto;
   }
+  .notice {
+    display: flex;
+    margin-right: 0.5rem;
+  }
   .commit-summary {
     color: var(--color-text-secondary);
     font: var(--txt-body-m-regular);
@@ -171,6 +186,9 @@
   {/if}
 
   <div class="selector-group">
+    {#if notice}
+      <span class="notice">{@render notice()}</span>
+    {/if}
     <PeerSelector {baseRoute} {repo} {refs} {peer} {revision} />
     <Button
       variant="ghost"
