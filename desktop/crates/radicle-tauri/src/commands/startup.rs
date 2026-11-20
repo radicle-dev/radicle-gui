@@ -77,6 +77,7 @@ pub(crate) fn startup(app: AppHandle) -> Result<Config, Error> {
     crate::ref_updates::spawn(
         app.app_handle().clone(),
         Node::new(profile.home().socket_from_env()),
+        profile.storage.clone(),
     );
 
     app.manage(state.clone());

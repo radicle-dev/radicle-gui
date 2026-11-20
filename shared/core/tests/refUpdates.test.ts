@@ -45,6 +45,18 @@ describe("affectedKeys", () => {
     ).toEqual([keys.jobs(rid)]);
   });
 
+  test("releases and boards affect only their own keys", () => {
+    expect(
+      affectedKeys({
+        rid,
+        refs: [
+          `refs/namespaces/${nid}/refs/cobs/dev.radicle.artifact/${issue}`,
+          `refs/namespaces/${nid}/refs/cobs/works.monadic.board/${issue}`,
+        ],
+      }),
+    ).toEqual([keys.releases(rid), keys.boards(rid)]);
+  });
+
   test("an identity update affects the whole repository", () => {
     expect(
       affectedKeys({

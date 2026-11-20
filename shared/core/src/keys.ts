@@ -35,6 +35,8 @@ export const keys = {
   patchList: (rid: string, status: string) =>
     ["repo", rid, "patches", status] as const,
   patch: (rid: string, id: string) => ["repo", rid, "patch", id] as const,
+  releases: (rid: string) => ["repo", rid, "releases"] as const,
+  boards: (rid: string) => ["repo", rid, "boards"] as const,
   jobs: (rid: string) => ["repo", rid, "jobs"] as const,
   repos: () => ["repos"] as const,
   notificationCount: () => ["notifications", "count"] as const,
