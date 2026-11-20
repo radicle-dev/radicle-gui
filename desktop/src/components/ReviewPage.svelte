@@ -999,6 +999,12 @@
             content={pinnedSummary.current}
             toggleTaskItem={isOwnPublishedReview
               ? async content => {
+                  // A ticked task in older text only brings up the latest,
+                  // so that saving it can't undo an edit the user hasn't seen.
+                  if (pinnedSummary.stale) {
+                    pinnedSummary.apply();
+                    return;
+                  }
                   await saveSummary(content, review.embeds);
                 }
               : undefined} />

@@ -406,6 +406,8 @@
               reactions={body.reactions}
               currentUserNid={config.publicKey}
               allowedToEdit={!!canEditIssue}
+              stale={description.stale}
+              showLatest={() => description.apply()}
               editComment={(text, embeds) => editComment(body.id, text, embeds)}
               reactOnComment={(authors, reaction) =>
                 reactOnComment(body.id, authors, reaction)} />

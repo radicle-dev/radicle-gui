@@ -19,6 +19,9 @@
     reactions: Reaction[];
     currentUserNid?: string;
     allowedToEdit: boolean;
+    // Whether `body` is older than the latest edit, which `showLatest` shows.
+    stale: boolean;
+    showLatest: () => void;
     editComment: (body: string, embeds: Embed[]) => Promise<void>;
     reactOnComment: (authors: Author[], reaction: string) => Promise<void>;
   }
@@ -30,9 +33,18 @@
     reactions,
     currentUserNid,
     allowedToEdit,
+    stale,
+    showLatest,
     editComment,
     reactOnComment,
   }: Props = $props();
+
+  // An edit starts from the latest text, so that it can't undo an edit the
+  // user hasn't seen. A ticked task in older text only brings up the latest.
+  function edit() {
+    if (stale) showLatest();
+    editing = true;
+  }
 
   let editing = $state(false);
 </script>
@@ -109,6 +121,10 @@
           content={body}
           toggleTaskItem={allowedToEdit
             ? async content => {
+                if (stale) {
+                  showLatest();
+                  return;
+                }
                 await editComment(content, embeds);
               }
             : undefined} />
@@ -133,7 +149,7 @@
             type="button"
             class="body-action"
             title="Edit description"
-            onclick={() => (editing = true)}>
+            onclick={edit}>
             <Icon name="edit" />
           </button>
         {/if}
