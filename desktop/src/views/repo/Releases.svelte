@@ -7,9 +7,9 @@
 
   import { listReleases, RELEASES_PER_PAGE } from "@app/views/repo/router";
   import { keys } from "@radicle-gui/core/keys";
-  import { onInvalidate } from "@radicle-gui/ui/lib/query.svelte";
+  import { createQuery, onInvalidate } from "@radicle-gui/ui/lib/query.svelte";
 
-  import { invoke } from "@app/lib/invoke";
+  import { releaseCounts as releaseCountsQuery } from "@app/lib/cobQueries";
   import { modalStore, show } from "@app/lib/modal";
   import { createPaginatedList } from "@app/lib/paginatedList.svelte";
   import { queryClient } from "@app/lib/query";
@@ -43,7 +43,8 @@
     showFilters,
   }: Props = $props();
 
-  let releaseCounts = $derived(loadedCounts);
+  const counts = createQuery(queryClient, () => releaseCountsQuery(repo.rid));
+  const releaseCounts = $derived(counts.current.data ?? loadedCounts);
 
   const delegateIds = $derived(new Set(repo.delegates.map(d => d.did)));
 
@@ -60,11 +61,7 @@
   });
 
   async function refresh() {
-    const [, counts] = await Promise.all([
-      list.revalidate(Math.max(list.items.length, RELEASES_PER_PAGE)),
-      invoke<ReleaseCounts>("release_counts", { rid: repo.rid }),
-    ]);
-    releaseCounts = counts;
+    await list.refresh();
   }
 
   // The paginated list keeps its own pages, so the cache only tells it when

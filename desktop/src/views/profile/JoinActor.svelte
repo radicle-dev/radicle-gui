@@ -1,12 +1,16 @@
 <script lang="ts">
   import type { ActorInfo } from "@bindings/actor/ActorInfo";
 
+  import { createQuery } from "@radicle-gui/ui/lib/query.svelte";
   import { untrack } from "svelte";
 
+  import { repoList } from "@app/lib/cobQueries";
   import { nodeRunning } from "@app/lib/events";
   import { poll } from "@app/lib/interval";
   import { invoke, InvokeError } from "@app/lib/invoke";
-  import { fetchingRepos, seededRepos, seedRepo } from "@app/lib/seedRepo";
+  import { queryClient } from "@app/lib/query";
+  import { repoListScope } from "@app/lib/repoListScope";
+  import { seedRepo } from "@app/lib/seedRepo";
   import { parseRepositoryId, publicKeyFromDid } from "@app/lib/utils";
 
   import ActorAvatar from "@app/components/ActorAvatar.svelte";
@@ -105,8 +109,15 @@
     return () => clearTimeout(timer);
   });
 
+  const repoListQuery = createQuery(queryClient, () =>
+    repoList(repoListScope.value),
+  );
+  // The seeded repositories that haven't arrived yet.
+  const underway = $derived(
+    repoListQuery.current.data?.seededNotReplicated ?? [],
+  );
   const fetching = $derived(
-    check.status === "missing" && $fetchingRepos.includes(check.rid),
+    check.status === "missing" && underway.includes(check.rid),
   );
 
   // A look at a profile that is still awaited: one at a time, and only an
@@ -137,25 +148,26 @@
   // The missing profile whose fetch was asked for or seen on its way.
   let awaited: string | undefined;
 
-  $effect(() => {
-    if ($seededRepos === 0) return;
-    untrack(() => {
-      if (check.status === "missing") awaited = check.rid;
-    });
-  });
+  // When the list last arrived; the query also notifies as a fetch starts,
+  // with the list from before it.
+  let seenList = 0;
 
-  // The sidebar looks at what is being fetched once a repository is asked
-  // for, and every few seconds while any is on its way. An awaited profile
-  // that is not among them when it has looked may have arrived, however
-  // quickly the fetch went. One that stays among them is looked up at each
-  // look, since a copy the node cannot update never leaves them.
+  // The repository list is fetched again once a repository is seeded, when
+  // one arrives, and, without the node's events, every few seconds while any
+  // is on its way. An awaited profile that is not on its way in a new list
+  // may have arrived, however quickly the fetch went. One that stays on its
+  // way is looked up at each new list, since a copy the node cannot update
+  // never arrives.
   $effect(() => {
-    const underway = $fetchingRepos;
+    const updatedAt = repoListQuery.current.dataUpdatedAt;
+    const fetchingNow = underway;
 
     untrack(() => {
+      if (updatedAt === seenList) return;
+      seenList = updatedAt;
       if (check.status !== "missing") return;
 
-      if (underway.includes(check.rid)) {
+      if (fetchingNow.includes(check.rid)) {
         if (awaited === check.rid) void lookAgain(check.rid);
         awaited = check.rid;
       } else if (awaited === check.rid) {
@@ -171,9 +183,12 @@
     working = true;
     error = undefined;
 
+    // Set before seeding, so that the list the seed brings finds it.
+    awaited = target;
     try {
       await seedRepo(target);
     } catch (e) {
+      awaited = undefined;
       error = describeActorError(e, "Could not fetch the profile.");
     } finally {
       working = false;
@@ -217,6 +232,7 @@
       if (check.status === "stuck") {
         error = "Could not remove this device's copy of the profile.";
       } else if (check.status === "missing" && $nodeRunning) {
+        awaited = id;
         await seedRepo(id);
       }
     } catch (e) {

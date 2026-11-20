@@ -8,9 +8,10 @@ import { listen } from "@tauri-apps/api/event";
 import once from "lodash/once";
 import { get } from "svelte/store";
 
+import type { RepoList } from "@app/lib/cobQueries";
 import { clearEntityCaches, invoke } from "@app/lib/invoke";
 import { queryClient } from "@app/lib/query";
-import { fetchingRepos } from "@app/lib/seedRepo";
+import { repoListScope } from "@app/lib/repoListScope";
 
 import { artifactNodeRunning, nodeEvents, nodeRunning } from "./events";
 
@@ -51,6 +52,15 @@ function isJobs(key: Key): boolean {
   return key[0] === "repo" && key[2] === "jobs";
 }
 
+// Whether the repository list has `rid` as seeded but not yet arrived.
+function underway(rid: string): boolean {
+  return (
+    queryClient
+      .getQueryData<RepoList>(keys.repoList(repoListScope.value))
+      ?.seededNotReplicated.includes(rid) ?? false
+  );
+}
+
 export function onRefUpdate(update: RefUpdate) {
   const affected = affectedKeys(update);
   // A key for the whole repository covers its jobs too.
@@ -63,7 +73,7 @@ export function onRefUpdate(update: RefUpdate) {
     ...affected.filter(key => !isJobs(key)),
     // The repository list changes when a seeded repository arrives, or when an
     // identity update renames one.
-    ...(get(fetchingRepos).includes(update.rid) ||
+    ...(underway(update.rid) ||
     update.refs?.some(ref => ref.endsWith("refs/rad/id"))
       ? [keys.repos()]
       : []),

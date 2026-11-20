@@ -52,38 +52,34 @@
 </script>
 
 <script lang="ts">
-  import type { ReleaseCounts } from "@bindings/cob/release/ReleaseCounts";
   import type { Config } from "@bindings/config/Config";
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
   import type { CrossfadeParams } from "svelte/transition";
 
   import { keys } from "@radicle-gui/core/keys";
   import RepoAvatar from "@radicle-gui/ui/components/RepoAvatar.svelte";
-  import { onInvalidate } from "@radicle-gui/ui/lib/query.svelte";
-  import { onMount, untrack } from "svelte";
+  import { createQuery, invalidate } from "@radicle-gui/ui/lib/query.svelte";
+  import { onMount } from "svelte";
   import { flip } from "svelte/animate";
   import { backOut, cubicOut } from "svelte/easing";
   import { get } from "svelte/store";
   import { crossfade, fade, scale, slide } from "svelte/transition";
 
+  import { releaseCounts, repoList } from "@app/lib/cobQueries";
   import { nodeEvents, nodeRunning } from "@app/lib/events";
   import type { FlipSnapshot } from "@app/lib/flip";
   import { captureFlip, playFlip } from "@app/lib/flip";
   import { dynamicInterval, resetDynamicInterval } from "@app/lib/interval";
-  import {
-    cachedListReposSummary,
-    invalidateReposSummary,
-    invoke,
-    writeToClipboard,
-  } from "@app/lib/invoke";
+  import { invoke, writeToClipboard } from "@app/lib/invoke";
   import { labs } from "@app/lib/labs";
   import { entityUrl } from "@app/lib/mentions";
   import { show } from "@app/lib/modal";
   import { motion } from "@app/lib/motion";
+  import { projectsOf } from "@app/lib/projects";
   import { queryClient } from "@app/lib/query";
   import { repoListScope } from "@app/lib/repoListScope";
   import * as router from "@app/lib/router";
-  import { seededRepos, seedRepo, setFetchingRepos } from "@app/lib/seedRepo";
+  import { seedRepo } from "@app/lib/seedRepo";
   import {
     ariaKeyShortcuts,
     modifierHeld,
@@ -116,8 +112,18 @@
     config,
   }: Props = $props();
 
-  let repos: RepoSummary[] = $derived(initialRepos);
-  let seededNotReplicated: string[] = $derived(initialSeededNotReplicated);
+  const repoListQuery = createQuery(queryClient, () =>
+    repoList(repoListScope.value),
+  );
+  const repos: RepoSummary[] = $derived(
+    repoListQuery.current.data
+      ? projectsOf(repoListQuery.current.data.repos, labs.actorRepos)
+      : initialRepos,
+  );
+  const seededNotReplicated: string[] = $derived(
+    repoListQuery.current.data?.seededNotReplicated ??
+      initialSeededNotReplicated,
+  );
   let filterInputElement: HTMLInputElement | undefined = $state(undefined);
 
   const shortcutNumbers = $derived(
@@ -201,46 +207,15 @@
     return () => resetDynamicInterval("seededNotReplicated");
   });
 
-  // Kept while navigating inside the repo, so the badge doesn't flicker.
-  let releaseCount = $state<number | undefined>(undefined);
-  let countedRid: string | undefined = undefined;
-  // Bumped when the active repo's releases change, to count them again.
-  let releasesChanged = $state(0);
-  onInvalidate(
-    queryClient,
-    () => keys.releaseCount(activeRepo?.rid ?? ""),
-    async () => {
-      releasesChanged++;
-    },
+  const releaseCountQuery = createQuery(queryClient, () => ({
+    ...releaseCounts(activeRepo?.rid ?? ""),
+    enabled: activeRepo !== undefined,
+  }));
+  const releaseCount = $derived(
+    releaseCountQuery.current.data &&
+      releaseCountQuery.current.data.delegate +
+        releaseCountQuery.current.data.other,
   );
-
-  $effect(() => {
-    void releasesChanged;
-    const rid = activeRepo?.rid;
-    if (rid === undefined) {
-      releaseCount = undefined;
-      countedRid = undefined;
-      return;
-    }
-
-    if (countedRid !== rid) {
-      releaseCount = undefined;
-      countedRid = rid;
-    }
-
-    let cancelled = false;
-    invoke<ReleaseCounts>("release_counts", { rid })
-      .then(counts => {
-        if (!cancelled) releaseCount = counts.delegate + counts.other;
-      })
-      .catch(() => {
-        if (!cancelled) releaseCount = undefined;
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  });
 
   const filteredRepos = $derived(
     filterQuery.trim()
@@ -395,37 +370,9 @@
     setOrder: rids => withPinAnimation(() => (pinnedRepoIds.value = rids)),
   });
 
-  $effect(() => setFetchingRepos(seededNotReplicated));
-
-  $effect(() => {
-    if ($seededRepos === 0) return;
-    untrack(() => void reloadRepos());
-  });
-
-  // Reloads when a seeded repo arrives, or an identity update renames one.
-  onInvalidate(queryClient, () => keys.repos(), reloadRepos);
-
   async function reloadRepos() {
-    invalidateReposSummary();
-    const [reloaded, fetching] = await Promise.all([
-      cachedListReposSummary(repoListScope.value),
-      invoke<string[]>("seeded_not_replicated"),
-    ]);
-    repos = reloaded;
-    seededNotReplicated = fetching;
+    await invalidate(queryClient, { queryKey: keys.repos() });
   }
-
-  // The route loader already fetched the list for the scope in force, so the
-  // first run only records it; later runs are the preference actually changing.
-  let loadedScope: string | undefined;
-  $effect(() => {
-    const scope = repoListScope.value;
-    const first = loadedScope === undefined;
-    loadedScope = scope;
-    if (!first) {
-      untrack(() => void reloadRepos());
-    }
-  });
 
   // Ordered like the CLI: drop the seeding policy first, then let storage prune
   // what it can. `clean` keeps the local node's and the delegates' refs, so a

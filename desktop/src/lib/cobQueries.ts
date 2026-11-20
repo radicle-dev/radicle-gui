@@ -4,9 +4,11 @@ import type { Operation } from "@bindings/cob/Operation";
 import type { Action as PatchAction } from "@bindings/cob/patch/Action";
 import type { Patch } from "@bindings/cob/patch/Patch";
 import type { Revision } from "@bindings/cob/patch/Revision";
+import type { ReleaseCounts } from "@bindings/cob/release/ReleaseCounts";
 import type { Thread } from "@bindings/cob/thread/Thread";
 import type { Identity } from "@bindings/identity/Identity";
 import type { RepoInfo } from "@bindings/repo/RepoInfo";
+import type { RepoSummary } from "@bindings/repo/RepoSummary";
 import type { Key } from "@radicle-gui/core/keys";
 import type { QueryOptions } from "@radicle-gui/ui/lib/query.svelte";
 
@@ -16,6 +18,31 @@ import { get } from "svelte/store";
 import { nodeEvents } from "@app/lib/events";
 import { invoke } from "@app/lib/invoke";
 import { queryClient } from "@app/lib/query";
+
+export interface RepoList {
+  repos: RepoSummary[];
+  seededNotReplicated: string[];
+}
+
+export function repoList(scope: string): QueryOptions<RepoList> {
+  return {
+    queryKey: keys.repoList(scope),
+    queryFn: async () => {
+      const [repos, seededNotReplicated] = await Promise.all([
+        invoke<RepoSummary[]>("list_repos_summary", { show: scope }),
+        invoke<string[]>("seeded_not_replicated"),
+      ]);
+      return { repos, seededNotReplicated };
+    },
+  };
+}
+
+export function releaseCounts(rid: string): QueryOptions<ReleaseCounts> {
+  return {
+    queryKey: keys.releaseCount(rid),
+    queryFn: () => invoke<ReleaseCounts>("release_counts", { rid }),
+  };
+}
 
 export function repoInfo(rid: string): QueryOptions<RepoInfo> {
   return {

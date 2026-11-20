@@ -12,17 +12,14 @@ import type { Stats } from "@bindings/diff/Stats";
 import type { Commit } from "@bindings/repo/Commit";
 import type { Job } from "@bindings/repo/Job";
 import type { RepoInfo } from "@bindings/repo/RepoInfo";
-import type { RepoSummary } from "@bindings/repo/RepoSummary";
 import type { TreePath } from "@bindings/repo/TreePath";
 
+import { keys } from "@radicle-gui/core/keys";
 import { cached } from "@radicle-gui/ui/lib/cached";
 import { invalidate } from "@radicle-gui/ui/lib/query.svelte";
 import * as tauri from "@tauri-apps/api/core";
 
-import { labs } from "@app/lib/labs";
-import { projectsOf } from "@app/lib/projects";
 import { queryClient } from "@app/lib/query";
-import type { RepoListScope } from "@app/lib/repoListScope";
 import { writtenKeys } from "@app/lib/writes";
 
 export async function invoke<T = null>(
@@ -442,33 +439,9 @@ export const cachedGetCommitDiff = cached(
 );
 
 /**
- * Enumerating repos loads and verifies the identity doc of every repo in
- * storage, which takes ~100ms with many repos. The list rarely changes, so it
- * is cached with a short TTL; mutations that change it (adding, seeding,
- * unseeding) go through invalidateReposSummary().
- */
-export const cachedListReposWithActors = cached(
-  (show: RepoListScope) =>
-    invoke<RepoSummary[]>("list_repos_summary", { show }),
-  show => `list_repos_summary:${show}`,
-  { max: 2, ttl: 30_000 },
-);
-
-/**
- * The repositories to list as projects, see `projectsOf`. Whatever lists
- * repositories calls this; `cachedListReposWithActors` is for telling what is
- * in storage.
- */
-export async function cachedListReposSummary(
-  show: RepoListScope,
-): Promise<RepoSummary[]> {
-  return projectsOf(await cachedListReposWithActors(show), labs.actorRepos);
-}
-
-/**
  * Finding the local actor scans storage like the repo list does, and every
- * route loads it while the lab is on, so it shares the list's caching and
- * invalidation; a save or create clears it as well.
+ * route loads it while the lab is on, so it is cached with a short TTL; a save
+ * or create clears it through invalidateReposSummary().
  */
 export const cachedActor = cached(
   () => invoke<ActorInfo | null>("actor"),
@@ -478,8 +451,8 @@ export const cachedActor = cached(
 
 // The sidebar loads the repositories and the actor together, so both go.
 export function invalidateReposSummary(): void {
-  cachedListReposWithActors.clear();
   cachedActor.clear();
+  void queryClient.invalidateQueries({ queryKey: keys.repos() });
 }
 
 export async function writeToClipboard(

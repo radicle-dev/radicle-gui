@@ -5,8 +5,10 @@
 <script lang="ts">
   import { z } from "zod";
 
+  import { repoList } from "@app/lib/cobQueries";
   import { nodeRunning } from "@app/lib/events";
-  import { cachedListReposWithActors, invoke } from "@app/lib/invoke";
+  import { invoke } from "@app/lib/invoke";
+  import { queryClient } from "@app/lib/query";
   import { repoListScope } from "@app/lib/repoListScope";
   import { seedTarget } from "@app/lib/seedRepo";
   import useLocalStorage from "@app/lib/useLocalStorage.svelte";
@@ -61,7 +63,9 @@
 
     // The project list hides actor repositories, so this check uses the full
     // list.
-    const stored = await cachedListReposWithActors(repoListScope.value);
+    const { repos: stored } = await queryClient.fetchQuery(
+      repoList(repoListScope.value),
+    );
     const target = seedTarget(
       rid,
       seededNotReplicated,

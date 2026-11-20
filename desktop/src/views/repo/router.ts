@@ -31,6 +31,7 @@ import {
   issueDetail,
   load,
   patchDetail,
+  releaseCounts,
   repoInfo,
 } from "@app/lib/cobQueries";
 import {
@@ -395,10 +396,7 @@ async function loadSourceContext(route: {
   peer?: string;
   revision?: string;
 }): Promise<SourceContext> {
-  markLoading(
-    queryClient,
-    keys.headLoaded(route.rid, route.peer, route.revision),
-  );
+  markLoading(queryClient, keys.head(route.rid, route.peer, route.revision));
   const [sidebarData, repo, commit] = await Promise.all([
     loadSidebarData(),
     load(repoInfo(route.rid)),
@@ -582,17 +580,15 @@ export async function loadReleases(
 ): Promise<LoadedRepoReleasesRoute> {
   const scope = route.scope ?? "trusted";
   markLoading(queryClient, keys.releaseList(route.rid, scope));
-  const [sidebarData, repo, releases, releaseCounts] = await Promise.all([
+  const [sidebarData, repo, releases, counts] = await Promise.all([
     loadSidebarData(),
     load(repoInfo(route.rid)),
     listReleases(route.rid, scope, 0, RELEASES_PER_PAGE),
-    invoke<ReleaseCounts>("release_counts", {
-      rid: route.rid,
-    }),
+    load(releaseCounts(route.rid)),
   ]);
   // Others is one click away whenever it has releases, and Delegates is one
   // click back from it; see docs/adr/0004.
-  const showFilters = scope === "untrusted" || releaseCounts.other > 0;
+  const showFilters = scope === "untrusted" || counts.other > 0;
 
   return {
     resource: "repo.releases",
@@ -600,7 +596,7 @@ export async function loadReleases(
       sidebarData,
       repo,
       releases,
-      releaseCounts,
+      releaseCounts: counts,
       scope,
       showFilters,
     },

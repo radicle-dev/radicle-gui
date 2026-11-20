@@ -20,14 +20,10 @@ import {
 import { keys } from "@radicle-gui/core/keys";
 import { markLoading } from "@radicle-gui/ui/lib/query.svelte";
 
-import { enterRepo } from "@app/lib/cobQueries";
-import {
-  cachedActor,
-  cachedListReposSummary,
-  invoke,
-  InvokeError,
-} from "@app/lib/invoke";
+import { enterRepo, repoList } from "@app/lib/cobQueries";
+import { cachedActor, invoke, InvokeError } from "@app/lib/invoke";
 import { labs } from "@app/lib/labs";
+import { projectsOf } from "@app/lib/projects";
 import { queryClient } from "@app/lib/query";
 import { repoListScope } from "@app/lib/repoListScope";
 
@@ -106,15 +102,19 @@ export function isLoadedRepoRoute(
 }
 
 export async function loadSidebarData(): Promise<SidebarData> {
-  const [config, repos, notificationCount, seededNotReplicated, lookup] =
-    await Promise.all([
-      invoke<Config>("config"),
-      cachedListReposSummary(repoListScope.value),
-      invoke<number>("notification_count"),
-      invoke<string[]>("seeded_not_replicated"),
-      labs.actorRepos ? loadActor() : { actor: null },
-    ]);
-  return { config, repos, notificationCount, seededNotReplicated, ...lookup };
+  const [config, list, notificationCount, lookup] = await Promise.all([
+    invoke<Config>("config"),
+    queryClient.fetchQuery(repoList(repoListScope.value)),
+    invoke<number>("notification_count"),
+    labs.actorRepos ? loadActor() : { actor: null },
+  ]);
+  return {
+    config,
+    repos: projectsOf(list.repos, labs.actorRepos),
+    notificationCount,
+    seededNotReplicated: list.seededNotReplicated,
+    ...lookup,
+  };
 }
 
 // Whatever goes wrong with the actor is shown on the profile page, never

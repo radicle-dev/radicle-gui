@@ -5,7 +5,7 @@
   import { describeLink, referenceRoute } from "@app/lib/mentions";
   import { formatReference, parseReference } from "@app/lib/radUri";
   import { push, routeToPath } from "@app/lib/router";
-  import { fetchingRepos } from "@app/lib/seedRepo";
+  import { createFetchingRepos } from "@app/lib/seedRepo";
   import { explorerLink } from "@app/lib/utils";
 
   import ExplorerMenu, {
@@ -46,7 +46,10 @@
   const rid = $derived(
     reference?.type === "uri" ? `rad:${reference.uri.repo}` : undefined,
   );
-  const fetching = $derived(rid !== undefined && $fetchingRepos.includes(rid));
+  const fetchingRepos = createFetchingRepos();
+  const fetching = $derived(
+    rid !== undefined && fetchingRepos.current.includes(rid),
+  );
   let local: boolean | undefined = $state(undefined);
   $effect(() => {
     if (!rid || fetching) return;

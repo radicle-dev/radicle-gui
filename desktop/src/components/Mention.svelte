@@ -25,7 +25,7 @@
   import { scrollBehavior } from "@app/lib/motion";
   import type { Route } from "@app/lib/router";
   import { push, routeToPath } from "@app/lib/router";
-  import { fetchingRepos } from "@app/lib/seedRepo";
+  import { createFetchingRepos } from "@app/lib/seedRepo";
   import {
     formatOid,
     issueStatusColor,
@@ -75,8 +75,9 @@
 
   const repoName = $derived(resolvedRepoName ?? fallback);
 
+  const fetchingRepos = createFetchingRepos();
   const fetching = $derived(
-    target.type !== "node" && $fetchingRepos.includes(target.rid),
+    target.type !== "node" && fetchingRepos.current.includes(target.rid),
   );
   let repoLocal: boolean | undefined = $state(undefined);
   const seedRid = $derived(

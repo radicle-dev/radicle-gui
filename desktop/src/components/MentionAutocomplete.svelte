@@ -26,13 +26,13 @@
   import debounce from "lodash/debounce";
   import { useOverlayScrollbars } from "overlayscrollbars-svelte";
 
+  import { repoList } from "@app/lib/cobQueries";
   import {
     cachedAlias,
     cachedIssueById,
     cachedListIssueCandidates,
     cachedListPatchCandidates,
     cachedListReleaseCandidates,
-    cachedListReposSummary,
     cachedPatchById,
     cachedReleaseById,
     cachedRepoById,
@@ -41,6 +41,7 @@
     cachedRepoSplitTreePath,
     cachedSearchAliases,
   } from "@app/lib/invoke";
+  import { labs } from "@app/lib/labs";
   import type { Entity } from "@app/lib/mentions";
   import {
     describeLink,
@@ -51,6 +52,8 @@
   import type { MentionTrigger } from "@app/lib/mentionTrigger";
   import { findMentionTrigger } from "@app/lib/mentionTrigger";
   import { portal } from "@app/lib/portal";
+  import { projectsOf } from "@app/lib/projects";
+  import { queryClient } from "@app/lib/query";
   import type { RadReference } from "@app/lib/radUri";
   import { fileReference, formatReference, isOid } from "@app/lib/radUri";
   import { repoListScope } from "@app/lib/repoListScope";
@@ -569,9 +572,10 @@
   }
 
   async function collectRepos(): Promise<Suggestion[]> {
-    const repos = await cachedListReposSummary(repoListScope.value).catch(
-      () => [],
-    );
+    const repos = await queryClient
+      .fetchQuery(repoList(repoListScope.value))
+      .then(list => projectsOf(list.repos, labs.actorRepos))
+      .catch(() => []);
     const ordered = [...repos].sort(
       (a, b) =>
         Number(b.rid === rid) - Number(a.rid === rid) ||

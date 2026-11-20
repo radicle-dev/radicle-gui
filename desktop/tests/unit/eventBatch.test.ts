@@ -9,13 +9,11 @@ const { invalidateQueries, clearEntityCaches } = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
   clearEntityCaches: vi.fn(),
 }));
-vi.mock("@app/lib/query", () => ({ queryClient: { invalidateQueries } }));
+vi.mock("@app/lib/query", () => ({
+  queryClient: { invalidateQueries, getQueryData: vi.fn() },
+}));
 vi.mock("@app/lib/invoke", () => ({ clearEntityCaches, invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
-vi.mock("@app/lib/seedRepo", async () => {
-  const { writable } = await import("svelte/store");
-  return { fetchingRepos: writable([]) };
-});
 
 const rid = "rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5";
 

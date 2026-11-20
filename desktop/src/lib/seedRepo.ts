@@ -1,6 +1,9 @@
-import { writable } from "svelte/store";
+import { createQuery } from "@radicle-gui/ui/lib/query.svelte";
 
-import { invalidateReposSummary, invoke } from "@app/lib/invoke";
+import { repoList } from "@app/lib/cobQueries";
+import { invoke } from "@app/lib/invoke";
+import { queryClient } from "@app/lib/query";
+import { repoListScope } from "@app/lib/repoListScope";
 import { parseRepositoryId } from "@app/lib/utils";
 
 // Validates a RID typed into the "Seed a repo" form. The form accepts a bare
@@ -25,19 +28,18 @@ export function seedTarget(
   return { rid };
 }
 
-const seeded = writable(0);
-const fetching = writable<string[]>([]);
+// Seeded repos that haven't been fetched yet, as the repository list last had
+// them. Create it during component initialisation.
+export function createFetchingRepos(): { readonly current: string[] } {
+  const query = createQuery(queryClient, () => repoList(repoListScope.value));
 
-// Bumped whenever a repo is seeded from outside the sidebar, which only polls
-// while something is already being fetched.
-export const seededRepos = { subscribe: seeded.subscribe };
-
-// Seeded repos that haven't been fetched yet, as the sidebar last polled them.
-export const fetchingRepos = { subscribe: fetching.subscribe };
-export const setFetchingRepos = fetching.set;
+  return {
+    get current() {
+      return query.current.data?.seededNotReplicated ?? [];
+    },
+  };
+}
 
 export async function seedRepo(rid: string): Promise<void> {
   await invoke<null>("seed", { rid });
-  invalidateReposSummary();
-  seeded.update(count => count + 1);
 }
