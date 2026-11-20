@@ -34,11 +34,21 @@ impl Sqlite {
     const DB_READ_TIMEOUT: time::Duration = time::Duration::from_secs(3);
 
     pub fn reader<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+        Self::read_only(path, Self::DB_READ_TIMEOUT)
+    }
+
+    /// A reader that gives up quickly on a locked database, for polling
+    /// several databases without one holding up the others.
+    pub fn watcher<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+        Self::read_only(path, time::Duration::from_millis(100))
+    }
+
+    fn read_only<P: AsRef<Path>>(path: P, timeout: time::Duration) -> Result<Self, Error> {
         let mut db = sql::Connection::open_thread_safe_with_flags(
             path,
             sqlite::OpenFlags::new().with_read_only(),
         )?;
-        db.set_busy_timeout(Self::DB_READ_TIMEOUT.as_millis() as usize)?;
+        db.set_busy_timeout(timeout.as_millis() as usize)?;
 
         Ok(Self { db: Arc::new(db) })
     }

@@ -51,6 +51,10 @@ pub(crate) fn startup(app: AppHandle) -> Result<Config, Error> {
                 "notifications_changed",
             ),
             (profile.node().join(POLICIES_DB_FILE), "policies_changed"),
+            // Writes made without announcing them, such as with
+            // `rad issue comment --no-announce` or by another instance of the
+            // app, don't reach the node's events.
+            (profile.cobs().join(COBS_DB_FILE), "cobs_changed"),
         ],
     );
     let inbox_service = domain::inbox::service::Service::new(inbox_db);

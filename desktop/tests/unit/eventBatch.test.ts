@@ -14,7 +14,7 @@ import {
 
 import { queryClient } from "@app/lib/query";
 import { repoListScope } from "@app/lib/repoListScope";
-import { batch, onRefUpdate } from "@app/lib/startup.svelte";
+import { batch, onCobsChanged, onRefUpdate } from "@app/lib/startup.svelte";
 
 const { clearEntityCaches } = vi.hoisted(() => ({
   clearEntityCaches: vi.fn(),
@@ -164,4 +164,31 @@ describe("the repository list", () => {
 
 test("the core's ref update matches the one the backend sends", () => {
   expectTypeOf<RefUpdate>().toEqualTypeOf<BackendRefUpdate>();
+});
+
+describe("the COB cache", () => {
+  // The COB cache refresh is the only invalidation by predicate alone.
+  function cobInvalidations() {
+    return invalidateQueries.mock.calls.filter(
+      call => call[0] !== undefined && call[0].queryKey === undefined,
+    );
+  }
+
+  test("refreshes right away for a change nothing else told of", () => {
+    vi.advanceTimersByTime(10_000);
+    onCobsChanged();
+    expect(cobInvalidations()).toHaveLength(1);
+  });
+
+  test("refreshes once things are quiet after a change it heard of", () => {
+    vi.advanceTimersByTime(10_000);
+    onRefUpdate({ rid, refs: [`refs/namespaces/${nid}/refs/heads/main`] });
+    invalidateQueries.mockClear();
+
+    onCobsChanged();
+    onCobsChanged();
+    expect(cobInvalidations()).toHaveLength(0);
+    vi.advanceTimersByTime(5_000);
+    expect(cobInvalidations()).toHaveLength(1);
+  });
 });

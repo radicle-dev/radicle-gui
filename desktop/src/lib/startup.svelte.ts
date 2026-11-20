@@ -2,13 +2,19 @@ import type { Key } from "@radicle-gui/core/keys";
 import type { RefUpdate } from "@radicle-gui/core/refUpdates";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
-import { isJobsKey, isRepoInfoKey, keys } from "@radicle-gui/core/keys";
+import {
+  isCobCacheKey,
+  isJobsKey,
+  isRepoInfoKey,
+  keys,
+} from "@radicle-gui/core/keys";
 import { affectedKeys } from "@radicle-gui/core/refUpdates";
 import { invalidate } from "@radicle-gui/ui/lib/query.svelte";
 import { listen } from "@tauri-apps/api/event";
 import once from "lodash/once";
 import { get } from "svelte/store";
 
+import { heardOfChange, heardOfChangeWithin } from "@app/lib/cacheActivity";
 import type { RepoList } from "@app/lib/cobQueries";
 import { clearEntityCaches, invoke } from "@app/lib/invoke";
 import { queryClient } from "@app/lib/query";
@@ -59,6 +65,7 @@ function listed(rid: string): boolean {
 }
 
 export function onRefUpdate(update: RefUpdate) {
+  heardOfChange();
   const affected = affectedKeys(update);
   // A key for the whole repository covers its jobs too.
   const repoWide = affected.some(key => key.length === 2 && key[0] === "repo");
@@ -77,6 +84,34 @@ export function onRefUpdate(update: RefUpdate) {
       : []),
   ]);
 }
+
+function refreshCobCache(): void {
+  clearEntityCaches();
+  void invalidate(queryClient, {
+    predicate: query => isCobCacheKey(query.queryKey as Key),
+  });
+}
+
+let deferredCobRefresh: ReturnType<typeof setTimeout> | undefined;
+
+// Issues and patches written without announcing them, such as with
+// `rad issue comment --no-announce`, only show in the node's COB cache. It
+// also changes with every fetch and write the cache already heard of, and
+// says nothing about which repository changed. So right after such a change
+// it refreshes once things are quiet, rather than with every fetch, and never
+// leaves a change out.
+export function onCobsChanged(): void {
+  if (!heardOfChangeWithin(COB_QUIET_MS)) {
+    refreshCobCache();
+    return;
+  }
+  deferredCobRefresh ??= setTimeout(() => {
+    deferredCobRefresh = undefined;
+    refreshCobCache();
+  }, COB_QUIET_MS);
+}
+
+const COB_QUIET_MS = 5_000;
 
 export let unlistenNodeEvents: UnlistenFn | undefined = undefined;
 
@@ -116,6 +151,7 @@ export const createEventEmittersOnce = once(async (): Promise<UnlistenFn> => {
     listen("notifications_changed", () => {
       invalidateBatched([keys.notifications()]);
     }),
+    listen("cobs_changed", onCobsChanged),
     listen("policies_changed", () => {
       invalidateBatched([keys.repos()]);
       void invalidate(queryClient, {

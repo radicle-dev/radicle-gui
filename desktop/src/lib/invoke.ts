@@ -19,6 +19,7 @@ import { cached } from "@radicle-gui/ui/lib/cached";
 import { invalidate } from "@radicle-gui/ui/lib/query.svelte";
 import * as tauri from "@tauri-apps/api/core";
 
+import { heardOfChange } from "@app/lib/cacheActivity";
 import { queryClient } from "@app/lib/query";
 import { writtenKeys } from "@app/lib/writes";
 
@@ -34,7 +35,10 @@ export async function invoke<T = null>(
   } finally {
     // Also after a failure: a command can fail after writing part of a change.
     const written = writtenKeys(cmd, args, result);
-    if (written.length > 0) clearEntityCaches();
+    if (written.length > 0) {
+      clearEntityCaches();
+      heardOfChange();
+    }
     for (const queryKey of written) {
       void invalidate(queryClient, { queryKey });
     }
