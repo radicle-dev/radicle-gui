@@ -19,6 +19,21 @@ pub struct TreePath {
     pub path: String,
 }
 
+/// Refs that changed in a repository, as sent with the `ref_update` event.
+/// `refs` is `None` when it isn't known which refs changed, such as on the
+/// first announcement after a restart.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+#[ts(export_to = "repo/")]
+pub struct RefUpdate {
+    #[ts(as = "String")]
+    pub rid: identity::RepoId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub refs: Option<Vec<String>>,
+}
+
 #[derive(Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]

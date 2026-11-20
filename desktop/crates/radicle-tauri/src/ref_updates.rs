@@ -3,7 +3,7 @@ use std::path::Path;
 use std::str::FromStr;
 use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use radicle::Storage;
 use radicle::git::Oid;
@@ -12,16 +12,12 @@ use radicle::node::{self, Event, Handle, Node, NodeId};
 use radicle::storage::refs::sigrefs::git::object::Reader as _;
 use radicle::storage::refs::{REFS_BLOB_PATH, RefsAt};
 use radicle::storage::{self, ReadStorage};
+use radicle_types::repo::RefUpdate;
 use tauri::{AppHandle, Emitter};
 
-/// Refs that changed in a repository. `refs` is `None` when it isn't known
-/// which refs changed, such as on the first announcement after a restart.
-#[derive(Clone, serde::Serialize)]
-struct RefUpdate {
-    rid: RepoId,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    refs: Option<Vec<String>>,
-}
+/// Above this many refs, an update is sent as repository-wide instead, which
+/// the frontend handles the same way and is cheaper to send.
+const MAX_REFS: usize = 256;
 
 /// Whether the subscription to the node's events is up, so the frontend knows
 /// whether it can rely on them or has to poll.
@@ -54,11 +50,13 @@ pub(crate) fn spawn(app: AppHandle, node: Node, storage: Storage) {
 /// because it may have missed events in between.
 fn forward(app: AppHandle, node: Node, mut resolver: Resolver) {
     let mut subscribed = true;
+    let mut backoff = Backoff::default();
     loop {
         match node.subscribe(Duration::from_secs(60 * 60 * 24)) {
             Ok(events) => {
                 subscribed = true;
-                let _live = Live::start();
+                let started = Instant::now();
+                let live = Live::start();
                 let _ = app.emit("ref_resync", ());
                 for event in events {
                     match event {
@@ -80,16 +78,50 @@ fn forward(app: AppHandle, node: Node, mut resolver: Resolver) {
                         }
                     }
                 }
+                drop(live);
+                if started.elapsed() >= Backoff::STABLE {
+                    backoff = Backoff::default();
+                }
+                std::thread::sleep(backoff.next());
             }
             // Mostly the node not running; logged once until it works again.
+            // Trying to connect costs little, so it doesn't back off, and the
+            // node's events are live soon after it starts.
             Err(e) => {
                 if subscribed {
                     log::info!("Not subscribed to node events: {e}");
                 }
                 subscribed = false;
+                std::thread::sleep(Backoff::MIN);
             }
         }
-        std::thread::sleep(Duration::from_secs(2));
+    }
+}
+
+/// How long to wait before subscribing again after a subscription ends. It
+/// doubles each time, so that a node that ends every subscription right away
+/// doesn't make the frontend resync every few seconds.
+struct Backoff {
+    delay: Duration,
+}
+
+impl Backoff {
+    const MIN: Duration = Duration::from_secs(2);
+    const MAX: Duration = Duration::from_secs(60);
+    /// A subscription that lasted this long ended for a reason of its own,
+    /// so the next one starts without waiting long.
+    const STABLE: Duration = Duration::from_secs(10);
+
+    fn next(&mut self) -> Duration {
+        let delay = self.delay;
+        self.delay = (delay * 2).min(Self::MAX);
+        delay
+    }
+}
+
+impl Default for Backoff {
+    fn default() -> Self {
+        Self { delay: Self::MIN }
     }
 }
 
@@ -130,20 +162,16 @@ impl Resolver {
                         storage::RefUpdate::Skipped { .. } => None,
                     })
                     .collect();
-                (!refs.is_empty()).then_some(RefUpdate {
-                    rid,
-                    refs: Some(refs),
-                })
+                (!refs.is_empty()).then(|| ref_update(rid, Some(refs)))
             }
-            Event::CanonicalRefUpdated { rid, refname, .. } => Some(RefUpdate {
-                rid,
-                refs: Some(vec![refname.to_string()]),
-            }),
+            Event::CanonicalRefUpdated { rid, refname, .. } => {
+                Some(ref_update(rid, Some(vec![refname.to_string()])))
+            }
             Event::LocalRefsAnnounced { rid, refs, .. } => {
                 let refs = self.announced(rid, refs);
                 match refs {
                     Some(refs) if refs.is_empty() => None,
-                    refs => Some(RefUpdate { rid, refs }),
+                    refs => Some(ref_update(rid, refs)),
                 }
             }
             _ => None,
@@ -166,6 +194,13 @@ impl Resolver {
             parse_refs(&blob.bytes)
         };
         announced_refs(&mut self.seen, rid, refs, load)
+    }
+}
+
+fn ref_update(rid: RepoId, refs: Option<Vec<String>>) -> RefUpdate {
+    RefUpdate {
+        rid,
+        refs: refs.filter(|refs| refs.len() <= MAX_REFS),
     }
 }
 
@@ -199,7 +234,6 @@ fn parse_refs(bytes: &[u8]) -> Option<BTreeMap<String, Oid>> {
         .collect()
 }
 
-/// The refs that were added, changed or removed between two sets of refs.
 fn changed_refs(before: &BTreeMap<String, Oid>, after: &BTreeMap<String, Oid>) -> Vec<String> {
     after
         .iter()
@@ -224,7 +258,14 @@ mod tests {
     use radicle::node::NodeId;
     use radicle::storage::refs::RefsAt;
 
-    use super::{announced_refs, changed_refs, parse_refs};
+    use radicle::Storage;
+    use radicle::git::UserInfo;
+    use radicle::git::fmt::{Qualified, RefString};
+    use radicle::node::{Alias, Event};
+    use radicle::storage::RefUpdate as Update;
+    use radicle_types::repo::RefUpdate;
+
+    use super::{Backoff, MAX_REFS, Resolver, announced_refs, changed_refs, parse_refs};
 
     fn oid(c: char) -> Oid {
         Oid::from_str(&c.to_string().repeat(40)).unwrap()
@@ -357,5 +398,151 @@ mod tests {
         let a = "a".repeat(40);
         let both = refs(&[("refs/heads/main", &a)]);
         assert!(changed_refs(&both, &both).is_empty());
+    }
+
+    fn nid() -> NodeId {
+        NodeId::from_str("z6MkkfM3tPXNPrPevKr3uSiQtHPuwnNhu2yUVjgd2jXVsVz5").unwrap()
+    }
+
+    // None of the events below read from storage.
+    fn resolver() -> Resolver {
+        let path = std::env::temp_dir().join("radicle-tauri-ref-updates");
+        let info = UserInfo {
+            alias: Alias::new("test"),
+            key: nid(),
+        };
+        Resolver {
+            storage: Storage::open(path, info).unwrap(),
+            seen: HashMap::new(),
+        }
+    }
+
+    fn name(name: &str) -> RefString {
+        RefString::try_from(name).unwrap()
+    }
+
+    fn fetched(updated: Vec<Update>) -> Event {
+        Event::RefsFetched {
+            remote: nid(),
+            rid: rid(),
+            updated,
+        }
+    }
+
+    #[test]
+    fn fetched_refs_name_the_changed_refs_but_not_the_skipped() {
+        let issue = format!("refs/namespaces/{}/refs/cobs/xyz.radicle.issue/1", nid());
+        let branch = format!("refs/namespaces/{}/refs/heads/topic", nid());
+        let event = fetched(vec![
+            Update::Updated {
+                name: name(&issue),
+                old: oid('a'),
+                new: oid('b'),
+            },
+            Update::Created {
+                name: name(&branch),
+                oid: oid('a'),
+            },
+            Update::Deleted {
+                name: name(
+                    "refs/namespaces/z6MkkfM3tPXNPrPevKr3uSiQtHPuwnNhu2yUVjgd2jXVsVz5/refs/heads/old",
+                ),
+                oid: oid('a'),
+            },
+            Update::Skipped {
+                name: name(
+                    "refs/namespaces/z6MkkfM3tPXNPrPevKr3uSiQtHPuwnNhu2yUVjgd2jXVsVz5/refs/heads/main",
+                ),
+                oid: oid('a'),
+            },
+        ]);
+        assert_eq!(
+            resolver().ref_update(event),
+            Some(RefUpdate {
+                rid: rid(),
+                refs: Some(vec![
+                    issue,
+                    branch,
+                    format!("refs/namespaces/{}/refs/heads/old", nid()),
+                ]),
+            })
+        );
+    }
+
+    #[test]
+    fn fetching_only_skipped_refs_is_no_update() {
+        let event = fetched(vec![Update::Skipped {
+            name: name("refs/heads/main"),
+            oid: oid('a'),
+        }]);
+        assert_eq!(resolver().ref_update(event), None);
+        assert_eq!(resolver().ref_update(fetched(vec![])), None);
+    }
+
+    #[test]
+    fn too_many_refs_are_repo_wide() {
+        let created = |i: usize| Update::Created {
+            name: name(&format!("refs/heads/{i}")),
+            oid: oid('a'),
+        };
+        let at_most = fetched((0..MAX_REFS).map(created).collect());
+        let refs = resolver().ref_update(at_most).unwrap().refs.unwrap();
+        assert_eq!(refs.len(), MAX_REFS);
+
+        let above = fetched((0..=MAX_REFS).map(created).collect());
+        assert_eq!(
+            resolver().ref_update(above),
+            Some(RefUpdate {
+                rid: rid(),
+                refs: None,
+            })
+        );
+    }
+
+    #[test]
+    fn a_canonical_ref_update_names_the_ref() {
+        let event = Event::CanonicalRefUpdated {
+            rid: rid(),
+            refname: Qualified::from_refstr(name("refs/heads/main"))
+                .unwrap()
+                .into_owned(),
+            target: oid('a'),
+        };
+        assert_eq!(
+            resolver().ref_update(event),
+            Some(RefUpdate {
+                rid: rid(),
+                refs: Some(vec!["refs/heads/main".to_string()]),
+            })
+        );
+    }
+
+    #[test]
+    fn other_events_are_ignored() {
+        let mut resolver = resolver();
+        assert_eq!(
+            resolver.ref_update(Event::PeerConnected { nid: nid() }),
+            None
+        );
+        assert_eq!(
+            resolver.ref_update(Event::RefsSynced {
+                remote: nid(),
+                rid: rid(),
+                at: oid('a'),
+            }),
+            None
+        );
+    }
+
+    #[test]
+    fn rejects_signed_refs_that_are_not_utf8() {
+        assert_eq!(parse_refs(&[0xff, 0xfe, b' ', b'\n']), None);
+    }
+
+    #[test]
+    fn backoff_doubles_up_to_the_maximum() {
+        let mut backoff = Backoff::default();
+        let delays: Vec<u64> = (0..7).map(|_| backoff.next().as_secs()).collect();
+        assert_eq!(delays, vec![2, 4, 8, 16, 32, 60, 60]);
     }
 }
