@@ -5,14 +5,12 @@
   import type { Blob } from "@bindings/source/Blob";
   import type { Tree } from "@bindings/source/Tree";
 
-  import { keys } from "@radicle-gui/core/keys";
-  import { createQuery } from "@radicle-gui/ui/lib/query.svelte";
   import { toHtml } from "hast-util-to-html";
   import { capitalize } from "lodash";
   import { useOverlayScrollbars } from "overlayscrollbars-svelte";
 
   import { invoke, InvokeError } from "@app/lib/invoke";
-  import { queryClient } from "@app/lib/query";
+  import { latestHead } from "@app/lib/latestHead.svelte";
   import * as router from "@app/lib/router";
   import type { SidebarData } from "@app/lib/router/definitions";
   import { highlight } from "@app/lib/syntax";
@@ -64,33 +62,9 @@
     revision,
   });
 
-  // The commit the shown revision resolves to now. A branch, or the default
-  // branch without a revision, can move on while the user reads, so the page
-  // keeps showing `oid` and offers the newer commit.
-  const headKey = $derived(keys.head(repo.rid, peer, revision));
-  // The loader has just resolved the revision, so that is the latest commit.
-  // A ref update during the load may have moved it since, so then the head is
-  // checked again at mount, and a push during the load still shows as newer.
-  $effect.pre(() => {
-    queryClient.setQueryData(headKey, oid);
-    const loaded = keys.headLoaded(repo.rid, peer, revision);
-    if (queryClient.getQueryState(loaded)?.isInvalidated) {
-      void queryClient.invalidateQueries({ queryKey: headKey, exact: true });
-    }
-  });
-  const head = createQuery<string>(queryClient, () => ({
-    queryKey: headKey,
-    queryFn: async () =>
-      (
-        await invoke<Commit>("repo_commit", {
-          rid: repo.rid,
-          peer,
-          revision,
-        })
-      ).id,
-  }));
+  const head = latestHead(() => ({ rid: repo.rid, peer, revision, oid }));
   const newerCommit = $derived(
-    head.current.data !== undefined && head.current.data !== oid,
+    head.current !== undefined && head.current !== oid,
   );
 
   let currentPath = $state("");

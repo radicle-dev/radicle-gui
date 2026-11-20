@@ -63,6 +63,8 @@ export function createPaginatedList<T>(opts: PaginatedListOptions<T>) {
   let activeKey = opts.key();
 
   const loader = mutexExecutor.create();
+  // Rows added at the top so far; see `prepend`.
+  let prepended = 0;
   const abort = async (): Promise<undefined> => undefined;
 
   // Parent reuses the view across filter changes; a key change resets the
@@ -98,6 +100,8 @@ export function createPaginatedList<T>(opts: PaginatedListOptions<T>) {
       }
     }
     let superseded = false;
+    let again = false;
+    const prependedBefore = prepended;
     try {
       const page = await loader.run(async () =>
         opts.fetchPage(all ? 0 : cursor, all ? undefined : opts.pageSize),
@@ -112,6 +116,12 @@ export function createPaginatedList<T>(opts: PaginatedListOptions<T>) {
         return;
       }
 
+      // Rows added at the top meanwhile would be lost by replacing the list
+      // with a page fetched from before them, so fetch again.
+      if (all && prepended !== prependedBefore) {
+        again = true;
+        return;
+      }
       more = page.more;
       if (all) {
         items = page.content;
@@ -135,6 +145,8 @@ export function createPaginatedList<T>(opts: PaginatedListOptions<T>) {
       if (!superseded) {
         loadingMore = false;
       }
+      // In `finally`, since the check above returns early.
+      if (again) await loadMore(true);
     }
   }
 
@@ -148,10 +160,17 @@ export function createPaginatedList<T>(opts: PaginatedListOptions<T>) {
   async function revalidate(window: number = opts.pageSize): Promise<void> {
     loadingMore = true;
     let superseded = false;
+    let again = false;
+    const prependedBefore = prepended;
     try {
       const page = await loader.run(async () => opts.fetchPage(0, window));
       if (page === undefined) {
         superseded = true;
+        return;
+      }
+      // As in `loadMore`: fetch again, wide enough for the rows added.
+      if (prepended !== prependedBefore) {
+        again = true;
         return;
       }
       items = page.content;
@@ -166,6 +185,8 @@ export function createPaginatedList<T>(opts: PaginatedListOptions<T>) {
       if (!superseded) {
         loadingMore = false;
       }
+      // In `finally`, since the check above returns early.
+      if (again) await revalidate(window + prepended - prependedBefore);
     }
   }
 
@@ -215,6 +236,19 @@ export function createPaginatedList<T>(opts: PaginatedListOptions<T>) {
         isRefreshing = false;
       }
     }
+  }
+
+  // Add rows that now come before the first one, such as commits on a branch
+  // that moved on. They count towards the offset, since `fetchPage` now pages
+  // from before them; a page appended while it was in flight still lands
+  // right, as it was asked for at the offset before them, and a page that
+  // replaces the list is fetched again.
+  function prepend(newItems: T[]): void {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- transient local set, never rendered
+    const seen = new Set(items.map(opts.id));
+    items = [...newItems.filter(i => !seen.has(opts.id(i))), ...items];
+    cursor += newItems.length;
+    prepended += newItems.length;
   }
 
   if (staleWindow !== undefined) {
@@ -271,6 +305,7 @@ export function createPaginatedList<T>(opts: PaginatedListOptions<T>) {
     loadMore,
     revalidate,
     refresh,
+    prepend,
     persistScroll,
   };
 }

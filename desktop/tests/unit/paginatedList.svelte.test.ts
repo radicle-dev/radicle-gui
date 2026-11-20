@@ -359,6 +359,32 @@ test("a refresh started on a key change isn't undone by the list's reset", async
   await vi.waitFor(() => expect(list.items).toEqual(["fresh"]));
 });
 
+test("rows added at the top move the paging offset along", async () => {
+  const { list } = setup(page(["c", "d"]));
+  list.prepend(["a", "b"]);
+  fetchPage.mockResolvedValueOnce(page(["e"], false));
+
+  await list.loadMore();
+
+  expect(list.items).toEqual(["a", "b", "c", "d", "e"]);
+  expect(fetchPage).toHaveBeenLastCalledWith(4, 2);
+});
+
+test("a replacing load that was in flight across a prepend is fetched again", async () => {
+  const { list } = setup(page(["c", "d"]));
+  const stale = deferred();
+  fetchPage.mockReturnValueOnce(stale.promise);
+  fetchPage.mockResolvedValueOnce(page(["a", "b", "c", "d"], false));
+
+  const loading = list.loadMore(true);
+  list.prepend(["a", "b"]);
+  stale.resolve(page(["c", "d"], false));
+  await loading;
+
+  expect(list.items).toEqual(["a", "b", "c", "d"]);
+  expect(fetchPage).toHaveBeenCalledTimes(2);
+});
+
 test("a refresh during a page load leaves the list able to load more", async () => {
   const { list } = setup();
   const pageLoad = deferred();

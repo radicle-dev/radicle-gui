@@ -445,16 +445,15 @@ export async function loadRepoHome(
 export async function loadRepoCommits(
   route: RepoCommitsRoute,
 ): Promise<LoadedRepoCommitsRoute> {
-  const [context, commits] = await Promise.all([
-    loadSourceContext(route),
-    invoke<PaginatedQuery<Commit[]>>("list_repo_commits", {
-      rid: route.rid,
-      peer: route.peer,
-      revision: route.revision,
-      skip: 0,
-      take: COMMITS_PAGE_SIZE,
-    }),
-  ]);
+  // The list pages from the commit the context resolved, so that the two
+  // agree even when the branch moves during the load.
+  const context = await loadSourceContext(route);
+  const commits = await invoke<PaginatedQuery<Commit[]>>("list_repo_commits", {
+    rid: route.rid,
+    head: context.oid,
+    skip: 0,
+    take: COMMITS_PAGE_SIZE,
+  });
 
   return {
     resource: "repo.commits",

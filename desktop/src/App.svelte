@@ -289,7 +289,10 @@
       {:else if $activeRouteStore.resource === "repo.home"}
         <RepoHome {...$activeRouteStore.params} />
       {:else if $activeRouteStore.resource === "repo.commits"}
-        <RepoCommits {...$activeRouteStore.params} />
+        <!-- A reload from a newer head starts the list over. -->
+        {#key `${$activeRouteStore.params.peer}:${$activeRouteStore.params.revision}:${$activeRouteStore.params.oid}`}
+          <RepoCommits {...$activeRouteStore.params} />
+        {/key}
       {:else if $activeRouteStore.resource === "repo.commit"}
         <RepoCommit {...$activeRouteStore.params} />
       {:else if $activeRouteStore.resource === "repo.identity"}

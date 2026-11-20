@@ -28,6 +28,9 @@
     autoStartMargin?: boolean;
     // Distance from the bottom (in pixels) at which to request the next page.
     prefetchPx?: number;
+    // Keep the rows in view where they are when rows are added before them,
+    // for a list that only ever grows at the top or the bottom.
+    keepRowsOnPrepend?: boolean;
     // Restore a previously-captured scroll position (used on history nav).
     initialCache?: ListCacheSnapshot;
     initialScrollOffset?: number;
@@ -60,6 +63,7 @@
     startMargin = undefined,
     autoStartMargin = false,
     prefetchPx = 800,
+    keepRowsOnPrepend = false,
     initialCache = undefined,
     initialScrollOffset = undefined,
     onRestored = undefined,
@@ -74,6 +78,39 @@
 
   let handle = $state<VirtualizerHandle | undefined>(undefined);
   let restored = false;
+
+  // With `keepRowsOnPrepend`, rows added before the ones in view, such as new
+  // commits at the top, keep the rows in view where they are, so that nothing
+  // moves under the reader. Virtua keeps the position from the end while
+  // `shift` is set, which only holds when the end stays the same, so not for
+  // pages loaded at the end. At the very top, new rows show instead.
+  let shift = $state(false);
+  let lastKey: string | number | undefined;
+  let lastLength = 0;
+  $effect.pre(() => {
+    const last = items.length > 0 ? keyOf(items.length - 1) : undefined;
+    shift =
+      keepRowsOnPrepend &&
+      lastKey !== undefined &&
+      last === lastKey &&
+      items.length > lastLength &&
+      (viewport?.scrollTop ?? 0) > 0;
+    lastKey = last;
+    lastLength = items.length;
+  });
+  // Only for the update that added the rows: virtua also applies it to rows
+  // that resize later.
+  $effect(() => {
+    if (!shift) return;
+    const id = requestAnimationFrame(() => {
+      shift = false;
+    });
+    return () => cancelAnimationFrame(id);
+  });
+
+  function keyOf(index: number): string | number {
+    return getKey ? getKey(items[index], index) : index;
+  }
 
   // A zero-height marker placed right before the virtualizer; its position
   // tells us how far down the list starts inside the scroll viewport.
@@ -211,6 +248,7 @@
     itemSize={estimatedItemSize}
     {bufferSize}
     startMargin={effectiveStartMargin}
+    {shift}
     cache={initialCache}
     onscroll={onScroll}
     onscrollend={reportState}>
