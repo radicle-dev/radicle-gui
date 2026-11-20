@@ -26,7 +26,6 @@
     repo: RepoInfo;
     config: Config;
     labelSuggestions: string[];
-    onchange: () => Promise<void>;
     onclose: () => void;
   }
 
@@ -38,7 +37,6 @@
     repo,
     config,
     labelSuggestions,
-    onchange,
     onclose,
   }: Props = $props();
 
@@ -57,7 +55,7 @@
     ),
   );
 
-  const enqueue = serialEdits("Editing issue failed", () => onchange());
+  const enqueue = serialEdits("Editing issue failed");
 
   function edit(action: Action) {
     const args = {
@@ -75,7 +73,6 @@
       cobId: issue.id,
       opts: { announce: $nodeRunning && $announce },
     };
-    const refresh = onchange;
     show({
       component: ConfirmDeleteCob,
       props: {
@@ -84,7 +81,6 @@
         icon: "issue",
         confirm: async () => {
           await invoke("delete_issue", args);
-          await refresh();
         },
       },
     });

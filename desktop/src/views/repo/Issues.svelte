@@ -374,7 +374,6 @@
       {repo}
       config={sidebarData.config}
       labelSuggestions={contextMenu.labelSuggestions}
-      onchange={refresh}
       onclose={contextMenu.close} />
   {/if}
 </Layout>

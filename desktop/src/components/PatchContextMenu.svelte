@@ -26,7 +26,6 @@
     repo: RepoInfo;
     config: Config;
     labelSuggestions: string[];
-    onchange: () => Promise<void>;
     onclose: () => void;
   }
 
@@ -38,7 +37,6 @@
     repo,
     config,
     labelSuggestions,
-    onchange,
     onclose,
   }: Props = $props();
 
@@ -58,7 +56,7 @@
     ),
   );
 
-  const enqueue = serialEdits("Editing patch failed", () => onchange());
+  const enqueue = serialEdits("Editing patch failed");
 
   function edit(action: Action) {
     const args = {
@@ -80,7 +78,6 @@
       cobId: patch.id,
       opts: { announce: $nodeRunning && $announce },
     };
-    const refresh = onchange;
     show({
       component: ConfirmDeleteCob,
       props: {
@@ -89,7 +86,6 @@
         icon: "patch",
         confirm: async () => {
           await invoke("delete_patch", args);
-          await refresh();
         },
       },
     });
