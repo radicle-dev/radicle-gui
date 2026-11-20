@@ -8,10 +8,14 @@
   import type { Config } from "@bindings/config/Config";
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
+  import { createQuery, pinned } from "@radicle-gui/ui/lib/query.svelte";
+
+  import { issueDetail } from "@app/lib/cobQueries";
   import { nodeRunning } from "@app/lib/events";
   import { invoke } from "@app/lib/invoke";
   import { issueTimeline } from "@app/lib/issueTimeline";
   import { show } from "@app/lib/modal";
+  import { queryClient } from "@app/lib/query";
   import * as roles from "@app/lib/roles";
   import * as router from "@app/lib/router";
   import {
@@ -32,6 +36,7 @@
   import IssueDescription from "@app/components/IssueDescription.svelte";
   import IssueMetadata from "@app/components/IssueMetadata.svelte";
   import IssueStateButton from "@app/components/IssueStateButton.svelte";
+  import NewerBanner from "@app/components/NewerBanner.svelte";
   import ScrollArea from "@app/components/ScrollArea.svelte";
   import ShareButton from "@app/components/ShareButton.svelte";
   import Topbar from "@app/components/Topbar.svelte";
@@ -47,9 +52,48 @@
     threads: Thread[];
   }
 
-  /* eslint-disable prefer-const */
-  let { repo, issue, activity, config, threads }: Props = $props();
-  /* eslint-enable prefer-const */
+  const {
+    repo,
+    issue: loadedIssue,
+    activity: loadedActivity,
+    config,
+    threads: loadedThreads,
+  }: Props = $props();
+
+  // The route loader already put the issue in the cache.
+  const query = $derived(issueDetail(repo.rid, loadedIssue.id));
+  const detail = createQuery(queryClient, () => query);
+
+  const issue = $derived(detail.current.data?.issue ?? loadedIssue);
+
+  // Deleted elsewhere while shown, so there is nothing left to show. Deleting
+  // it here navigates by itself.
+  let deleting = false;
+  $effect(() => {
+    if (detail.current.data && !detail.current.data.issue && !deleting) {
+      void router.push({
+        resource: "repo.issues",
+        rid: repo.rid,
+        status: loadedIssue.state.status,
+      });
+    }
+  });
+  const activity = $derived(detail.current.data?.activity ?? loadedActivity);
+  const threads = $derived(detail.current.data?.threads ?? loadedThreads);
+
+  const noEdits: NonNullable<Issue["body"]>["edits"] = [];
+  // The description is what the user reads, so an edit by someone else
+  // doesn't replace it until the user asks for it. Reactions show as they
+  // arrive.
+  const description = pinned(() => issue.body?.edits ?? noEdits);
+  // svelte-ignore state_referenced_locally
+  let pinnedIssueId = loadedIssue.id;
+  $effect.pre(() => {
+    if (loadedIssue.id !== pinnedIssueId) {
+      pinnedIssueId = loadedIssue.id;
+      description.apply();
+    }
+  });
 
   const canEditIssue = $derived(
     roles.isDelegateOrAuthor(
@@ -65,21 +109,13 @@
 
   const activityItems = $derived(issueTimeline(issue, activity));
 
+  // After the user's own changes, refetch and show them right away.
   async function reload() {
-    [issue, activity, threads] = await Promise.all([
-      invoke<Issue>("issue_by_id", {
-        rid: repo.rid,
-        id: issue.id,
-      }),
-      invoke<Operation<Action>[]>("activity_by_issue", {
-        rid: repo.rid,
-        id: issue.id,
-      }),
-      invoke<Thread[]>("comment_threads_by_issue_id", {
-        rid: repo.rid,
-        id: issue.id,
-      }),
-    ]);
+    await queryClient.invalidateQueries({
+      queryKey: query.queryKey,
+      refetchType: "all",
+    });
+    description.apply();
   }
 
   async function createComment(
@@ -199,6 +235,7 @@
         status: issue.state.status,
       });
     } catch (error) {
+      deleting = false;
       console.error("Deleting issue failed", error);
     }
   }
@@ -348,11 +385,17 @@
         </div>
 
         <div class="content">
-          {#if issue.body}
+          {#if description.stale}
+            <NewerBanner
+              message="The description has been edited."
+              margin="0 0 0.5rem"
+              onShow={() => description.apply()} />
+          {/if}
+          {#if issue.body && description.current.length > 0}
             {@const body = issue.body}
             <IssueDescription
               rid={repo.rid}
-              body={body.edits.slice(-1)[0].body}
+              body={description.current.slice(-1)[0].body}
               embeds={body.embeds ?? []}
               reactions={body.reactions}
               currentUserNid={config.publicKey}

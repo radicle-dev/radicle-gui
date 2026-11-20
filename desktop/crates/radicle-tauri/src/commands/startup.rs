@@ -1,3 +1,5 @@
+use std::sync::Once;
+
 use tauri::{AppHandle, Emitter, Manager};
 
 use radicle::cob::cache::COBS_DB_FILE;
@@ -56,14 +58,26 @@ pub(crate) fn startup(app: AppHandle) -> Result<Config, Error> {
     // Both probes are blocking socket calls, so they get their own thread. The
     // radicle node's event goes out first, so a slow artifact node can't
     // delay it.
+    // Started once per app, as `startup` runs again whenever the webview
+    // reloads.
+    static PROBING: Once = Once::new();
     let probe_state = state.clone();
-    std::thread::spawn(move || {
-        loop {
-            let _ = node_handle.emit("node_running", node.is_running());
-            let _ = node_handle.emit("artifact_node_running", probe_state.artifact_node_running());
-            std::thread::sleep(std::time::Duration::from_secs(2));
-        }
+    PROBING.call_once(|| {
+        std::thread::spawn(move || {
+            loop {
+                let _ = node_handle.emit("node_running", node.is_running());
+                let _ = node_handle.emit("node_events", crate::ref_updates::is_live());
+                let _ =
+                    node_handle.emit("artifact_node_running", probe_state.artifact_node_running());
+                std::thread::sleep(std::time::Duration::from_secs(2));
+            }
+        });
     });
+
+    crate::ref_updates::spawn(
+        app.app_handle().clone(),
+        Node::new(profile.home().socket_from_env()),
+    );
 
     app.manage(state.clone());
 

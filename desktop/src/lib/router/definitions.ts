@@ -18,6 +18,7 @@ import {
   loadRepoHome,
 } from "@app/views/repo/router";
 
+import { enterRepo } from "@app/lib/cobQueries";
 import {
   cachedActor,
   cachedListReposSummary,
@@ -158,6 +159,8 @@ export async function loadRoute(
   route: Route,
   previousLoaded: LoadedRoute,
 ): Promise<LoadedRoute> {
+  enterRepo("rid" in route ? route.rid : undefined);
+
   if (route.resource === "inbox") {
     return loadInbox();
   } else if (route.resource === "guide") {

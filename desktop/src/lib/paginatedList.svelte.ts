@@ -66,8 +66,9 @@ export function createPaginatedList<T>(opts: PaginatedListOptions<T>) {
   const abort = async (): Promise<undefined> => undefined;
 
   // Parent reuses the view across filter changes; a key change resets the
-  // pagination state from the loader's fresh page.
-  $effect(() => {
+  // pagination state from the loader's fresh page. Before other effects, so
+  // that a refresh the view starts for the new key isn't aborted by it.
+  $effect.pre(() => {
     const key = opts.key();
     const fresh = opts.page();
     // Skip the initial mount (state is seeded above, possibly restored); only
@@ -89,6 +90,13 @@ export function createPaginatedList<T>(opts: PaginatedListOptions<T>) {
   async function loadMore(all: boolean = false): Promise<void> {
     if (!more) return;
     loadingMore = true;
+    if (refreshing) {
+      await refreshing;
+      if (!more) {
+        loadingMore = false;
+        return;
+      }
+    }
     let superseded = false;
     try {
       const page = await loader.run(async () =>
@@ -161,6 +169,54 @@ export function createPaginatedList<T>(opts: PaginatedListOptions<T>) {
     }
   }
 
+  // Refetches the rows shown after a change elsewhere, such as a new issue.
+  // The list keeps its last row as its end, so that rows added before the ones
+  // in view leave them in place, and nothing shows as loading. A page load
+  // waits for it rather than cancelling it, and one it cancels leaves
+  // `loadingMore` for it to clear.
+  let refreshing: Promise<void> | undefined;
+  let isRefreshing = $state(false);
+  async function refresh(): Promise<void> {
+    const interrupted = loadingMore;
+    const run = (async () => {
+      const shown = Math.max(items.length, opts.pageSize);
+      const lastId =
+        items.length > 0 ? opts.id(items[items.length - 1]) : undefined;
+      let superseded = false;
+      try {
+        const page = await loader.run(async () =>
+          opts.fetchPage(0, shown + opts.pageSize),
+        );
+        if (page === undefined) {
+          superseded = true;
+          return;
+        }
+        const end =
+          lastId === undefined
+            ? -1
+            : page.content.findIndex(item => opts.id(item) === lastId);
+        const keep = end >= 0 ? end + 1 : Math.min(page.content.length, shown);
+        items = page.content.slice(0, keep);
+        cursor = keep;
+        more = page.more || keep < page.content.length;
+      } catch (error) {
+        console.error("Refreshing the list failed: ", error);
+      } finally {
+        if (interrupted && !superseded) loadingMore = false;
+      }
+    })();
+    refreshing = run;
+    isRefreshing = true;
+    try {
+      await run;
+    } finally {
+      if (refreshing === run) {
+        refreshing = undefined;
+        isRefreshing = false;
+      }
+    }
+  }
+
   if (staleWindow !== undefined) {
     void revalidate(staleWindow);
   }
@@ -200,6 +256,9 @@ export function createPaginatedList<T>(opts: PaginatedListOptions<T>) {
     get loadingMore() {
       return loadingMore;
     },
+    get refreshing() {
+      return isRefreshing;
+    },
     get initialScrollOffset() {
       return restoredScroll?.scrollOffset;
     },
@@ -211,6 +270,7 @@ export function createPaginatedList<T>(opts: PaginatedListOptions<T>) {
     },
     loadMore,
     revalidate,
+    refresh,
     persistScroll,
   };
 }

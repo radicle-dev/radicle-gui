@@ -15,14 +15,44 @@ import type { RepoInfo } from "@bindings/repo/RepoInfo";
 import type { RepoSummary } from "@bindings/repo/RepoSummary";
 import type { TreePath } from "@bindings/repo/TreePath";
 
+import { keys } from "@radicle-gui/core/keys";
 import { cached } from "@radicle-gui/ui/lib/cached";
 import * as tauri from "@tauri-apps/api/core";
 
 import { labs } from "@app/lib/labs";
 import { projectsOf } from "@app/lib/projects";
+import { queryClient } from "@app/lib/query";
 import type { RepoListScope } from "@app/lib/repoListScope";
 
+// Commands that change a repository's info: its issue and patch counts, and
+// whether it is seeded. The node doesn't announce the user's own writes when
+// announcing is off, so the cache learns of them here.
+const countWrites = new Set([
+  "create_issue",
+  "edit_issue",
+  "delete_issue",
+  "edit_patch",
+  "delete_patch",
+  "rebuild_issue_cache",
+  "rebuild_patch_cache",
+  "seed",
+  "unseed",
+]);
+
 export async function invoke<T = null>(
+  cmd: string,
+  args?: tauri.InvokeArgs,
+  options?: tauri.InvokeOptions,
+): Promise<T> {
+  const result = await invokeCommand<T>(cmd, args, options);
+  const rid = (args as { rid?: unknown } | undefined)?.rid;
+  if (countWrites.has(cmd) && typeof rid === "string") {
+    void queryClient.invalidateQueries({ queryKey: keys.repoInfo(rid) });
+  }
+  return result;
+}
+
+async function invokeCommand<T>(
   cmd: string,
   args?: tauri.InvokeArgs,
   options?: tauri.InvokeOptions,

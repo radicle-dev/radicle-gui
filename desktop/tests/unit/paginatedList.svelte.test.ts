@@ -327,3 +327,89 @@ test("a fresh navigation ignores the snapshot", () => {
   expect(list.initialScrollOffset).toBeUndefined();
   expect(fetchPage).not.toHaveBeenCalled();
 });
+
+test("a refresh started on a key change isn't undone by the list's reset", async () => {
+  let key = $state(`list-${++keyCount}`);
+  let current = $state(page(["a", "b"]));
+  let list!: ReturnType<typeof createPaginatedList<string>>;
+  cleanup = $effect.root(() => {
+    list = createPaginatedList({
+      key: () => key,
+      page: () => current,
+      fetchPage,
+      pageSize: 2,
+      id: item => item,
+    });
+    // As a view's `onInvalidate` does for an update during the new key's load.
+    let seen = key;
+    $effect.pre(() => {
+      if (key !== seen) {
+        seen = key;
+        void list.revalidate();
+      }
+    });
+  });
+  flushSync();
+  fetchPage.mockResolvedValueOnce(page(["fresh"], false));
+
+  key = `list-${++keyCount}`;
+  current = page(["stale"]);
+  flushSync();
+
+  await vi.waitFor(() => expect(list.items).toEqual(["fresh"]));
+});
+
+test("a refresh during a page load leaves the list able to load more", async () => {
+  const { list } = setup();
+  const pageLoad = deferred();
+  fetchPage.mockReturnValueOnce(pageLoad.promise);
+  const loading = list.loadMore();
+  fetchPage.mockResolvedValueOnce(page(["new", "a", "b", "c"]));
+
+  await list.refresh();
+  pageLoad.resolve(page(["c", "d"]));
+  await loading;
+
+  expect(list.items).toEqual(["new", "a", "b"]);
+  expect(list.loadingMore).toBe(false);
+  expect(list.more).toBe(true);
+});
+
+test("a page load waits for a refresh in flight", async () => {
+  const { list } = setup();
+  const refreshed = deferred();
+  fetchPage.mockReturnValueOnce(refreshed.promise);
+  const refreshing = list.refresh();
+  fetchPage.mockResolvedValueOnce(page(["b", "c"], false));
+  const loading = list.loadMore();
+
+  refreshed.resolve(page(["new", "a", "b"]));
+  await Promise.all([refreshing, loading]);
+
+  expect(list.items).toEqual(["new", "a", "b", "c"]);
+  expect(fetchPage.mock.calls.map(([skip]) => skip)).toEqual([0, 3]);
+  expect(list.loadingMore).toBe(false);
+});
+
+test("a refresh keeps the list's end, so rows added at the top don't push it", async () => {
+  const { list } = setup(page(["a", "b"]));
+  fetchPage.mockResolvedValueOnce(page(["new", "a", "b", "c"]));
+
+  await list.refresh();
+
+  expect(list.items).toEqual(["new", "a", "b"]);
+  expect(list.more).toBe(true);
+});
+
+test("says when it is refreshing", async () => {
+  const { list } = setup();
+  const refreshed = deferred();
+  fetchPage.mockReturnValueOnce(refreshed.promise);
+
+  const refreshing = list.refresh();
+  expect(list.refreshing).toBe(true);
+  refreshed.resolve(page(["a", "b"], false));
+  await refreshing;
+
+  expect(list.refreshing).toBe(false);
+});

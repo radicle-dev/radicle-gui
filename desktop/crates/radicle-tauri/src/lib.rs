@@ -1,4 +1,5 @@
 mod commands;
+mod ref_updates;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;

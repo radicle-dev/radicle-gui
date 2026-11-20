@@ -12,10 +12,12 @@
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
   import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
+  import { createQuery } from "@radicle-gui/ui/lib/query.svelte";
   import countBy from "lodash/countBy";
   import { tick } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
 
+  import { patchDetail } from "@app/lib/cobQueries";
   import { commentSourcesOf } from "@app/lib/commentSources";
   import { checkedFileProgress } from "@app/lib/diffText";
   import { draftReviewStorage } from "@app/lib/draftReviewStorage";
@@ -30,6 +32,7 @@
   import { scrollBehavior } from "@app/lib/motion";
   import { setPatchActivitySource } from "@app/lib/patchActivityContext";
   import { patchContributions } from "@app/lib/patchContributions";
+  import { queryClient } from "@app/lib/query";
   import type { ReviewEntry } from "@app/lib/reviewSummary";
   import { compareRange, revisionRange } from "@app/lib/revisionCompare";
   import { revisionTitle } from "@app/lib/revisionDescription";
@@ -82,18 +85,40 @@
     review?: Review;
   }
 
-  /* eslint-disable prefer-const */
-  let {
+  const {
     repo,
-    patch,
-    revisions,
+    patch: loadedPatch,
+    revisions: loadedRevisions,
     config,
-    activity,
+    activity: loadedActivity,
     status,
     view,
     review,
   }: Props = $props();
-  /* eslint-enable prefer-const */
+
+  // The route loader already put the patch in the cache.
+  const query = $derived(patchDetail(repo.rid, loadedPatch.id));
+  const detail = createQuery(queryClient, () => query);
+
+  const patch = $derived(detail.current.data?.patch ?? loadedPatch);
+  const activity = $derived(detail.current.data?.activity ?? loadedActivity);
+  // New reviews and comments show as they arrive: the diff keeps the first
+  // visible line in place when comments are added above it, so the user
+  // doesn't lose their place.
+  // A deleted patch has no revisions; keep the loaded ones until the view
+  // navigates away.
+  const revisions = $derived(
+    detail.current.data?.patch
+      ? detail.current.data.revisions
+      : loadedRevisions,
+  );
+
+  // Deleted elsewhere while shown, so there is nothing left to show.
+  $effect(() => {
+    if (detail.current.data?.patch === null) {
+      void router.push({ resource: "repo.patches", rid: repo.rid, status });
+    }
+  });
 
   const currentReview = $derived.by(() => {
     if (!review) return undefined;
@@ -187,6 +212,9 @@
   });
   // svelte-ignore state_referenced_locally
   let selectedRevisionId: string = $state(revisions.slice(-1)[0].id);
+  // A revision pushed meanwhile doesn't replace the selected one: the
+  // revision picker and "Back to latest revision" show that there is a newer
+  // one.
   const selectedRevision: Revision = $derived(
     revisions.find(r => r.id === selectedRevisionId) ?? revisions.slice(-1)[0],
   );
@@ -498,21 +526,12 @@
     }
   }
 
-  async function loadPatch(patchId: string = patch.id) {
-    [patch, revisions, activity] = await Promise.all([
-      invoke<Patch>("patch_by_id", {
-        rid: repo.rid,
-        id: patchId,
-      }),
-      invoke<Revision[]>("revisions_by_patch", {
-        rid: repo.rid,
-        id: patchId,
-      }),
-      invoke<Operation<Action>[]>("activity_by_patch", {
-        rid: repo.rid,
-        id: patchId,
-      }),
-    ]);
+  // After the user's own changes, refetch and show them right away.
+  async function loadPatch() {
+    await queryClient.invalidateQueries({
+      queryKey: query.queryKey,
+      refetchType: "all",
+    });
   }
 
   // A draft review belongs to a single revision, mirroring the protocol's

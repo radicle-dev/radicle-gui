@@ -21,13 +21,18 @@ import type { Readme } from "@bindings/repo/Readme";
 import type { RepoInfo } from "@bindings/repo/RepoInfo";
 import type { Tree } from "@bindings/source/Tree";
 
+import { keys } from "@radicle-gui/core/keys";
+import { markLoading } from "@radicle-gui/ui/lib/query.svelte";
+
 import type { BoardView } from "@app/lib/board";
 import { loadView } from "@app/lib/boardView";
+import { issueDetail, load, patchDetail, repoInfo } from "@app/lib/cobQueries";
 import {
   cachedGetCommitDiff,
   cachedGetDiffText,
   invoke,
 } from "@app/lib/invoke";
+import { queryClient } from "@app/lib/query";
 import type { LoadedRoute, SidebarData } from "@app/lib/router/definitions";
 import { loadSidebarData } from "@app/lib/router/definitions";
 import { unreachable } from "@app/lib/utils";
@@ -286,9 +291,8 @@ export async function loadPatch(
 ): Promise<LoadedRepoPatchRoute | LoadedRepoPatchesRoute> {
   // Switching tab (view) or review on the same patch shouldn't refetch the
   // repo-wide data, so the sidebar and patch list are reused when we stay on
-  // the same patch. The patch itself, its revisions and its activity are
-  // always refetched: they change on every comment, review and edit, and a
-  // reused copy resurrects pre-mutation state when the tab changes.
+  // the same patch. The patch itself, its revisions and its activity load
+  // through the cache, which the view reads from.
   const reuse =
     previousLoaded?.resource === "repo.patch" &&
     previousLoaded.params.repo.rid === route.rid &&
@@ -297,35 +301,20 @@ export async function loadPatch(
       ? previousLoaded.params
       : undefined;
 
-  const [[sidebarData, repo, patches], [patch, revisions, activity]] =
+  const [[sidebarData, repo, patches], { patch, revisions, activity }] =
     await Promise.all([
       reuse
         ? ([reuse.sidebarData, reuse.repo, reuse.patches] as const)
         : Promise.all([
             loadSidebarData(),
-            invoke<RepoInfo>("repo_by_id", {
-              rid: route.rid,
-            }),
+            load(repoInfo(route.rid)),
             invoke<PaginatedQuery<Patch[]>>("list_patches", {
               rid: route.rid,
               status: route.status,
               take: DEFAULT_TAKE,
             }),
           ] as const),
-      Promise.all([
-        invoke<Patch | null>("patch_by_id", {
-          rid: route.rid,
-          id: route.patch,
-        }),
-        invoke<Revision[]>("revisions_by_patch", {
-          rid: route.rid,
-          id: route.patch,
-        }),
-        invoke<Operation<PatchAction>[]>("activity_by_patch", {
-          rid: route.rid,
-          id: route.patch,
-        }),
-      ] as const),
+      load(patchDetail(route.rid, route.patch)),
     ]);
 
   // The patch may have been deleted (removed here, on another device, or a
@@ -364,11 +353,10 @@ export async function loadPatch(
 export async function loadPatches(
   route: RepoPatchesRoute,
 ): Promise<LoadedRepoPatchesRoute> {
+  markLoading(queryClient, keys.patchList(route.rid, route.status ?? "all"));
   const [sidebarData, repo, patches] = await Promise.all([
     loadSidebarData(),
-    invoke<RepoInfo>("repo_by_id", {
-      rid: route.rid,
-    }),
+    load(repoInfo(route.rid)),
     invoke<PaginatedQuery<Patch[]>>("list_patches", {
       rid: route.rid,
       status: route.status,
@@ -403,9 +391,7 @@ async function loadSourceContext(route: {
 }): Promise<SourceContext> {
   const [sidebarData, repo, commit] = await Promise.all([
     loadSidebarData(),
-    invoke<RepoInfo>("repo_by_id", {
-      rid: route.rid,
-    }),
+    load(repoInfo(route.rid)),
     invoke<Commit>("repo_commit", {
       rid: route.rid,
       peer: route.peer,
@@ -480,9 +466,7 @@ export async function loadRepoCommit(
 ): Promise<LoadedRepoCommitRoute> {
   const [sidebarData, repo, commit, diff, patch] = await Promise.all([
     loadSidebarData(),
-    invoke<RepoInfo>("repo_by_id", {
-      rid: route.rid,
-    }),
+    load(repoInfo(route.rid)),
     invoke<Commit>("repo_commit", {
       rid: route.rid,
       sha: route.commit,
@@ -507,9 +491,7 @@ export async function loadIdentity(
 ): Promise<LoadedRepoIdentityRoute> {
   const [sidebarData, repo, identity] = await Promise.all([
     loadSidebarData(),
-    invoke<RepoInfo>("repo_by_id", {
-      rid: route.rid,
-    }),
+    load(repoInfo(route.rid)),
     invoke<Identity>("identity_by_repo", {
       rid: route.rid,
     }),
@@ -523,25 +505,22 @@ export async function loadIdentity(
 
 export async function loadIssue(
   route: RepoIssueRoute,
-): Promise<LoadedRepoIssueRoute> {
-  const [sidebarData, repo, issue, activity, threads] = await Promise.all([
+): Promise<LoadedRepoIssueRoute | LoadedRepoIssuesRoute> {
+  const [sidebarData, repo, { issue, activity, threads }] = await Promise.all([
     loadSidebarData(),
-    invoke<RepoInfo>("repo_by_id", {
-      rid: route.rid,
-    }),
-    invoke<Issue>("issue_by_id", {
-      rid: route.rid,
-      id: route.issue,
-    }),
-    invoke<Operation<IssueAction>[]>("activity_by_issue", {
-      rid: route.rid,
-      id: route.issue,
-    }),
-    invoke<Thread[]>("comment_threads_by_issue_id", {
-      rid: route.rid,
-      id: route.issue,
-    }),
+    load(repoInfo(route.rid)),
+    load(issueDetail(route.rid, route.issue)),
   ]);
+
+  // The issue may have been deleted (here, on another device, or a stale
+  // link); fall back to the issue list instead of crashing.
+  if (!issue) {
+    return loadIssues({
+      resource: "repo.issues",
+      rid: route.rid,
+      status: "open",
+    });
+  }
 
   return {
     resource: "repo.issue",
@@ -559,11 +538,10 @@ export async function loadIssue(
 export async function loadIssues(
   route: RepoIssuesRoute,
 ): Promise<LoadedRepoIssuesRoute> {
+  markLoading(queryClient, keys.issueList(route.rid, route.status));
   const [sidebarData, repo, issues] = await Promise.all([
     loadSidebarData(),
-    invoke<RepoInfo>("repo_by_id", {
-      rid: route.rid,
-    }),
+    load(repoInfo(route.rid)),
     invoke<PaginatedQuery<Issue[]>>("list_issues", {
       rid: route.rid,
       status: route.status,
@@ -598,9 +576,7 @@ export async function loadReleases(
   const scope = route.scope ?? "trusted";
   const [sidebarData, repo, releases, releaseCounts] = await Promise.all([
     loadSidebarData(),
-    invoke<RepoInfo>("repo_by_id", {
-      rid: route.rid,
-    }),
+    load(repoInfo(route.rid)),
     listReleases(route.rid, scope, 0, RELEASES_PER_PAGE),
     invoke<ReleaseCounts>("release_counts", {
       rid: route.rid,
@@ -628,9 +604,7 @@ export async function loadRelease(
 ): Promise<LoadedRepoReleaseRoute | LoadedRepoReleasesRoute> {
   const [sidebarData, repo, release] = await Promise.all([
     loadSidebarData(),
-    invoke<RepoInfo>("repo_by_id", {
-      rid: route.rid,
-    }),
+    load(repoInfo(route.rid)),
     invoke<Release | null>("release_by_id", {
       rid: route.rid,
       id: route.release,
@@ -663,7 +637,7 @@ export async function loadBoard(
   const [sidebarData, repo, boards, issues, patches, links] = await Promise.all(
     [
       loadSidebarData(),
-      invoke<RepoInfo>("repo_by_id", { rid: route.rid }),
+      load(repoInfo(route.rid)),
       invoke<Board[]>("list_boards", { rid: route.rid }),
       invoke<PaginatedQuery<Issue[]>>("list_issues", {
         rid: route.rid,

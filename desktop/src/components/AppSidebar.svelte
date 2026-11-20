@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
+  import { keys } from "@radicle-gui/core/keys";
+  import { onInvalidate } from "@radicle-gui/ui/lib/query.svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onDestroy, onMount, tick } from "svelte";
   import { backOut, cubicOut } from "svelte/easing";
@@ -8,8 +10,9 @@
   import { boolean } from "zod";
 
   import { checkRadicleCLI } from "@app/lib/checkRadicleCLI.svelte";
+  import { nodeEvents } from "@app/lib/events";
   import { hints } from "@app/lib/hints";
-  import { dynamicInterval } from "@app/lib/interval";
+  import { dynamicInterval, poll } from "@app/lib/interval";
   import { modalStore, show } from "@app/lib/modal";
   import { motion } from "@app/lib/motion";
   import {
@@ -17,6 +20,7 @@
     notificationCount,
     refreshNotificationCount,
   } from "@app/lib/notificationCount.svelte";
+  import { queryClient } from "@app/lib/query";
   import * as router from "@app/lib/router";
   import type { SidebarData } from "@app/lib/router/definitions";
   import { ariaKeyShortcuts, useShortcuts } from "@app/lib/shortcuts.svelte";
@@ -267,9 +271,26 @@
       await router.push({ resource: "guide" });
       firstLaunchStorage.value = false;
     }
+  });
 
-    await refreshNotificationCount();
-    dynamicInterval("notificationCount", refreshNotificationCount, 3_000);
+  // The node writes notifications as it fetches, so its events say when to
+  // count them again. Without them, the count is polled. Either way it is
+  // fetched once at start, since events can already be live then, such as
+  // after the webview reloads.
+  onMount(() => {
+    // The poll below fetches it right away itself.
+    if ($nodeEvents) refreshNotificationCount().catch(console.error);
+  });
+  onInvalidate(
+    queryClient,
+    () => keys.notificationCount(),
+    refreshNotificationCount,
+  );
+  $effect(() => {
+    if (!$nodeEvents) {
+      // A failed poll mustn't end polling.
+      return poll(() => refreshNotificationCount().catch(console.error), 3_000);
+    }
   });
 
   $effect(() => {

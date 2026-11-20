@@ -3,6 +3,7 @@
   import type { ErrorWrapper } from "@bindings/error/ErrorWrapper";
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
+  import { createQuery } from "@radicle-gui/ui/lib/query.svelte";
   import { onDestroy, onMount } from "svelte";
   import { get } from "svelte/store";
 
@@ -13,10 +14,12 @@
     resetFontSize,
   } from "@app/lib/appearance.svelte";
   import { checkAuth, startup } from "@app/lib/auth.svelte";
+  import { repoInfo } from "@app/lib/cobQueries";
   import { deepLinksReady, listenForDeepLinks } from "@app/lib/deepLink";
   import { dynamicInterval } from "@app/lib/interval";
   import { invoke } from "@app/lib/invoke";
   import { hide, modalStore, show, toggle } from "@app/lib/modal";
+  import { queryClient } from "@app/lib/query";
   import * as router from "@app/lib/router";
   import { isLoadedRepoRoute } from "@app/lib/router/definitions";
   import { listenForShortcuts, useShortcuts } from "@app/lib/shortcuts.svelte";
@@ -62,9 +65,19 @@
 
   const activeRouteStore = router.activeRouteStore;
 
-  const activeRepo = $derived.by((): RepoInfo | undefined => {
+  const loadedRepo = $derived.by((): RepoInfo | undefined => {
     const route = $activeRouteStore;
     return isLoadedRepoRoute(route) ? route.params.repo : undefined;
+  });
+  // The sidebar's counts follow the cache, which ref updates and the user's
+  // own writes keep current, instead of staying as the route loaded them.
+  const activeRepoQuery = createQuery(queryClient, () => ({
+    ...repoInfo(loadedRepo?.rid ?? ""),
+    enabled: loadedRepo !== undefined,
+  }));
+  const activeRepo = $derived.by((): RepoInfo | undefined => {
+    const cached = activeRepoQuery.current.data;
+    return cached && cached.rid === loadedRepo?.rid ? cached : loadedRepo;
   });
 
   function modalHasTextEntry(): boolean {

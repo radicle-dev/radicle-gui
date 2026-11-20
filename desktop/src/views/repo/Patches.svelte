@@ -6,8 +6,11 @@
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
   import { DEFAULT_TAKE } from "@app/views/repo/router";
+  import { keys } from "@radicle-gui/core/keys";
+  import { createQuery, onInvalidate } from "@radicle-gui/ui/lib/query.svelte";
   import delay from "lodash/delay";
 
+  import { repoInfo } from "@app/lib/cobQueries";
   import { searchCobs } from "@app/lib/cobSearch";
   import { debounced } from "@app/lib/debounced.svelte";
   import { channel, invoke } from "@app/lib/invoke";
@@ -19,6 +22,7 @@
     resetPatchCounts,
     updatePatchCounts,
   } from "@app/lib/patchCounts.svelte";
+  import { queryClient } from "@app/lib/query";
   import * as router from "@app/lib/router";
   import type { SidebarData } from "@app/lib/router/definitions";
   import { modifierKey } from "@app/lib/utils";
@@ -42,9 +46,11 @@
     sidebarData: SidebarData;
   }
 
-  /* eslint-disable prefer-const */
-  let { repo, patches, status, sidebarData }: Props = $props();
-  /* eslint-enable prefer-const */
+  const { repo: loadedRepo, patches, status, sidebarData }: Props = $props();
+
+  // Its counts change with every patch, so it follows the cache.
+  const repoQuery = createQuery(queryClient, () => repoInfo(loadedRepo.rid));
+  const repo = $derived(repoQuery.current.data ?? loadedRepo);
 
   function listKey(filter: PatchStatus | undefined): string {
     return `repo.patches:${repo.rid}:${filter ?? "all"}`;
@@ -79,8 +85,15 @@
   $effect(() => {
     // Only record counts from settled, fresh data: while a history-restore
     // revalidation is in flight (loadingMore), the snapshot's length/more are
-    // stale and would flag a cache mismatch that isn't there.
-    if (list.more === false && !list.loadingMore) {
+    // stale and would flag a cache mismatch that isn't there. An update
+    // refreshes the list and the repo's counts separately, so one of them
+    // can briefly be ahead of the other.
+    if (
+      list.more === false &&
+      !list.loadingMore &&
+      !list.refreshing &&
+      !repoQuery.current.isFetching
+    ) {
       updatePatchCounts(list.items.length, project.meta.patches, status);
     }
   });
@@ -116,13 +129,16 @@
   const contextMenu = createListContextMenu(() => list.items);
 
   async function refresh() {
-    // Re-fetch the repo too: the tab counts come from its project payload.
-    const [repoInfo] = await Promise.all([
-      invoke<RepoInfo>("repo_by_id", { rid: repo.rid }),
-      list.revalidate(Math.max(list.items.length, DEFAULT_TAKE)),
-    ]);
-    repo = repoInfo;
+    await list.refresh();
   }
+
+  // The paginated list keeps its own pages, so the cache only tells
+  // it when to refresh.
+  onInvalidate(
+    queryClient,
+    () => keys.patchList(repo.rid, status ?? "all"),
+    refresh,
+  );
 
   const searchResults = $derived(
     searchCobs(debouncedSearch.current, list.items),

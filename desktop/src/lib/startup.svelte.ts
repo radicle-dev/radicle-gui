@@ -1,11 +1,47 @@
+import type { Key } from "@radicle-gui/core/keys";
+import type { RefUpdate } from "@radicle-gui/core/refUpdates";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
+import { keys } from "@radicle-gui/core/keys";
+import { affectedKeys } from "@radicle-gui/core/refUpdates";
 import { listen } from "@tauri-apps/api/event";
 import once from "lodash/once";
+import { get } from "svelte/store";
 
 import { invoke } from "@app/lib/invoke";
+import { queryClient } from "@app/lib/query";
 
-import { artifactNodeRunning, nodeRunning } from "./events";
+import { artifactNodeRunning, nodeEvents, nodeRunning } from "./events";
+
+// Collects keys and invalidates them together after `delay`.
+function batch(delay: number): (affected: Key[]) => void {
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- never rendered
+  const pending = new Map<string, Key>();
+  let flush: ReturnType<typeof setTimeout> | undefined;
+  return affected => {
+    if (affected.length === 0) return;
+    for (const key of affected) pending.set(key.join("\0"), key);
+    flush ??= setTimeout(() => {
+      flush = undefined;
+      const queryKeys = [...pending.values()];
+      pending.clear();
+      for (const queryKey of queryKeys) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
+    }, delay);
+  };
+}
+
+// A fetch often updates many refs in a burst, so invalidations are batched.
+const invalidate = batch(100);
+
+function onRefUpdate(update: RefUpdate) {
+  invalidate([
+    ...affectedKeys(update),
+    // The node writes notifications as it fetches.
+    keys.notificationCount(),
+  ]);
+}
 
 export let unlistenNodeEvents: UnlistenFn | undefined = undefined;
 
@@ -37,6 +73,27 @@ export const createEventEmittersOnce = once(async (): Promise<UnlistenFn> => {
     listen<boolean>("artifact_node_running", event => {
       artifactNodeRunning.set(event.payload);
     }),
+    listen<boolean>("node_events", event => {
+      nodeEvents.set(event.payload);
+    }),
+    listen<RefUpdate>("ref_update", event => onRefUpdate(event.payload)),
+    // The backend may have missed events while it wasn't subscribed.
+    listen("ref_resync", () => {
+      void queryClient.invalidateQueries();
+    }),
   ]);
-  return () => unlisteners.forEach(unlisten => unlisten());
+
+  // Without the node's events, refetch what is shown whenever the user comes
+  // back to the window.
+  const onFocus = () => {
+    if (!get(nodeEvents)) {
+      void queryClient.invalidateQueries();
+    }
+  };
+  window.addEventListener("focus", onFocus);
+
+  return () => {
+    unlisteners.forEach(unlisten => unlisten());
+    window.removeEventListener("focus", onFocus);
+  };
 });
