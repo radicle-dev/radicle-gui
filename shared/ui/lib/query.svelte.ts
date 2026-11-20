@@ -31,6 +31,7 @@ export function createQueryClient(): QueryClient {
 export interface QueryOptions<T> {
   queryKey: Key;
   queryFn: () => Promise<T>;
+  staleTime?: number;
   enabled?: boolean;
 }
 

@@ -36,6 +36,15 @@ describe("affectedKeys", () => {
     ).toEqual([keys.code(rid), keys.repoInfo(rid)]);
   });
 
+  test("a CI job affects the repository's job lists only", () => {
+    expect(
+      affectedKeys({
+        rid,
+        refs: [`refs/namespaces/${nid}/refs/cobs/xyz.radworks.job/${issue}`],
+      }),
+    ).toEqual([keys.jobs(rid)]);
+  });
+
   test("an identity update affects the whole repository", () => {
     expect(
       affectedKeys({

@@ -14,8 +14,9 @@ import { fetchingRepos } from "@app/lib/seedRepo";
 
 import { artifactNodeRunning, nodeEvents, nodeRunning } from "./events";
 
-// Collects keys and invalidates them together after `delay`.
-function batch(delay: number): (affected: Key[]) => void {
+// Collects keys and invalidates them together after `delay`. Job lists under
+// a key are left to their own batch unless `jobs` says the keys are theirs.
+export function batch(delay: number, jobs: boolean): (affected: Key[]) => void {
   // eslint-disable-next-line svelte/prefer-svelte-reactivity -- never rendered
   const pending = new Map<string, Key>();
   let flush: ReturnType<typeof setTimeout> | undefined;
@@ -26,18 +27,35 @@ function batch(delay: number): (affected: Key[]) => void {
       const queryKeys = [...pending.values()];
       pending.clear();
       for (const queryKey of queryKeys) {
-        void queryClient.invalidateQueries({ queryKey });
+        void queryClient.invalidateQueries({
+          queryKey,
+          predicate: query => jobs || !isJobs(query.queryKey as Key),
+        });
       }
     }, delay);
   };
 }
 
 // A fetch often updates many refs in a burst, so invalidations are batched.
-const invalidate = batch(100);
+const invalidate = batch(100, false);
+// Listing CI jobs scans every job in the repository, and a running
+// job updates often, so job lists refresh at most every few seconds.
+const invalidateJobs = batch(5_000, true);
 
-function onRefUpdate(update: RefUpdate) {
+function isJobs(key: Key): boolean {
+  return key[0] === "repo" && key[2] === "jobs";
+}
+
+export function onRefUpdate(update: RefUpdate) {
+  const affected = affectedKeys(update);
+  // A key for the whole repository covers its jobs too.
+  const repoWide = affected.some(key => key.length === 2 && key[0] === "repo");
+  invalidateJobs([
+    ...affected.filter(isJobs),
+    ...(repoWide ? [keys.jobs(update.rid)] : []),
+  ]);
   invalidate([
-    ...affectedKeys(update),
+    ...affected.filter(key => !isJobs(key)),
     // The node writes notifications as it fetches.
     keys.notificationCount(),
     // The repository list changes when a seeded repository arrives, or when an
@@ -90,10 +108,13 @@ export const createEventEmittersOnce = once(async (): Promise<UnlistenFn> => {
   ]);
 
   // Without the node's events, refetch what is shown whenever the user comes
-  // back to the window.
+  // back to the window. CI jobs only arrive through the node, so they can't
+  // have changed.
   const onFocus = () => {
     if (!get(nodeEvents)) {
-      void queryClient.invalidateQueries();
+      void queryClient.invalidateQueries({
+        predicate: query => !isJobs(query.queryKey as Key),
+      });
     }
   };
   window.addEventListener("focus", onFocus);

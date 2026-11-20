@@ -11,6 +11,7 @@ export interface RefUpdate {
 
 const ISSUE = "xyz.radicle.issue";
 const PATCH = "xyz.radicle.patch";
+const JOB = "xyz.radworks.job";
 
 export function affectedKeys({ rid, refs }: RefUpdate): Key[] {
   if (refs === undefined) {
@@ -32,6 +33,10 @@ export function affectedKeys({ rid, refs }: RefUpdate): Key[] {
       add(keys.patch(rid, cob[2]));
       add(keys.patches(rid));
       add(keys.repoInfo(rid));
+    } else if (cob && cob[1] === JOB) {
+      // A job names its commit only in its contents, so every job list of
+      // the repository is affected.
+      add(keys.jobs(rid));
     } else if (/^refs\/(heads|tags)\//.test(name)) {
       add(keys.code(rid));
       add(keys.repoInfo(rid));

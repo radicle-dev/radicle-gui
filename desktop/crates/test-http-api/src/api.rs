@@ -1745,14 +1745,10 @@ async fn delete_patch_handler(
 #[derive(Serialize, Deserialize)]
 struct JobsBody {
     pub rid: identity::RepoId,
-    pub sha: git::Oid,
 }
 
-async fn jobs_handler(
-    Ctx(ctx): Ctx,
-    Json(JobsBody { rid, sha }): Json<JobsBody>,
-) -> impl IntoResponse {
-    let jobs = ctx.list_jobs(rid, sha)?;
+async fn jobs_handler(Ctx(ctx): Ctx, Json(JobsBody { rid }): Json<JobsBody>) -> impl IntoResponse {
+    let jobs = ctx.list_jobs(rid)?;
 
     Ok::<_, Error>(Json(jobs))
 }

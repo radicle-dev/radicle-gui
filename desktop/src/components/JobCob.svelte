@@ -1,4 +1,8 @@
 <script lang="ts">
+  import type { Job } from "@bindings/repo/Job";
+
+  import { keys } from "@radicle-gui/core/keys";
+  import { createQuery } from "@radicle-gui/ui/lib/query.svelte";
   import { SvelteSet } from "svelte/reactivity";
 
   import type { RunView, Status } from "@app/lib/ciJobs";
@@ -8,7 +12,9 @@
     statusLabel,
     totalCounts,
   } from "@app/lib/ciJobs";
-  import { cachedListJobs } from "@app/lib/invoke";
+  import { nodeEvents } from "@app/lib/events";
+  import { listJobs } from "@app/lib/invoke";
+  import { queryClient } from "@app/lib/query";
   import { authorForNodeId } from "@app/lib/utils";
 
   import Button from "@app/components/Button.svelte";
@@ -28,9 +34,19 @@
   const collapsed = new SvelteSet<string>();
   let popoverExpanded: boolean = $state(false);
 
-  // Held in a `$derived`; see `ReviewCodeThread`. The TTL here means a re-run
-  // would refetch and blank the chip.
-  const jobsPromise = $derived(cachedListJobs(rid, commit).catch(() => []));
+  // Listing a commit's jobs scans every job of the repository, so the cache
+  // keeps one list of them all, shared by every chip of the repository and
+  // kept across navigations. Job updates from the node refresh it; without
+  // them, it is refetched on mount once it is 30 seconds old.
+  const jobsQuery = createQuery<Job[]>(queryClient, () => ({
+    queryKey: keys.jobs(rid),
+    queryFn: () => listJobs(rid),
+    staleTime: $nodeEvents ? Infinity : 30_000,
+  }));
+  const loadedJobs = $derived(
+    jobsQuery.current.data?.filter(job => job.commit === commit) ??
+      (jobsQuery.current.isError ? [] : undefined),
+  );
 
   function toggleNode(key: string) {
     if (collapsed.has(key)) {
@@ -145,7 +161,8 @@
   }
 </style>
 
-{#await jobsPromise then jobs}
+{#if loadedJobs}
+  {@const jobs = loadedJobs}
   {#if jobs.length > 0}
     {@const groups = groupJobs(jobs)}
     {@const overallCounts = totalCounts(groups)}
@@ -262,4 +279,4 @@
       {/snippet}
     </Popover>
   {/if}
-{/await}
+{/if}
