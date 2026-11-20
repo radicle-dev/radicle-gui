@@ -62,7 +62,6 @@ export function commentActions(ctx: CommentActionsContext): CommentActions {
       if (!owner) return;
       if (owner.kind === "draft") {
         draftReviewStorage.updateComment(owner.draftId, commentId, { body });
-        await reload();
         return;
       }
       await run(
@@ -90,7 +89,6 @@ export function commentActions(ctx: CommentActionsContext): CommentActions {
       if (!owner) return;
       if (owner.kind === "draft") {
         draftReviewStorage.deleteComment(owner.draftId, commentId);
-        await reload();
         return;
       }
       await run(

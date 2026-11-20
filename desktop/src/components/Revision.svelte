@@ -332,8 +332,6 @@
       draftReviewStorage.addComment(draftId, { body, location });
     } catch (error) {
       console.error("Creating code comment failed", error);
-    } finally {
-      await loadPatch();
     }
   }
 

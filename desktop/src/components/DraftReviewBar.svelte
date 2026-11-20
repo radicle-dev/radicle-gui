@@ -24,7 +24,6 @@
     // The protocol keeps one review per author per revision and silently
     // ignores a second one, which would discard this draft without a trace.
     alreadyReviewed?: boolean;
-    onChange: () => Promise<void>;
     onPublish: (revisionId: string) => Promise<void>;
     onCancel: () => void;
     // Scroll the diff to a pending comment. Absent where there is no diff to
@@ -37,7 +36,6 @@
     filesChecked,
     filesTotal,
     alreadyReviewed = false,
-    onChange,
     onPublish,
     onCancel,
     onSelectComment,
@@ -148,18 +146,16 @@
     editingCommentId = undefined;
     editBody = "";
   }
-  async function saveEdit(commentId: string) {
+  function saveEdit(commentId: string) {
     draftReviewStorage.updateComment(draftReview.id, commentId, {
       body: editBody,
     });
     editingCommentId = undefined;
     editBody = "";
-    await onChange();
   }
-  async function deleteComment(commentId: string) {
+  function deleteComment(commentId: string) {
     draftReviewStorage.deleteComment(draftReview.id, commentId);
     if (editingCommentId === commentId) cancelEdit();
-    await onChange();
   }
 
   let confirmDeleteId: string | undefined = $state();
@@ -168,7 +164,7 @@
     if (confirmDeleteId === commentId) {
       if (confirmDeleteTimer) clearTimeout(confirmDeleteTimer);
       confirmDeleteId = undefined;
-      void deleteComment(commentId);
+      deleteComment(commentId);
     } else {
       confirmDeleteId = commentId;
       if (confirmDeleteTimer) clearTimeout(confirmDeleteTimer);
@@ -188,13 +184,12 @@
   );
   const verdictColorClass = $derived(verdictBadge(verdict).variant);
 
-  async function persistSummary() {
+  function persistSummary() {
     draftReviewStorage.update(draftReview.id, {
       summary,
       verdict,
       labels: draftReview.labels,
     });
-    await onChange();
   }
 
   let publishError: string | undefined = $state();
@@ -793,7 +788,6 @@
                       labels: draftReview.labels,
                     });
                     closeFocused();
-                    void onChange();
                   }}>
                   <div class="verdict-check">
                     {#if verdict === option.value}

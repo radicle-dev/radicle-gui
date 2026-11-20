@@ -1559,7 +1559,6 @@
           : undefined}
         filesTotal={showingRevisionDiff ? fileProgress?.filesTotal : undefined}
         alreadyReviewed={hasOwnPublishedReviewOnSelected}
-        onChange={loadPatch}
         onPublish={async revisionId => {
           await loadPatch();
           const updatedRev = revisions.find(r => r.id === revisionId);
@@ -1579,7 +1578,6 @@
         }}
         onCancel={() => {
           draftReviewStorage.delete(ownDraftReview.id);
-          void loadPatch();
         }}
         onSelectComment={currentReview
           ? // A published review page renders its own diff and none of this

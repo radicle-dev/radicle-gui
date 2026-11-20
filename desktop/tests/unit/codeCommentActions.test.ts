@@ -66,7 +66,7 @@ describe("editComment", () => {
       { body: "new" },
     );
     expect(invoke).not.toHaveBeenCalled();
-    expect(reload).toHaveBeenCalledTimes(1);
+    expect(reload).not.toHaveBeenCalled();
   });
 
   test.each([
@@ -107,7 +107,7 @@ describe("deleteComment", () => {
       "d",
     );
     expect(invoke).not.toHaveBeenCalled();
-    expect(reload).toHaveBeenCalledTimes(1);
+    expect(reload).not.toHaveBeenCalled();
   });
 
   test.each([
