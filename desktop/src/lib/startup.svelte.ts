@@ -2,8 +2,9 @@ import type { Key } from "@radicle-gui/core/keys";
 import type { RefUpdate } from "@radicle-gui/core/refUpdates";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
-import { keys } from "@radicle-gui/core/keys";
+import { isJobsKey, isRepoInfoKey, keys } from "@radicle-gui/core/keys";
 import { affectedKeys } from "@radicle-gui/core/refUpdates";
+import { invalidate } from "@radicle-gui/ui/lib/query.svelte";
 import { listen } from "@tauri-apps/api/event";
 import once from "lodash/once";
 import { get } from "svelte/store";
@@ -22,6 +23,7 @@ export function batch(delay: number, jobs: boolean): (affected: Key[]) => void {
   const pending = new Map<string, Key>();
   let flush: ReturnType<typeof setTimeout> | undefined;
   return affected => {
+    if (affected.length === 0) return;
     for (const key of affected) pending.set(key.join("\0"), key);
     flush ??= setTimeout(() => {
       flush = undefined;
@@ -29,9 +31,9 @@ export function batch(delay: number, jobs: boolean): (affected: Key[]) => void {
       pending.clear();
       if (!jobs) clearEntityCaches();
       for (const queryKey of queryKeys) {
-        void queryClient.invalidateQueries({
+        void invalidate(queryClient, {
           queryKey,
-          predicate: query => jobs || !isJobs(query.queryKey as Key),
+          predicate: query => jobs || !isJobsKey(query.queryKey as Key),
         });
       }
     }, delay);
@@ -39,25 +41,20 @@ export function batch(delay: number, jobs: boolean): (affected: Key[]) => void {
 }
 
 // A fetch often updates many refs in a burst, so invalidations are batched.
-const invalidate = batch(100, false);
+const invalidateBatched = batch(100, false);
 // Listing CI jobs scans every job in the repository, and a running
 // job updates often, so job lists refresh at most every few seconds.
 const invalidateJobs = batch(5_000, true);
 
-function isRepoInfo(key: Key): boolean {
-  return key[0] === "repo" && key[2] === "info";
-}
-
-function isJobs(key: Key): boolean {
-  return key[0] === "repo" && key[2] === "jobs";
-}
-
-// Whether the repository list has `rid` as seeded but not yet arrived.
-function underway(rid: string): boolean {
+// Whether the repository list shows `rid` as arrived.
+function listed(rid: string): boolean {
+  const list = queryClient.getQueryData<RepoList>(
+    keys.repoList(repoListScope.value),
+  );
   return (
-    queryClient
-      .getQueryData<RepoList>(keys.repoList(repoListScope.value))
-      ?.seededNotReplicated.includes(rid) ?? false
+    list !== undefined &&
+    list.repos.some(repo => repo.rid === rid) &&
+    !list.seededNotReplicated.includes(rid)
   );
 }
 
@@ -66,14 +63,15 @@ export function onRefUpdate(update: RefUpdate) {
   // A key for the whole repository covers its jobs too.
   const repoWide = affected.some(key => key.length === 2 && key[0] === "repo");
   invalidateJobs([
-    ...affected.filter(isJobs),
+    ...affected.filter(isJobsKey),
     ...(repoWide ? [keys.jobs(update.rid)] : []),
   ]);
-  invalidate([
-    ...affected.filter(key => !isJobs(key)),
+  invalidateBatched([
+    ...affected.filter(key => !isJobsKey(key)),
     // The repository list changes when a seeded repository arrives, or when an
     // identity update renames one.
-    ...(underway(update.rid) ||
+    ...(repoWide ||
+    !listed(update.rid) ||
     update.refs?.some(ref => ref.endsWith("refs/rad/id"))
       ? [keys.repos()]
       : []),
@@ -116,20 +114,18 @@ export const createEventEmittersOnce = once(async (): Promise<UnlistenFn> => {
     listen<RefUpdate>("ref_update", event => onRefUpdate(event.payload)),
     // Another process changed the notifications, such as by clearing some.
     listen("notifications_changed", () => {
-      invalidate([keys.notifications()]);
+      invalidateBatched([keys.notifications()]);
     }),
-    // Seeding or unseeding with the `rad` CLI or another instance of the app
-    // changes the repository list and each repository's seeded state.
     listen("policies_changed", () => {
-      invalidate([keys.repos()]);
-      void queryClient.invalidateQueries({
-        predicate: query => isRepoInfo(query.queryKey as Key),
+      invalidateBatched([keys.repos()]);
+      void invalidate(queryClient, {
+        predicate: query => isRepoInfoKey(query.queryKey as Key),
       });
     }),
     // The backend may have missed events while it wasn't subscribed.
     listen("ref_resync", () => {
       clearEntityCaches();
-      void queryClient.invalidateQueries();
+      void invalidate(queryClient);
     }),
   ]);
 
@@ -139,8 +135,8 @@ export const createEventEmittersOnce = once(async (): Promise<UnlistenFn> => {
   const onFocus = () => {
     if (!get(nodeEvents)) {
       clearEntityCaches();
-      void queryClient.invalidateQueries({
-        predicate: query => !isJobs(query.queryKey as Key),
+      void invalidate(queryClient, {
+        predicate: query => !isJobsKey(query.queryKey as Key),
       });
     }
   };
