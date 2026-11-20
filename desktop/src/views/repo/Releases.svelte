@@ -193,6 +193,7 @@
       <ScrollArea style="height: 100%; min-width: 0;">
         <VirtualList
           items={list.items}
+          keepRowsOnPrepend
           hasMore={list.more}
           loadingMore={list.loadingMore}
           onLoadMore={() => list.loadMore()}

@@ -366,6 +366,7 @@
         </div>
         <VirtualList
           items={searchResults}
+          keepRowsOnPrepend={!debouncedSearch.current}
           hasMore={list.more}
           loadingMore={list.loadingMore}
           onLoadMore={() => list.loadMore()}
