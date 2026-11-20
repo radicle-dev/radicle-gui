@@ -86,4 +86,13 @@ describe("affectedKeys", () => {
       }),
     ).toEqual([keys.repo(rid)]);
   });
+
+  test("identity proposals affect only the identity", () => {
+    expect(
+      affectedKeys({
+        rid,
+        refs: [`refs/namespaces/${nid}/refs/cobs/xyz.radicle.id/${issue}`],
+      }),
+    ).toEqual([keys.identity(rid)]);
+  });
 });

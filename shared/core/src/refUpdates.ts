@@ -17,6 +17,7 @@ export const cobTypes = {
   // Releases are artifact COBs.
   release: "dev.radicle.artifact",
   board: "works.monadic.board",
+  identity: "xyz.radicle.id",
 } as const;
 const {
   issue: ISSUE,
@@ -24,6 +25,7 @@ const {
   job: JOB,
   release: RELEASE,
   board: BOARD,
+  identity: IDENTITY,
 } = cobTypes;
 
 export function affectedKeys({ rid, refs }: RefUpdate): Key[] {
@@ -54,6 +56,10 @@ export function affectedKeys({ rid, refs }: RefUpdate): Key[] {
       add(keys.releases(rid));
     } else if (cob && cob[1] === BOARD) {
       add(keys.boards(rid));
+    } else if (cob && cob[1] === IDENTITY) {
+      // Proposals and votes. An accepted revision also moves `refs/rad/id`,
+      // which affects the whole repository.
+      add(keys.identity(rid));
     } else if (/^refs\/(heads|tags)\//.test(name)) {
       add(keys.code(rid));
       add(keys.repoInfo(rid));

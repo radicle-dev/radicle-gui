@@ -2,10 +2,13 @@
   import type { Identity } from "@bindings/identity/Identity";
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
+  import { createQuery } from "@radicle-gui/ui/lib/query.svelte";
   import { slide } from "svelte/transition";
 
+  import { identity as identityQuery } from "@app/lib/cobQueries";
   import { stateCaption, stateIcon } from "@app/lib/identityState";
   import { motion } from "@app/lib/motion";
+  import { queryClient } from "@app/lib/query";
   import type { SidebarData } from "@app/lib/router/definitions";
   import {
     absoluteTimestamp,
@@ -33,7 +36,12 @@
     sidebarData: SidebarData;
   }
 
-  const { repo, identity, sidebarData }: Props = $props();
+  const { repo, identity: loadedIdentity, sidebarData }: Props = $props();
+
+  // Proposals and votes show as they arrive. The route loader already put the
+  // identity in the cache.
+  const query = createQuery(queryClient, () => identityQuery(repo.rid));
+  const identity = $derived(query.current.data ?? loadedIdentity);
 
   const current = $derived(
     identity.revisions.find(r => r.id === identity.current),

@@ -5,6 +5,7 @@ import type { Action as PatchAction } from "@bindings/cob/patch/Action";
 import type { Patch } from "@bindings/cob/patch/Patch";
 import type { Revision } from "@bindings/cob/patch/Revision";
 import type { Thread } from "@bindings/cob/thread/Thread";
+import type { Identity } from "@bindings/identity/Identity";
 import type { RepoInfo } from "@bindings/repo/RepoInfo";
 import type { Key } from "@radicle-gui/core/keys";
 import type { QueryOptions } from "@radicle-gui/ui/lib/query.svelte";
@@ -23,7 +24,14 @@ export function repoInfo(rid: string): QueryOptions<RepoInfo> {
   };
 }
 
-// `issue` is null once the issue is deleted.
+export function identity(rid: string): QueryOptions<Identity> {
+  return {
+    queryKey: keys.identity(rid),
+    queryFn: () => invoke<Identity>("identity_by_repo", { rid }),
+  };
+}
+
+// `issue` is undefined once the issue is deleted.
 export interface IssueDetail {
   issue: Issue | undefined;
   activity: Operation<IssueAction>[];

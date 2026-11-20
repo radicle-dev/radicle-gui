@@ -26,7 +26,13 @@ import { markLoading } from "@radicle-gui/ui/lib/query.svelte";
 
 import type { BoardView } from "@app/lib/board";
 import { loadView } from "@app/lib/boardView";
-import { issueDetail, load, patchDetail, repoInfo } from "@app/lib/cobQueries";
+import {
+  identity as identityQuery,
+  issueDetail,
+  load,
+  patchDetail,
+  repoInfo,
+} from "@app/lib/cobQueries";
 import {
   cachedGetCommitDiff,
   cachedGetDiffText,
@@ -495,9 +501,7 @@ export async function loadIdentity(
   const [sidebarData, repo, identity] = await Promise.all([
     loadSidebarData(),
     load(repoInfo(route.rid)),
-    invoke<Identity>("identity_by_repo", {
-      rid: route.rid,
-    }),
+    load(identityQuery(route.rid)),
   ]);
 
   return {

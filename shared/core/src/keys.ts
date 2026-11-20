@@ -6,6 +6,8 @@ export type Key = readonly string[];
 export const keys = {
   repo: (rid: string) => ["repo", rid] as const,
   repoInfo: (rid: string) => ["repo", rid, "info"] as const,
+  // The identity document's revisions and proposals.
+  identity: (rid: string) => ["repo", rid, "identity"] as const,
   code: (rid: string) => ["repo", rid, "code"] as const,
   // The commit a revision resolves to; no revision means the default branch.
   head: (rid: string, peer: string | undefined, revision: string | undefined) =>
