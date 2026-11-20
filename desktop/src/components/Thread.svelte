@@ -206,7 +206,7 @@
 
 {#snippet repliesSnippet()}
   <div class="replies-list">
-    {#each replies as reply}
+    {#each replies as reply (reply.id)}
       <div
         class="reply-box"
         class:highlighted={highlightedCommentId === reply.id}>

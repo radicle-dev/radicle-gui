@@ -14,7 +14,7 @@
   import partial from "lodash/partial";
 
   import * as roles from "@app/lib/roles";
-  import { mergeTimeline, timelineRuns } from "@app/lib/timelineRuns";
+  import { mergeTimeline, runKey, timelineRuns } from "@app/lib/timelineRuns";
   import { authorForNodeId } from "@app/lib/utils";
 
   import ExtendedTextarea from "@app/components/ExtendedTextarea.svelte";
@@ -182,7 +182,7 @@
 <div class="discussion" class:flush>
   <div class="timeline-rail">
     <div class="activity-stream" class:has-runs={runs.length > 0}>
-      {#each runs as run, runIndex (runIndex)}
+      {#each runs as run (runKey(run))}
         {#if run.kind === "thread"}
           <ThreadComponent
             thread={run.entry.thread}

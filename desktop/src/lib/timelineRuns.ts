@@ -114,3 +114,10 @@ export function timelineRuns<A>(
   }
   return result;
 }
+
+/// A run's identity across updates, so that a thread keeps its open reply
+/// draft when comments are added or removed around it.
+export function runKey<A>(run: Run<A>): string {
+  if (run.kind === "group") return `group:${run.entries[0].key}`;
+  return `${run.kind}:${run.entry.key}`;
+}

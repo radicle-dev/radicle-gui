@@ -4,7 +4,7 @@ import type { Thread } from "@bindings/cob/thread/Thread";
 import { describe, expect, test } from "vitest";
 
 import type { Run, TimelineEntry } from "@app/lib/timelineRuns";
-import { mergeTimeline, timelineRuns } from "@app/lib/timelineRuns";
+import { mergeTimeline, runKey, timelineRuns } from "@app/lib/timelineRuns";
 
 import { author, comment } from "./support/cobs";
 
@@ -146,5 +146,33 @@ describe("timelineRuns", () => {
     expect(
       shape(timelineRuns([activity("x", alice), activity("y", alice)])),
     ).toEqual(["x", "y"]);
+  });
+});
+
+describe("runKey", () => {
+  test("a thread keeps its key when a run before it goes away", () => {
+    const authorOf = (data: Data) => data.by;
+    const before = timelineRuns(
+      [threadEntry("t1", alice), activity("a1", bob), threadEntry("t2", bob)],
+      authorOf,
+    );
+    const after = timelineRuns([threadEntry("t2", bob)], authorOf);
+
+    expect(runKey(after[0])).toBe(runKey(before[2]));
+  });
+
+  test("keys are unique within a timeline", () => {
+    const runs = timelineRuns(
+      [
+        activity("x", alice),
+        threadEntry("x", bob),
+        activity("y", bob),
+        activity("z", bob),
+      ],
+      (data: Data) => data.by,
+    );
+    const keys = runs.map(runKey);
+
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });
