@@ -1,3 +1,35 @@
+### 0.19.0
+
+**Features**
+
+- Views now update live as issues, patches, releases, boards, CI jobs, commits,
+  the identity document and the repository list change, including changes made
+  with the `rad` CLI or another instance of the app
+- Removed the reload button from the sidebar header, Mod+R still reloads
+- The repository home keeps showing the code you're reading and shows a refresh
+  button when new commits arrive
+- New comments on a diff are briefly highlighted
+- Added a compare menu to patch revisions, also available by right-clicking a
+  revision in the Changes tab picker
+- The `publicExplorer` setting now supports `$host`, so you can choose which
+  seed explorer links point to
+- Animations now respect the system's reduced motion setting
+- Shortcut hints now show only when Mod is held on its own
+
+**Bug fixes**
+
+- The revision picker now counts every commit of a revision
+- Embeds are no longer lost when editing a description or review summary
+- Files can no longer be attached while editing a draft comment, since they were
+  never published
+- Published reviews are now announced to the network
+
+**Shout-out to our contributors 🙏✨**
+
+- [2color](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MktwkohCx8aHZ1QCjVZUiLmX92oPZFxRiFZkbq32Tk5Tkm)
+- [brandonoxendine](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkpwnLQxFBQXyMK3Es91s8A7Ew7G11BFFyng1dqZR8QhG3)
+- [ioannis](https://radicle.network/nodes/iris.radicle.network/users/did:key:z6MkfcWogpi5oLMvhvkk1M91CcrQhWgvbxbWCPDXxWATu8fG)
+
 ### 0.18.0
 
 **Features**
