@@ -188,6 +188,9 @@ test("the revision picker counts a revision's commits as the Changes view does",
   await page.goto(`/repos/${rid}/patches/${patchId}?view=changes`);
 
   await expect(page.getByText("2 commits on base")).toBeVisible();
+  // The diff rebuilds the header the picker sits in once it loads, and a
+  // click that straddles that rebuild is dropped.
+  await expect(addedLine(page, "six")).toBeVisible();
   await page.getByRole("button", { name: /Revision 2 of 2/ }).click();
   // The second revision's row, which ends with its commit count.
   await expect(
