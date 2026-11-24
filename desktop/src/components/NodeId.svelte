@@ -6,12 +6,19 @@
   import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
 
   import { cachedAlias, cachedConfig, writeToClipboard } from "@app/lib/invoke";
+  import { profileOf } from "@app/lib/keyProfiles.svelte";
   import { entityUrl } from "@app/lib/mentions";
   import { getPatchActivitySource } from "@app/lib/patchActivityContext";
+  import {
+    pictureFile,
+    useSharedRepoImage,
+  } from "@app/lib/useSharedRepoImage.svelte";
   import { didFromPublicKey, pluralize, truncateId } from "@app/lib/utils";
 
+  import ActorAvatar from "@app/components/ActorAvatar.svelte";
   import Icon from "@app/components/Icon.svelte";
   import Popover from "@app/components/Popover.svelte";
+  import ProfileCard from "@app/components/ProfileCard.svelte";
 
   type IconName = ComponentProps<typeof Icon>["name"];
 
@@ -20,7 +27,7 @@
     alias?: string;
     inline?: boolean;
     styleFont?: string;
-    // Hides the alias; the card still shows it.
+    // Hides the name; the card still shows it.
     avatarOnly?: boolean;
     avatarSize?: string;
     cardPlacement?: Placement;
@@ -48,11 +55,27 @@
 
   let openTimer: ReturnType<typeof setTimeout> | undefined;
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
-  let copyIcon: "copy" | "checkmark" = $state("copy");
+  // The ID last copied from the card, while its row shows the checkmark.
+  let copied: string | undefined = $state(undefined);
   let fetchedAlias: string | undefined = $state(undefined);
   let fetchedConfig: Config | undefined = $state(undefined);
   const did = $derived(didFromPublicKey(publicKey));
   const effectiveAlias = $derived(alias ?? fetchedAlias);
+
+  // The profile the key shows as. A person's devices then look alike, and
+  // the card tells which one this is.
+  const profile = $derived(profileOf(publicKey));
+
+  const avatarFile = $derived(pictureFile(profile, "avatar"));
+  const bannerFile = $derived(pictureFile(profile, "banner"));
+
+  // The trigger shows the avatar already, so the card shares that read and
+  // opens with it. The banner is read only while the card is open.
+  const cardAvatar = useSharedRepoImage(() => avatarFile);
+  const cardBanner = useSharedRepoImage(() =>
+    cardExpanded ? bannerFile : undefined,
+  );
+
   const activitySource = getPatchActivitySource();
   // Only while the card is open. The figures are card-only, and resolving them
   // eagerly would have every `NodeId` on the page — of which there are many —
@@ -114,10 +137,12 @@
   function cancelClose() {
     if (closeTimer) clearTimeout(closeTimer);
   }
-  async function copyDid() {
-    await writeToClipboard(did);
-    copyIcon = "checkmark";
-    setTimeout(() => (copyIcon = "copy"), 1000);
+  async function copy(id: string) {
+    await writeToClipboard(id);
+    copied = id;
+    setTimeout(() => {
+      if (copied === id) copied = undefined;
+    }, 1000);
   }
 </script>
 
@@ -162,6 +187,29 @@
     border-radius: var(--border-radius-sm);
     background-color: var(--color-surface-canvas);
     box-shadow: var(--elevation-low);
+  }
+  .profile-card {
+    width: 18rem;
+  }
+  .profile-id {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--color-text-tertiary);
+  }
+  .profile-id .node-id-card-did-row {
+    margin-left: 0;
+  }
+  .device {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-width: 0;
+    color: var(--color-text-secondary);
+  }
+  .device .node-id-card-did-row {
+    margin-left: auto;
+    flex-shrink: 0;
   }
   .node-id-card-header {
     display: flex;
@@ -291,6 +339,140 @@
   }
 </style>
 
+{#snippet roles()}
+  {#if activity?.isAuthor || activity?.isDelegate}
+    <div class="node-id-card-chips">
+      {#if activity?.isAuthor}
+        <div class="node-id-card-author-chip txt-body-s-medium">
+          <Icon name="patch" />
+          <span>Patch author</span>
+        </div>
+      {/if}
+      {#if activity?.isDelegate}
+        <div class="node-id-card-author-chip txt-body-s-medium">
+          <Icon name="badge" />
+          <span>Delegate</span>
+        </div>
+      {/if}
+    </div>
+  {/if}
+{/snippet}
+
+{#snippet idRow(id: string, shown: string, title: string)}
+  <button
+    type="button"
+    class="node-id-card-did-row"
+    {title}
+    onclick={event => {
+      event.stopPropagation();
+      void copy(id);
+    }}>
+    <span class="node-id-card-did txt-body-s-regular">
+      {shown}
+    </span>
+    <span class="node-id-card-copy">
+      <Icon name={copied === id ? "checkmark" : "copy"} />
+    </span>
+  </button>
+{/snippet}
+
+{#snippet keyRow()}
+  {@render idRow(did, truncateId(publicKey), "Copy DID")}
+{/snippet}
+
+{#snippet figures()}
+  {#if activity}
+    {@const patchFacts = (
+      [
+        activity.revisionCount > 0
+          ? {
+              icon: "revision" as IconName,
+              label: `${activity.revisionCount} ${pluralize("revision", activity.revisionCount)}`,
+            }
+          : undefined,
+        activity.reviewCount > 0
+          ? {
+              icon: "comment-checkmark" as IconName,
+              label: `${activity.reviewCount} ${pluralize("review", activity.reviewCount)}`,
+            }
+          : undefined,
+        activity.commentCount > 0
+          ? {
+              icon: "comment" as IconName,
+              label: `${activity.commentCount} ${pluralize("comment", activity.commentCount)}`,
+            }
+          : undefined,
+      ] as ({ icon: IconName; label: string } | undefined)[]
+    ).filter((x): x is { icon: IconName; label: string } => x !== undefined)}
+    {@const repoFacts = (
+      [
+        activity.patchesAuthored > 0
+          ? {
+              icon: "patch" as IconName,
+              label: `${activity.patchesAuthored} ${pluralize("patch", activity.patchesAuthored)}`,
+            }
+          : undefined,
+        activity.issuesAuthored > 0
+          ? {
+              icon: "issue" as IconName,
+              label: `${activity.issuesAuthored} ${pluralize("issue", activity.issuesAuthored)}`,
+            }
+          : undefined,
+      ] as ({ icon: IconName; label: string } | undefined)[]
+    ).filter((x): x is { icon: IconName; label: string } => x !== undefined)}
+    {#if patchFacts.length > 0 || repoFacts.length > 0}
+      <div class="node-id-card-activity">
+        {#if patchFacts.length > 0}
+          <div class="node-id-card-activity-group">
+            <div class="node-id-card-activity-heading txt-body-s-medium">
+              On this patch
+            </div>
+            {#each patchFacts as item (item.label)}
+              <div class="node-id-card-activity-row txt-body-m-regular">
+                <Icon name={item.icon} />
+                <span>{item.label}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+        {#if patchFacts.length > 0 && repoFacts.length > 0}
+          <div class="node-id-card-activity-divider"></div>
+        {/if}
+        {#if repoFacts.length > 0}
+          <div class="node-id-card-activity-group">
+            <div class="node-id-card-activity-heading txt-body-s-medium">
+              In this repo
+            </div>
+            {#each repoFacts as item (item.label)}
+              <div class="node-id-card-activity-row txt-body-m-regular">
+                <Icon name={item.icon} />
+                <span>{item.label}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
+  {/if}
+{/snippet}
+
+{#snippet actions()}
+  <div class="node-id-card-actions">
+    <a
+      class="node-id-card-action txt-body-s-medium"
+      href={fetchedConfig
+        ? entityUrl({ type: "node", nid: publicKey }, fetchedConfig)
+        : undefined}
+      title="View profile on radicle.network"
+      target="_blank"
+      rel="noreferrer"
+      onclick={event => event.stopPropagation()}>
+      View profile
+      <Icon name="open-external" />
+    </a>
+  </div>
+{/snippet}
+
 <Popover
   popoverPadding="0"
   placement={cardPlacement}
@@ -311,10 +493,18 @@
         class="avatar-container"
         style:width={avatarSize}
         style:height={avatarSize}>
-        <UserAvatar nodeId={publicKey} styleWidth={avatarSize} />
+        {#if profile}
+          <ActorAvatar actor={profile} styleWidth={avatarSize} />
+        {:else}
+          <UserAvatar nodeId={publicKey} styleWidth={avatarSize} />
+        {/if}
       </div>
       {#if !avatarOnly}
-        {#if effectiveAlias}
+        {#if profile}
+          <span class="txt-overflow alias">
+            {profile.profile.displayName}
+          </span>
+        {:else if effectiveAlias}
           <span class="txt-overflow alias">
             {effectiveAlias}
           </span>
@@ -327,149 +517,70 @@
     </div>
   {/snippet}
   {#snippet popover()}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
-      class="node-id-card"
-      onmouseenter={cancelClose}
-      onmouseleave={scheduleClose}>
-      <div class="node-id-card-header">
-        <div class="node-id-card-avatar">
-          <UserAvatar nodeId={publicKey} styleWidth="4rem" />
-        </div>
-        <div class="node-id-card-text">
-          {#if effectiveAlias}
-            <div class="node-id-card-alias txt-body-m-medium">
-              {effectiveAlias}
+    {#if profile}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="profile-card"
+        onmouseenter={cancelClose}
+        onmouseleave={scheduleClose}>
+        <ProfileCard
+          displayName={profile.profile.displayName}
+          fullName={profile.profile.fullName}
+          bio={profile.profile.bio}
+          avatar={cardAvatar.url}
+          banner={cardBanner.url}
+          bannerExpected={bannerFile !== undefined}
+          avatarId={profile.rid}>
+          {#snippet details()}
+            <!-- The one thing of a profile that cannot be imitated. -->
+            <div class="profile-id txt-body-s-regular">
+              <span>Profile ID</span>
+              {@render idRow(
+                profile.rid,
+                truncateId(profile.rid),
+                "Copy Profile ID",
+              )}
             </div>
-          {:else}
-            <div class="node-id-card-alias txt-body-m-medium">
-              {truncateId(publicKey)}
-            </div>
-          {/if}
-          {#if activity?.isAuthor || activity?.isDelegate}
-            <div class="node-id-card-chips">
-              {#if activity?.isAuthor}
-                <div class="node-id-card-author-chip txt-body-s-medium">
-                  <Icon name="patch" />
-                  <span>Patch author</span>
-                </div>
+            <div class="device txt-body-m-regular">
+              <UserAvatar nodeId={publicKey} styleWidth="1rem" />
+              {#if effectiveAlias}
+                <span class="txt-overflow">{effectiveAlias}</span>
               {/if}
-              {#if activity?.isDelegate}
-                <div class="node-id-card-author-chip txt-body-s-medium">
-                  <Icon name="badge" />
-                  <span>Delegate</span>
-                </div>
-              {/if}
+              {@render keyRow()}
             </div>
-          {/if}
-          <button
-            type="button"
-            class="node-id-card-did-row"
-            title="Copy DID"
-            onclick={event => {
-              event.stopPropagation();
-              void copyDid();
-            }}>
-            <span class="node-id-card-did txt-body-s-regular">
-              {truncateId(publicKey)}
-            </span>
-            <span class="node-id-card-copy">
-              <Icon name={copyIcon} />
-            </span>
-          </button>
-        </div>
+            {@render roles()}
+            {@render figures()}
+            {@render actions()}
+          {/snippet}
+        </ProfileCard>
       </div>
-      {#if activity}
-        {@const patchFacts = (
-          [
-            activity.revisionCount > 0
-              ? {
-                  icon: "revision" as IconName,
-                  label: `${activity.revisionCount} ${pluralize("revision", activity.revisionCount)}`,
-                }
-              : undefined,
-            activity.reviewCount > 0
-              ? {
-                  icon: "comment-checkmark" as IconName,
-                  label: `${activity.reviewCount} ${pluralize("review", activity.reviewCount)}`,
-                }
-              : undefined,
-            activity.commentCount > 0
-              ? {
-                  icon: "comment" as IconName,
-                  label: `${activity.commentCount} ${pluralize("comment", activity.commentCount)}`,
-                }
-              : undefined,
-          ] as ({ icon: IconName; label: string } | undefined)[]
-        ).filter(
-          (x): x is { icon: IconName; label: string } => x !== undefined,
-        )}
-        {@const repoFacts = (
-          [
-            activity.patchesAuthored > 0
-              ? {
-                  icon: "patch" as IconName,
-                  label: `${activity.patchesAuthored} ${pluralize("patch", activity.patchesAuthored)}`,
-                }
-              : undefined,
-            activity.issuesAuthored > 0
-              ? {
-                  icon: "issue" as IconName,
-                  label: `${activity.issuesAuthored} ${pluralize("issue", activity.issuesAuthored)}`,
-                }
-              : undefined,
-          ] as ({ icon: IconName; label: string } | undefined)[]
-        ).filter(
-          (x): x is { icon: IconName; label: string } => x !== undefined,
-        )}
-        {#if patchFacts.length > 0 || repoFacts.length > 0}
-          <div class="node-id-card-activity">
-            {#if patchFacts.length > 0}
-              <div class="node-id-card-activity-group">
-                <div class="node-id-card-activity-heading txt-body-s-medium">
-                  On this patch
-                </div>
-                {#each patchFacts as item (item.label)}
-                  <div class="node-id-card-activity-row txt-body-m-regular">
-                    <Icon name={item.icon} />
-                    <span>{item.label}</span>
-                  </div>
-                {/each}
-              </div>
-            {/if}
-            {#if patchFacts.length > 0 && repoFacts.length > 0}
-              <div class="node-id-card-activity-divider"></div>
-            {/if}
-            {#if repoFacts.length > 0}
-              <div class="node-id-card-activity-group">
-                <div class="node-id-card-activity-heading txt-body-s-medium">
-                  In this repo
-                </div>
-                {#each repoFacts as item (item.label)}
-                  <div class="node-id-card-activity-row txt-body-m-regular">
-                    <Icon name={item.icon} />
-                    <span>{item.label}</span>
-                  </div>
-                {/each}
-              </div>
-            {/if}
+    {:else}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="node-id-card"
+        onmouseenter={cancelClose}
+        onmouseleave={scheduleClose}>
+        <div class="node-id-card-header">
+          <div class="node-id-card-avatar">
+            <UserAvatar nodeId={publicKey} styleWidth="4rem" />
           </div>
-        {/if}
-      {/if}
-      <div class="node-id-card-actions">
-        <a
-          class="node-id-card-action txt-body-s-medium"
-          href={fetchedConfig
-            ? entityUrl({ type: "node", nid: publicKey }, fetchedConfig)
-            : undefined}
-          title="View profile on radicle.network"
-          target="_blank"
-          rel="noreferrer"
-          onclick={event => event.stopPropagation()}>
-          View profile
-          <Icon name="open-external" />
-        </a>
+          <div class="node-id-card-text">
+            {#if effectiveAlias}
+              <div class="node-id-card-alias txt-body-m-medium">
+                {effectiveAlias}
+              </div>
+            {:else}
+              <div class="node-id-card-alias txt-body-m-medium">
+                {truncateId(publicKey)}
+              </div>
+            {/if}
+            {@render roles()}
+            {@render keyRow()}
+          </div>
+        </div>
+        {@render figures()}
+        {@render actions()}
       </div>
-    </div>
+    {/if}
   {/snippet}
 </Popover>

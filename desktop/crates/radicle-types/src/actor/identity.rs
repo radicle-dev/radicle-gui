@@ -369,6 +369,33 @@ pub fn resolve(rid: RepoId, history: &[IdentityDocRevision]) -> Option<ResolvedA
     })
 }
 
+/// The live individual actor among `actors` that binds each key. A key that
+/// several of them bind has none, since nothing may pick one.
+pub fn actors_of_keys<'a>(
+    actors: impl IntoIterator<Item = (RepoId, &'a ResolvedActor)>,
+) -> BTreeMap<Did, RepoId> {
+    // `None` once a second actor binds the key.
+    let mut found: BTreeMap<Did, Option<RepoId>> = BTreeMap::new();
+
+    for (rid, actor) in actors {
+        if !actor.is_live_individual() {
+            continue;
+        }
+
+        for did in actor.bound_keys() {
+            found
+                .entry(did)
+                .and_modify(|bound| *bound = None)
+                .or_insert(Some(rid));
+        }
+    }
+
+    found
+        .into_iter()
+        .filter_map(|(did, rid)| Some((did, rid?)))
+        .collect()
+}
+
 /// Every accepted version of `repo`'s identity document, oldest first, each
 /// built on the one before it.
 pub fn identity_history<R: ReadRepository + cob::Store>(

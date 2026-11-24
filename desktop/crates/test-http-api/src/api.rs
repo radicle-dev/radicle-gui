@@ -206,6 +206,7 @@ pub fn router(shared: Shared) -> Router {
         )
         .route("/remove_actor_key", post(remove_actor_key_handler))
         .route("/actors_of_key", post(actors_of_key_handler))
+        .route("/key_profiles", post(key_profiles_handler))
         .route(
             "/closed_actor_revisions",
             post(closed_actor_revisions_handler),
@@ -633,6 +634,10 @@ async fn remove_actor_key_handler(
 
 async fn actors_of_key_handler(Ctx(ctx): Ctx) -> impl IntoResponse {
     Ok::<_, Error>(Json(ctx.actors_of_key()?))
+}
+
+async fn key_profiles_handler(Ctx(ctx): Ctx) -> impl IntoResponse {
+    Ok::<_, Error>(Json(ctx.key_profiles()?))
 }
 
 async fn closed_actor_revisions_handler(Ctx(ctx): Ctx) -> impl IntoResponse {

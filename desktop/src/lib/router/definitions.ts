@@ -20,7 +20,12 @@ import {
 import { keys } from "@radicle-gui/core/keys";
 import { markLoading } from "@radicle-gui/ui/lib/query.svelte";
 
-import { enterRepo, localActor, repoList } from "@app/lib/cobQueries";
+import {
+  enterRepo,
+  keyProfiles,
+  localActor,
+  repoList,
+} from "@app/lib/cobQueries";
 import { invoke, InvokeError } from "@app/lib/invoke";
 import { labs } from "@app/lib/labs";
 import { projectsOf } from "@app/lib/projects";
@@ -107,6 +112,13 @@ export async function loadSidebarData(): Promise<SidebarData> {
     queryClient.fetchQuery(repoList(repoListScope.value)),
     invoke<number>("notification_count"),
     labs.actorRepos ? loadActor() : { actor: null },
+    // Cached before the first view renders, so that no key shows its alias
+    // first. A failure leaves the aliases.
+    labs.actorRepos
+      ? queryClient.fetchQuery(keyProfiles()).catch((error: unknown) => {
+          console.warn("Not able to load the profiles of keys", error);
+        })
+      : undefined,
   ]);
   return {
     config,

@@ -1,23 +1,36 @@
 <script lang="ts">
-  import type { Form } from "./form";
+  import type { Snippet } from "svelte";
 
   import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
 
-  import { truncateId } from "@app/lib/utils";
-
-  import Icon from "@app/components/Icon.svelte";
-
   interface Props {
-    form: Form;
+    // Empty while a profile being typed has no name yet.
+    displayName: string;
+    fullName?: string;
+    bio?: string;
+    // The addresses the pictures are shown from, when there are any.
     avatar: string | undefined;
     banner: string | undefined;
+    // The profile has a banner whose address is still to come. The card
+    // keeps its place, so it does not change shape when the banner arrives,
+    // or when it never does.
+    bannerExpected?: boolean;
     // What the generated avatar is drawn from when there is no picture.
     avatarId: string;
-    // The Profile ID, or this device's key before there is a profile.
-    did: string;
+    // What the card holds under the profile.
+    details: Snippet;
   }
 
-  const { form, avatar, banner, avatarId, did }: Props = $props();
+  const {
+    displayName,
+    fullName = undefined,
+    bio = undefined,
+    avatar,
+    banner,
+    bannerExpected = false,
+    avatarId,
+    details,
+  }: Props = $props();
 
   let broken = $state(false);
   let bannerBroken = $state(false);
@@ -32,7 +45,6 @@
 </script>
 
 <style>
-  /* Inert: the shape of the card other people see, not a working one. */
   .card {
     display: flex;
     flex-direction: column;
@@ -106,26 +118,14 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  .did {
-    color: var(--color-text-tertiary);
-    font: var(--txt-code-regular);
-  }
-  .action {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.375rem;
-    padding: 0.375rem 0.5rem;
-    border: 1px solid var(--color-border-subtle);
-    border-radius: var(--border-radius-sm);
-    color: var(--color-text-secondary);
-  }
 </style>
 
 <div class="card">
-  {#if banner && !bannerBroken}
+  {#if bannerExpected || (banner && !bannerBroken)}
     <div class="banner">
-      <img src={banner} alt="" onerror={() => (bannerBroken = true)} />
+      {#if banner && !bannerBroken}
+        <img src={banner} alt="" onerror={() => (bannerBroken = true)} />
+      {/if}
     </div>
   {/if}
 
@@ -139,25 +139,18 @@
 
   <div class="body">
     <span class="text">
-      <span
-        class="name txt-body-m-medium"
-        class:empty={!form.displayName.trim()}>
-        {form.displayName.trim() || "Display name"}
+      <span class="name txt-body-m-medium" class:empty={!displayName}>
+        {displayName || "Display name"}
       </span>
-      {#if form.fullName.trim()}
-        <span class="full-name txt-body-m-regular">{form.fullName}</span>
+      {#if fullName}
+        <span class="full-name txt-body-m-regular">{fullName}</span>
       {/if}
     </span>
 
-    {#if form.bio.trim()}
-      <span class="bio txt-body-m-regular">{form.bio}</span>
+    {#if bio}
+      <span class="bio txt-body-m-regular">{bio}</span>
     {/if}
 
-    <span class="did">{truncateId(did)}</span>
-
-    <span class="action txt-body-m-medium">
-      View profile
-      <Icon name="open-external" />
-    </span>
+    {@render details()}
   </div>
 </div>

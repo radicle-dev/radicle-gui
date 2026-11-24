@@ -2,9 +2,11 @@
   import type { ActorInfo } from "@bindings/actor/ActorInfo";
 
   import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
-  import { onDestroy } from "svelte";
 
-  import { RepoImages } from "@app/lib/repoImages";
+  import {
+    pictureFile,
+    useSharedRepoImage,
+  } from "@app/lib/useSharedRepoImage.svelte";
 
   interface Props {
     // The profile whose picture is shown. Without a profile, or without a
@@ -17,63 +19,22 @@
 
   const { actor, fallbackId, styleWidth }: Props = $props();
 
-  const images = new RepoImages();
-  onDestroy(() => images.dispose());
+  const file = $derived(pictureFile(actor, "avatar"));
 
-  const rid = $derived(actor?.rid);
-  const head = $derived(actor?.head);
-  // A value with a colon is a web address. It is not fetched: that would
-  // tell its host who is looking, each time the picture is shown.
-  const path = $derived.by(() => {
-    const named = actor?.profile?.avatar?.trim();
+  // A save moves `head` whether or not it changed the picture, so the one
+  // shown stays until the next has loaded.
+  const image = useSharedRepoImage(() => file);
 
-    return named && !named.includes(":") ? named : undefined;
-  });
-
-  // The picture shown and the profile it belongs to. A save moves `head`
-  // whether or not it changed the picture, so the one shown stays until the
-  // next has loaded.
-  let src = $state<string>();
-  let shownOf: string | undefined;
   let broken = $state(false);
-  // The profile names a picture, so the pattern stands in only once that
-  // picture has failed to load: it must not show for a moment before it.
-  const named = $derived(Boolean(rid && head && path));
-  let failed = $state(false);
-
-  function showPicture(url: string | undefined) {
-    src = url;
-    broken = false;
-    failed = url === undefined;
-    // Releases the pictures loaded before this one.
-    images.sweep();
-  }
 
   $effect(() => {
-    if (rid !== shownOf) {
-      shownOf = rid;
-      src = undefined;
-    }
-    if (!rid || !head || !path) {
-      showPicture(undefined);
-      return;
-    }
-
-    let gone = false;
-    void images
-      .load(rid, head, path)
-      .then(image => {
-        if (!gone) showPicture(image?.url);
-      })
-      .catch((e: unknown) => {
-        console.warn("Could not load the profile's avatar", e);
-        if (!gone) showPicture(undefined);
-      });
-
-    return () => {
-      gone = true;
-    };
+    void image.url;
+    broken = false;
   });
+
+  // The profile names a picture, so the pattern stands in only once that
+  // picture has failed to load: it must not show for a moment before it.
+  const named = $derived(file !== undefined);
 
   const patternId = $derived(actor?.rid ?? fallbackId);
 </script>
@@ -85,13 +46,13 @@
   }
 </style>
 
-{#if src && !broken}
+{#if image.url && !broken}
   <img
     style:width={styleWidth}
     style:height={styleWidth}
-    {src}
+    src={image.url}
     alt="Avatar"
     onerror={() => (broken = true)} />
-{:else if patternId && (!named || failed || broken)}
+{:else if patternId && (!named || image.failed || broken)}
   <UserAvatar nodeId={patternId} {styleWidth} />
 {/if}

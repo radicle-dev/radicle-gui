@@ -11,6 +11,7 @@
   import { entityUrl } from "@app/lib/mentions";
   import { show } from "@app/lib/modal";
   import { RepoImages } from "@app/lib/repoImages";
+  import { pictureFile } from "@app/lib/useSharedRepoImage.svelte";
 
   import Button from "@app/components/Button.svelte";
   import Icon from "@app/components/Icon.svelte";
@@ -28,7 +29,7 @@
     TEXT_FIELDS,
     type TextField,
   } from "./form";
-  import HoverCard from "./HoverCard.svelte";
+  import HoverCardPreview from "./HoverCardPreview.svelte";
   import ImagePicker, { type PickedImage } from "./ImagePicker.svelte";
   import Notice from "./Notice.svelte";
   import ProfileCreated from "./ProfileCreated.svelte";
@@ -160,11 +161,12 @@
   // The file in the profile's repository that the saved profile names and
   // the form still does.
   function savedImage(field: ImageField) {
-    const path = shown?.[field];
-    if (!actor?.head || !path || path.includes(":")) return undefined;
-    if (picked[field] || form[field].trim() !== path) return undefined;
+    const file = pictureFile(actor && { ...actor, profile: shown }, field);
+    if (!file || picked[field] || form[field].trim() !== file.path) {
+      return undefined;
+    }
 
-    return { rid: actor.rid, head: actor.head, path };
+    return { rid: file.rid, head: file.sha, path: file.path };
   }
 
   // The saved pictures the form still names, loaded to show them.
@@ -699,7 +701,7 @@
       <span class="surface-note txt-body-m-regular">
         Shown when someone hovers your name in the app.
       </span>
-      <HoverCard
+      <HoverCardPreview
         {form}
         avatar={imageSrc("avatar")}
         banner={imageSrc("banner")}

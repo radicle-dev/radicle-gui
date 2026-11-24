@@ -1,6 +1,8 @@
 //! Actor repositories: what an actor is and what Desktop shows of one.
 //! Nothing here signs or talks to a node; `traits::actor` does.
 
+use std::collections::BTreeMap;
+
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -15,12 +17,13 @@ mod profile;
 pub use identity::{
     ActorKind, ActorPayload, ClosedIdentityRevision, Enrollment, EnrollmentError,
     IdentityDocRevision, OpenIdentityRevision, ResolvedActor, ResolvedKey, RevisionState,
-    changed_key_entries, changes_only_keys, closed_revisions, enrolled_doc, identity_history,
-    initial_doc, open_revisions, removed_doc, repo_name, resolve, retired_doc,
+    actors_of_keys, changed_key_entries, changes_only_keys, closed_revisions, enrolled_doc,
+    identity_history, initial_doc, open_revisions, removed_doc, repo_name, resolve, retired_doc,
 };
 pub use profile::{
     ActorProfile, PROFILE_PATH, ProfileFile, ProfileImage, ProfileImages, ProfileLink,
     changed_fields, profile_changes, profile_tree, profile_tree_with, read_profile,
+    with_shown_pictures,
 };
 
 /// Drops the entries of `object` that `fields` does not name, and says whether
@@ -411,4 +414,37 @@ pub struct EnrollmentPreview {
     /// The key already controls the actor, as a recovery key does, and keeps
     /// that role.
     pub controller: bool,
+}
+
+/// A profile as Desktop shows it in place of a key's alias.
+#[derive(Clone, Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+#[ts(export_to = "actor/")]
+pub struct ShownProfile {
+    #[ts(as = "String")]
+    pub rid: RepoId,
+    /// The commit the profile was read from.
+    #[ts(as = "String")]
+    pub head: git::Oid,
+    /// Cleaned for display. A save would accept it, and a picture it keeps in
+    /// the repository is a file at `head` within the size a save allows.
+    pub profile: ActorProfile,
+}
+
+/// What each key shows as in place of its alias, from the actors in storage.
+#[derive(Clone, Debug, Default, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+#[ts(export_to = "actor/")]
+pub struct KeyProfiles {
+    /// The actors in `keys` that have a profile to show, by repository ID.
+    #[ts(as = "BTreeMap<String, ShownProfile>")]
+    pub profiles: BTreeMap<RepoId, ShownProfile>,
+    /// The live individual actor that binds each key, by DID. A key that
+    /// none binds, or that several bind, is not here. A key whose actor is
+    /// not in `profiles` keeps its alias until that actor has a profile to
+    /// show.
+    #[ts(as = "BTreeMap<String, String>")]
+    pub keys: BTreeMap<Did, RepoId>,
 }

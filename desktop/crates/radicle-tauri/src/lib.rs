@@ -149,6 +149,7 @@ pub fn run() {
             actor::reject_actor_revision,
             actor::remove_actor_key,
             actor::actors_of_key,
+            actor::key_profiles,
             actor::closed_actor_revisions,
             actor::actor_profile_history,
             actor::leave_actor,

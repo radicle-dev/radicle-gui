@@ -35,6 +35,7 @@ const outsideCache = [
   "identity_by_repo",
   "issue_by_id",
   "joinable_actor",
+  "key_profiles",
   "list_boards",
   "list_canonical_tags",
   "list_commits",

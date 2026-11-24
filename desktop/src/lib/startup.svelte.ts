@@ -1,4 +1,5 @@
 import type { ActorInfo } from "@bindings/actor/ActorInfo";
+import type { KeyProfiles } from "@bindings/actor/KeyProfiles";
 import type { Key } from "@radicle-gui/core/keys";
 import type { RefUpdate } from "@radicle-gui/core/refUpdates";
 import type { UnlistenFn } from "@tauri-apps/api/event";
@@ -76,6 +77,10 @@ export function onRefUpdate(update: RefUpdate) {
   ]);
   const identityMoved =
     repoWide || update.refs?.some(ref => ref.endsWith("refs/rad/id"));
+  const actorAffected =
+    identityMoved ||
+    queryClient.getQueryData<ActorInfo | null>(keys.actor())?.rid ===
+      update.rid;
   invalidateBatched([
     ...affected.filter(key => !isJobsKey(key)),
     // The repository list changes when a seeded repository arrives, or when an
@@ -83,11 +88,25 @@ export function onRefUpdate(update: RefUpdate) {
     ...(identityMoved || !listed(update.rid) ? [keys.repos()] : []),
     // The actor's profile and keys live in its repository, and any identity
     // update may add this device's key to an actor, as an approved join does.
-    ...(identityMoved ||
-    queryClient.getQueryData<ActorInfo | null>(keys.actor())?.rid === update.rid
+    // The actor's key covers the profiles of keys too, so they are named
+    // only when it is not: naming both would fetch them twice.
+    ...(actorAffected
       ? [keys.actor()]
-      : []),
+      : bindsKeys(update.rid)
+        ? [keys.keyProfiles()]
+        : []),
   ]);
+}
+
+// Whether the profiles of keys depend on `rid`: it is an actor's that binds
+// a key, so an edit to its profile, which moves a branch and not the
+// identity, changes what that key shows as. While they load for the first
+// time any repository may be one.
+function bindsKeys(rid: string): boolean {
+  const state = queryClient.getQueryState<KeyProfiles>(keys.keyProfiles());
+  if (state?.data === undefined) return state?.fetchStatus === "fetching";
+
+  return Object.values(state.data.keys).includes(rid);
 }
 
 function refreshCobCache(): void {

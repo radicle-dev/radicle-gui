@@ -1,7 +1,8 @@
 use radicle::git;
 use radicle::identity::{Did, RepoId};
 use radicle_types::actor::{
-    ActorInfo, ActorProfile, ActorRevision, EnrollmentPreview, ProfileEdit, ProfileImages,
+    ActorInfo, ActorProfile, ActorRevision, EnrollmentPreview, KeyProfiles, ProfileEdit,
+    ProfileImages,
 };
 use radicle_types::cobs::{CobOptions, PaginatedQuery};
 use radicle_types::error::Error;
@@ -111,6 +112,11 @@ pub async fn remove_actor_key(
 #[tauri::command]
 pub async fn actors_of_key(ctx: tauri::State<'_, AppState>) -> Result<Vec<ActorInfo>, Error> {
     blocking(ctx, move |ctx| ctx.actors_of_key()).await
+}
+
+#[tauri::command]
+pub async fn key_profiles(ctx: tauri::State<'_, AppState>) -> Result<KeyProfiles, Error> {
+    blocking(ctx, move |ctx| ctx.key_profiles()).await
 }
 
 #[tauri::command]

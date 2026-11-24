@@ -109,8 +109,16 @@ export type FetchRepoBytes = (
   path: string,
 ) => Promise<ArrayBuffer>;
 
-function fetchRepoBytes(rid: string, sha: string, path: string) {
+export function fetchRepoBytes(rid: string, sha: string, path: string) {
   return invoke<ArrayBuffer>("repo_blob_bytes", { rid, sha, path });
+}
+
+// An object URL that shows `bytes`, the file at `path`, as a picture. Whoever
+// makes one revokes it.
+export function repoImageUrl(bytes: BlobPart, path: string): string {
+  return URL.createObjectURL(
+    new Blob([bytes], { type: imageMimeType(path) ?? "" }),
+  );
 }
 
 /**
@@ -142,9 +150,7 @@ export class RepoImages {
 
     const image = this.#fetch(rid, sha, path).then(buffer => {
       const bytes = new Uint8Array(buffer);
-      const url = URL.createObjectURL(
-        new Blob([bytes], { type: imageMimeType(path) ?? "" }),
-      );
+      const url = repoImageUrl(bytes, path);
       if (this.#images.get(key) !== image) {
         URL.revokeObjectURL(url);
         return undefined;

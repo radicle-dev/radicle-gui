@@ -3032,3 +3032,165 @@ fn a_version_that_cannot_be_read_is_listed_without_what_it_changed() {
     own(newer);
     assert_eq!(fields(), None);
 }
+
+/// Moves `repo`'s default branch onto a commit whose profile file holds
+/// `profile`, next to `files` at the root, as a fetch from another device
+/// would.
+fn receive_profile(
+    repo: &radicle::storage::git::Repository,
+    profile: &serde_json::Value,
+    files: &[(&str, &[u8])],
+) {
+    let git = &repo.backend;
+    let mut folder = git.treebuilder(None).unwrap();
+    let json = git.blob(profile.to_string().as_bytes()).unwrap();
+    folder.insert("profile.json", json, 0o100644).unwrap();
+    let mut root = git.treebuilder(None).unwrap();
+    root.insert(".radicle", folder.write().unwrap(), 0o040000)
+        .unwrap();
+    for (name, bytes) in files {
+        root.insert(name, git.blob(bytes).unwrap(), 0o100644)
+            .unwrap();
+    }
+
+    let parent = git
+        .find_commit(oid(repo, "refs/heads/main").unwrap())
+        .unwrap();
+    let signature = git.signature().unwrap();
+    let tree = git.find_tree(root.write().unwrap()).unwrap();
+    let commit = git
+        .commit(None, &signature, &signature, "Edit", &tree, &[&parent])
+        .unwrap();
+    git.reference("refs/heads/main", commit, true, "fetch")
+        .unwrap();
+}
+
+#[test]
+fn a_key_shows_as_the_profile_of_the_actor_that_binds_it() {
+    let (_tmp, state, rid) = actor_state();
+
+    let shown = state.key_profiles().unwrap();
+
+    assert_eq!(shown.keys, [(state.profile.did(), rid)].into());
+    assert_eq!(shown.profiles[&rid].profile.display_name, "alice");
+    assert_eq!(shown.profiles[&rid].rid, rid);
+}
+
+#[test]
+fn a_key_two_actors_bind_shows_as_neither() {
+    let (tmp, state, _) = actor_state();
+    let other = AppState {
+        profile: test::profile(&tmp.path().join("other"), [0xee; 32]),
+    };
+    let second = other
+        .create_actor(named("bob"), Default::default(), quiet())
+        .unwrap()
+        .rid;
+    let repo = other.profile.storage.repository(second).unwrap();
+    let consent = Enrollment::sign(second, repo.identity().unwrap().current, &key(0xff));
+    other
+        .approve_enrollment(consent.encode(), false, quiet())
+        .unwrap();
+    copy_dir(
+        &radicle::storage::git::paths::repository(&other.profile.storage, &second),
+        &radicle::storage::git::paths::repository(&state.profile.storage, &second),
+    );
+
+    let shown = state.key_profiles().unwrap();
+
+    // The other actor's own key is bound by it alone.
+    assert_eq!(shown.keys, [(other.profile.did(), second)].into());
+    assert_eq!(shown.profiles.keys().collect::<Vec<_>>(), [&second]);
+}
+
+#[test]
+fn a_retired_actor_shows_for_no_key() {
+    let (_tmp, state, rid) = actor_state();
+    write_payload_field(&state, rid, "retired", true.into());
+
+    let shown = state.key_profiles().unwrap();
+
+    assert!(shown.keys.is_empty());
+    assert!(shown.profiles.is_empty());
+}
+
+#[test]
+fn a_profile_a_save_would_refuse_is_not_shown_and_its_key_stays_bound() {
+    let (_tmp, state, rid) = actor_state();
+    let repo = state.profile.storage.repository(rid).unwrap();
+    let did = state.profile.did();
+
+    let cases = [
+        serde_json::json!({ "version": 1, "displayName": "a".repeat(256) }),
+        serde_json::json!({ "version": 1, "displayName": " " }),
+        serde_json::json!({ "version": 1, "displayName": "alice", "avatar": "a\u{200b}.png" }),
+        serde_json::json!({
+            "version": 1,
+            "displayName": "alice",
+            "links": [{ "url": "javascript:alert(1)" }],
+        }),
+    ];
+    for profile in cases {
+        receive_profile(&repo, &profile, &[]);
+
+        let shown = state.key_profiles().unwrap();
+
+        assert!(shown.profiles.is_empty(), "{profile} is shown");
+        assert_eq!(shown.keys, [(did, rid)].into());
+    }
+
+    // The same key shows as the profile again once it is one a save accepts.
+    receive_profile(
+        &repo,
+        &serde_json::json!({ "version": 1, "displayName": "a".repeat(255) }),
+        &[],
+    );
+    assert!(state.key_profiles().unwrap().profiles.contains_key(&rid));
+}
+
+#[test]
+fn a_picture_is_shown_only_as_a_file_within_the_size_a_save_allows() {
+    let (_tmp, state, rid) = actor_state();
+    let repo = state.profile.storage.repository(rid).unwrap();
+    let pictures = |avatar: &str, banner: &str, files: &[(&str, &[u8])]| {
+        let profile = serde_json::json!({
+            "version": 1,
+            "displayName": "alice",
+            "avatar": avatar,
+            "banner": banner,
+        });
+        receive_profile(&repo, &profile, files);
+        let shown = state.key_profiles().unwrap().profiles.remove(&rid).unwrap();
+
+        (shown.profile.avatar, shown.profile.banner)
+    };
+    let mib = 1024 * 1024;
+    let named = |name: &str| Some(name.to_string());
+
+    // At the limit of each, and one byte over.
+    let (avatar, banner) = (vec![0; mib], vec![0; 2 * mib]);
+    assert_eq!(
+        pictures(
+            "avatar.png",
+            "banner.png",
+            &[("avatar.png", &avatar), ("banner.png", &banner)]
+        ),
+        (named("avatar.png"), named("banner.png"))
+    );
+    let (avatar, banner) = (vec![0; mib + 1], vec![0; 2 * mib + 1]);
+    assert_eq!(
+        pictures(
+            "avatar.png",
+            "banner.png",
+            &[("avatar.png", &avatar), ("banner.png", &banner)]
+        ),
+        (None, None)
+    );
+
+    // A file that is not there, and an address on the web, which is never
+    // read and so is left as it is.
+    assert_eq!(
+        pictures("gone.png", "https://example.com/banner.png", &[]),
+        (None, named("https://example.com/banner.png"))
+    );
+}

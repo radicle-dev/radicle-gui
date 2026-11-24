@@ -391,10 +391,14 @@ impl ActorProfile {
             }
         }
         let profile: Self = serde_json::from_value(value).ok()?;
+        // Checked as a save checks it, before the addresses are cleaned:
+        // cleaning one would point it somewhere else.
+        let valid = profile.clone().normalized().validate().is_ok();
 
         Some(ReadProfile {
             profile: profile.cleaned(),
             newer,
+            valid,
         })
     }
 
@@ -411,6 +415,8 @@ pub struct ReadProfile {
     /// The file is newer than `PROFILE_VERSION`; writing it back would drop
     /// fields.
     pub newer: bool,
+    /// A save would accept the profile as the file holds it.
+    pub valid: bool,
 }
 
 /// What a commit's tree holds at `PROFILE_PATH`.
@@ -577,6 +583,45 @@ pub fn read_profile(
             ProfileFile::Read(Box::new(read))
         }),
     )
+}
+
+/// `profile` with only the pictures that can be shown from `commit`'s tree.
+/// One kept in the repository stays if it is a file there within the size a
+/// save allows. One at a web address stays as it is, since nothing fetches it.
+/// The sizes come from the objects' headers, so no picture is loaded. One
+/// that is dropped is named in the log at debug level.
+pub fn with_shown_pictures(
+    repo: &git::raw::Repository,
+    commit: git::Oid,
+    mut profile: ActorProfile,
+) -> Result<ActorProfile, git::raw::Error> {
+    let tree = repo.find_commit(commit.into())?.tree()?;
+    let odb = repo.odb()?;
+    let fits = |path: &str, limit: usize| {
+        tree.get_path(std::path::Path::new(path))
+            .ok()
+            .filter(|entry| entry.kind() == Some(git::raw::ObjectType::Blob))
+            .and_then(|entry| odb.read_header(entry.id()).ok())
+            .is_some_and(|(size, _)| size <= limit)
+    };
+
+    let pictures = [
+        (&mut profile.avatar, MAX_AVATAR_BYTES),
+        (&mut profile.banner, MAX_BANNER_BYTES),
+    ];
+    for (picture, limit) in pictures {
+        let shown = picture
+            .as_deref()
+            .is_none_or(|path| path.contains(':') || fits(path, limit));
+        if !shown && let Some(path) = picture.take() {
+            log::debug!(
+                "Not showing the picture {path} at {commit}: it is not a file there of at most \
+                 {limit} bytes"
+            );
+        }
+    }
+
+    Ok(profile)
 }
 
 #[cfg(test)]

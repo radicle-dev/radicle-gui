@@ -36,6 +36,9 @@ export const keys = {
   repoList: (scope: string) => ["repos", scope] as const,
   // The local actor, which is found by scanning every repository's identity.
   actor: () => ["actor"] as const,
+  // What each key shows as in place of its alias. It sits under the actor's
+  // key, so whatever changes the local actor refreshes it too.
+  keyProfiles: () => ["actor", "keys"] as const,
   notifications: () => ["notifications"] as const,
   notificationCount: () => ["notifications", "count"] as const,
   notificationList: () => ["notifications", "list"] as const,

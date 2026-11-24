@@ -1,4 +1,5 @@
 import type { ActorInfo } from "@bindings/actor/ActorInfo";
+import type { KeyProfiles } from "@bindings/actor/KeyProfiles";
 import type { Action as IssueAction } from "@bindings/cob/issue/Action";
 import type { Issue } from "@bindings/cob/issue/Issue";
 import type { Operation } from "@bindings/cob/Operation";
@@ -42,6 +43,13 @@ export function localActor(): QueryOptions<ActorInfo | null> {
   return {
     queryKey: keys.actor(),
     queryFn: () => invoke<ActorInfo | null>("actor"),
+  };
+}
+
+export function keyProfiles(): QueryOptions<KeyProfiles> {
+  return {
+    queryKey: keys.keyProfiles(),
+    queryFn: () => invoke<KeyProfiles>("key_profiles"),
   };
 }
 

@@ -16,8 +16,8 @@ use radicle::{Node, git, node};
 use crate::actor;
 use crate::actor::{
     ActorFork, ActorInfo, ActorKey, ActorPayload, ActorProfile, ActorRevision, Enrollment,
-    EnrollmentPreview, IdentityDocRevision, PROFILE_PATH, ProfileEdit, ProfileImages,
-    ResolvedActor,
+    EnrollmentPreview, IdentityDocRevision, KeyProfiles, PROFILE_PATH, ProfileEdit, ProfileImages,
+    ResolvedActor, ShownProfile,
 };
 use crate::cobs::{CobOptions, PaginatedQuery};
 use crate::error::Error;
@@ -502,6 +502,46 @@ pub trait Actor: Repo {
                     .ok()
             })
             .collect())
+    }
+
+    /// The live individual actor in storage that binds each key, and the
+    /// profile of each of those actors that has one to show: on its canonical
+    /// branch, one a save would accept. A key whose actor has none keeps its
+    /// alias, and the log says why at debug level. An actor whose history or
+    /// profile cannot be read is treated as having none, with a warning in the
+    /// log. Reads nothing from the network and writes nothing. Scans every
+    /// repository, and reads the identity history and the profile of each
+    /// actor's, one repository at a time.
+    fn key_profiles(&self) -> Result<KeyProfiles, Error> {
+        let storage = &self.profile().storage;
+
+        // Each repository is closed before the next is opened: a node may
+        // hold more actors than a process may hold files.
+        let mut actors = Vec::new();
+        for (rid, doc) in repositories(storage)? {
+            if ActorPayload::of(&doc).is_none() {
+                continue;
+            }
+            let Some((repo, _, resolved)) = resolved_at(storage, rid) else {
+                continue;
+            };
+            let profile = resolved
+                .is_live_individual()
+                .then(|| shown_profile(&repo))
+                .flatten();
+
+            actors.push((rid, resolved, profile));
+        }
+
+        let keys = actor::actors_of_keys(actors.iter().map(|(rid, resolved, _)| (*rid, resolved)));
+        let bound = keys.values().copied().collect::<BTreeSet<_>>();
+        let profiles = actors
+            .into_iter()
+            .filter(|(rid, _, _)| bound.contains(rid))
+            .filter_map(|(rid, _, profile)| Some((rid, profile?)))
+            .collect();
+
+        Ok(KeyProfiles { profiles, keys })
     }
 
     /// The actor at `rid` after the local key's vote to remove itself from
@@ -1377,20 +1417,7 @@ fn bindings<A: Actor + ?Sized>(actor: &A) -> Result<(Vec<Bound>, Option<RepoId>)
         if !payload.keys.contains_key(&did) && !doc.is_delegate(&did) {
             continue;
         }
-        // One repository that cannot be read must not hide the rest.
-        let loaded = profile
-            .storage
-            .repository(rid)
-            .map_err(Error::from)
-            .and_then(|repo| Ok((actor::identity_history(&repo)?, repo)));
-        let (history, repo) = match loaded {
-            Ok(loaded) => loaded,
-            Err(e) => {
-                log::warn!("Skipping {rid} while looking for the actor: {e}");
-                continue;
-            }
-        };
-        let Some(resolved) = actor::resolve(rid, &history) else {
+        let Some((repo, history, resolved)) = resolved_at(&profile.storage, rid) else {
             continue;
         };
         let bound = resolved.bound_keys().any(|bound| bound == did);
@@ -1404,6 +1431,72 @@ fn bindings<A: Actor + ?Sized>(actor: &A) -> Result<(Vec<Bound>, Option<RepoId>)
     }
 
     Ok((found, unsure))
+}
+
+/// The profile of the actor in `repo` as it shows in place of an alias, if it
+/// has one to show, see `Actor::key_profiles`. Why it has none goes to the
+/// log: at debug level where that is an ordinary state, as a warning where a
+/// read failed.
+fn shown_profile(repo: &Repository) -> Option<ShownProfile> {
+    let rid = repo.id;
+    let skipped = |why: &str| log::debug!("Not showing the profile of {rid}: {why}");
+
+    let head = match repo.head() {
+        Ok((_, head)) => head,
+        Err(RepositoryError::Quorum(_)) => {
+            skipped("it has no canonical branch yet");
+            return None;
+        }
+        Err(e) => {
+            log::warn!("Not able to find the canonical branch of {rid}: {e}");
+            return None;
+        }
+    };
+    let shown = actor::read_profile(&repo.backend, head).and_then(|file| match file {
+        actor::ProfileFile::Read(read) if read.valid => {
+            actor::with_shown_pictures(&repo.backend, head, read.profile).map(Some)
+        }
+        actor::ProfileFile::Read(_) => {
+            skipped("a save would refuse it");
+            Ok(None)
+        }
+        actor::ProfileFile::Unreadable => {
+            skipped("the file cannot be read");
+            Ok(None)
+        }
+        actor::ProfileFile::Missing => {
+            skipped("there is no file");
+            Ok(None)
+        }
+    });
+
+    match shown {
+        Ok(profile) => profile.map(|profile| ShownProfile { rid, head, profile }),
+        Err(e) => {
+            log::warn!("Not able to read the profile of {rid}: {e}");
+            None
+        }
+    }
+}
+
+/// The actor that the repository at `rid` resolves to, with its repository
+/// and identity history. `None` if it resolves to none, or cannot be read,
+/// which is logged: one repository that cannot be read must not hide the rest.
+fn resolved_at(storage: &radicle::storage::git::Storage, rid: RepoId) -> Option<Bound> {
+    let loaded = storage
+        .repository(rid)
+        .map_err(Error::from)
+        .and_then(|repo| Ok((actor::identity_history(&repo)?, repo)));
+    let (history, repo) = match loaded {
+        Ok(loaded) => loaded,
+        Err(e) => {
+            log::warn!("Skipping {rid} while looking for the actor: {e}");
+            return None;
+        }
+    };
+    let resolved = actor::resolve(rid, &history)?;
+
+    Some((repo, history, resolved))
 }
 
 /// The actor at `rid` among those that bind the local key, and the others.
