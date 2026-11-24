@@ -251,6 +251,7 @@
     max-width: 20rem;
     padding: 0 0.25rem;
     border: 0;
+    text-indent: 0;
     border-radius: var(--border-radius-sm);
     background-color: var(--color-surface-base);
     color: var(--color-text-primary);
@@ -301,6 +302,7 @@
     vertical-align: baseline;
     gap: 0.25rem;
     padding: 0 0.25rem;
+    text-indent: 0;
     border-radius: var(--border-radius-sm);
     background-color: var(--color-surface-base);
   }
