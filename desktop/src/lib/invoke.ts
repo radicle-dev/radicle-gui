@@ -97,9 +97,11 @@ async function withTestBackend<T>(
   } else {
     const raw = args instanceof Uint8Array;
     const headers = new Headers(options?.headers);
+    // `text/plain` keeps JSON calls CORS-simple, so WebKit sends no preflight.
+    // Its connection churn around preflights loses requests at startup.
     headers.set(
       "Content-Type",
-      raw ? "application/octet-stream" : "application/json",
+      raw ? "application/octet-stream" : "text/plain;charset=UTF-8",
     );
     return fetch(`http://127.0.0.1:${testHttpApiPort()}/${cmd}`, {
       method: "POST",

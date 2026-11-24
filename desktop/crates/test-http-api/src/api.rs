@@ -297,6 +297,7 @@ pub fn router(shared: Shared) -> Router {
         .route("/notification_count", post(notification_count_handler))
         .merge(writes)
         .layer(middleware::from_fn(read_body))
+        .layer(middleware::from_fn(plain_text_is_json))
         .layer(
             CorsLayer::new()
                 .allow_origin(cors::AllowOrigin::list(
@@ -319,6 +320,22 @@ async fn read_body(request: Request, next: Next) -> Response {
         }
         Err(e) => (hyper::StatusCode::BAD_REQUEST, e.to_string()).into_response(),
     }
+}
+
+/// The app sends JSON as `text/plain` so the browser skips the CORS
+/// preflight; `Json` only accepts `application/json`.
+async fn plain_text_is_json(mut request: Request, next: Next) -> Response {
+    let plain = request
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("text/plain"));
+    if plain {
+        request
+            .headers_mut()
+            .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    }
+    next.run(request).await
 }
 
 async fn serialize_writes(
