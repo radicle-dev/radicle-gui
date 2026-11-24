@@ -5,6 +5,8 @@ use serde_json::json;
 
 use radicle::git::raw::ErrorExt;
 
+use crate::error::surf_not_found_message;
+
 /// Errors relating to the API backend.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -108,18 +110,17 @@ pub enum Error {
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
         let message = self.to_string();
+        let surf_not_found = match &self {
+            Error::Surf(e) => surf_not_found_message(e),
+            _ => None,
+        };
         let (status, msg) = match self {
             Error::NotFound => (StatusCode::NOT_FOUND, None),
             Error::CobStore(e @ radicle::cob::store::Error::NotFound(_, _)) => {
                 (StatusCode::NOT_FOUND, Some(e.to_string()))
             }
             Error::Crypto(msg) => (StatusCode::BAD_REQUEST, Some(msg.to_string())),
-            Error::Surf(radicle_surf::Error::Git(e)) if e.is_not_found() => {
-                (StatusCode::NOT_FOUND, Some(e.message().to_owned()))
-            }
-            Error::Surf(radicle_surf::Error::Directory(
-                e @ radicle_surf::fs::error::Directory::PathNotFound(_),
-            )) => (StatusCode::NOT_FOUND, Some(e.to_string())),
+            Error::Surf(_) if surf_not_found.is_some() => (StatusCode::NOT_FOUND, surf_not_found),
             Error::Git2(e) if e.is_not_found() => {
                 (StatusCode::NOT_FOUND, Some(e.message().to_owned()))
             }

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### radicle-httpd
+
+- **404 for missing repos and objects**: Raw, git and API routes return 404
+  instead of 500 for repos the node doesn't have, missing commits, blobs and
+  paths, and paths of the wrong type
+
 ## radicle-httpd + radicle-search 0.31.0
 
 This release defines a backward compatibility policy in Radicle Explorer for

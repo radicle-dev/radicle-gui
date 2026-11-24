@@ -210,7 +210,7 @@ mod routes {
     use axum_listener::DualAddr;
     use radicle::identity::RepoId;
 
-    use crate::test::{self, get, get_with_headers, RID};
+    use crate::test::{self, get, get_with_headers, RID, RID_NOT_IN_STORAGE};
 
     #[tokio::test]
     async fn test_info_request() {
@@ -317,5 +317,21 @@ mod routes {
 
         let response = get(&app, "/heartwood.git/info/refs").await;
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_info_refs_repo_not_in_storage() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = test::seed(tmp.path());
+        let app = super::router(ctx.profile().to_owned(), Arc::new(HashMap::new())).layer(
+            MockConnectInfo(DualAddr::Tcp(SocketAddr::from(([0, 0, 0, 0], 8080)))),
+        );
+
+        let response = get(
+            &app,
+            format!("/{RID_NOT_IN_STORAGE}.git/info/refs?service=git-upload-pack"),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }

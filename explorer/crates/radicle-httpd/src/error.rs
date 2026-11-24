@@ -3,6 +3,9 @@ use std::process::ExitStatus;
 use axum::http;
 use axum::response::{IntoResponse, Response};
 
+use radicle::git::raw::ErrorExt;
+use radicle_surf::fs::error::Directory;
+
 /// Errors relating to the Git backend.
 #[derive(Debug, thiserror::Error)]
 pub enum GitError {
@@ -53,6 +56,8 @@ impl GitError {
             GitError::ServiceUnavailable(_) => http::StatusCode::SERVICE_UNAVAILABLE,
             GitError::Id(_) => http::StatusCode::NOT_FOUND,
             GitError::NotFound => http::StatusCode::NOT_FOUND,
+            GitError::Storage(err) if err.is_not_found() => http::StatusCode::NOT_FOUND,
+            GitError::Repository(err) if err.is_not_found() => http::StatusCode::NOT_FOUND,
             _ => http::StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -115,9 +120,32 @@ impl RawError {
         match self {
             RawError::BadRequest => http::StatusCode::BAD_REQUEST,
             RawError::SurfFile(_) | RawError::NotFound => http::StatusCode::NOT_FOUND,
+            RawError::Surf(err) if surf_not_found_message(err).is_some() => {
+                http::StatusCode::NOT_FOUND
+            }
+            RawError::Git(err) if err.is_not_found() => http::StatusCode::NOT_FOUND,
+            RawError::Storage(err) if err.is_not_found() => http::StatusCode::NOT_FOUND,
+            RawError::Repository(err) if err.is_not_found() => http::StatusCode::NOT_FOUND,
             _ => http::StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
+}
+
+pub(crate) fn surf_not_found_message(err: &radicle_surf::Error) -> Option<String> {
+    match err {
+        radicle_surf::Error::Git(err) => git_not_found_message(err),
+        radicle_surf::Error::Directory(
+            err @ (Directory::PathNotFound(_) | Directory::InvalidType(..)),
+        ) => Some(err.to_string()),
+        radicle_surf::Error::ToCommit(err) => err
+            .downcast_ref::<radicle_surf::Error>()
+            .and_then(surf_not_found_message),
+        _ => None,
+    }
+}
+
+fn git_not_found_message(err: &radicle::git::raw::Error) -> Option<String> {
+    err.is_not_found().then(|| err.message().to_owned())
 }
 
 impl IntoResponse for RawError {

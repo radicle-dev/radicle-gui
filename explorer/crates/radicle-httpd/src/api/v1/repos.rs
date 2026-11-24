@@ -1076,12 +1076,7 @@ fn read_blob(
     commit: Oid,
     path: &str,
 ) -> Result<BlobData, Error> {
-    let tree = storage.backend.find_commit(commit.into())?.tree()?;
-    let entry = tree.get_path(std::path::Path::new(path))?;
-    let blob = entry
-        .to_object(&storage.backend)?
-        .into_blob()
-        .map_err(|_| radicle::git::raw::Error::from_str("path does not point to a blob"))?;
+    let blob = storage.blob_at(commit, path)?;
 
     if blob.content().len() > MAX_BODY_LIMIT {
         return Ok(BlobData::TooLarge);
@@ -2405,6 +2400,38 @@ mod routes {
             .get("releases")
             .is_none());
         assert_eq!(body["cobs"]["issues"]["open"], json!(1));
+    }
+
+    #[tokio::test]
+    async fn test_repos_commit_not_in_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = super::router(seed(tmp.path()));
+        let missing = "1111111111111111111111111111111111111111";
+
+        for path in [
+            format!("/repos/{RID}/tree/{missing}/dir1"),
+            format!("/repos/{RID}/blob/{missing}/README"),
+            format!("/repos/{RID}/blob/{HEAD}/dir1"),
+            format!("/repos/{RID}/tree/{HEAD}/README"),
+        ] {
+            let response = get(&app, &path).await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+        }
+
+        for path in [
+            format!("/repos/{RID}/commits/{missing}"),
+            format!("/repos/{RID}/tree/{missing}/"),
+        ] {
+            let response = get(&app, path).await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            assert_eq!(
+                response.json().await,
+                json!({
+                    "error": format!("object not found - no match for id ({missing})"),
+                    "code": 404
+                })
+            );
+        }
     }
 
     #[tokio::test]

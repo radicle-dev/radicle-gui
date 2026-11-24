@@ -29,6 +29,7 @@ use crate::api::Context;
 
 pub const RID: &str = "rad:z4FucBZHZMCsxTyQE1dfE2YR59Qbp";
 pub const RID_PRIVATE: &str = "rad:zLuTzcmoWMcdK37xqArS8eckp9vK";
+pub const RID_NOT_IN_STORAGE: &str = "rad:zWzu5sgdan7wuErGDRz1u4JTFEF7";
 pub const HEAD: &str = "e8c676b9e3b42308dc9d218b70faa5408f8e58ca";
 pub const PARENT: &str = "ee8d6a29304623a78ebfa5eeed5af674d0e58f83";
 pub const INITIAL_COMMIT: &str = "f604ce9fd5b7cc77b7609beda45ea8760bee78f7";

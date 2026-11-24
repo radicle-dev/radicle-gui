@@ -397,7 +397,7 @@ mod routes {
 
     use axum::http::StatusCode;
 
-    use crate::test::{self, get, HEAD, RID, RID_PRIVATE};
+    use crate::test::{self, get, HEAD, RID, RID_NOT_IN_STORAGE, RID_PRIVATE};
     use radicle::storage::ReadStorage;
 
     #[tokio::test]
@@ -418,6 +418,45 @@ mod routes {
             .unwrap();
 
         let response = get(&app, format!("/{RID_PRIVATE}/head/README")).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_file_handler_repo_not_in_storage() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = test::seed(tmp.path());
+        let app = super::router(ctx.profile().to_owned(), Arc::new(HashMap::new()));
+
+        let response = get(&app, format!("/{RID_NOT_IN_STORAGE}/head/README")).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let response = get(&app, format!("/{RID_NOT_IN_STORAGE}/{HEAD}/README")).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let response = get(&app, format!("/{RID_NOT_IN_STORAGE}/archive/master.tar.gz")).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_object_not_in_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = test::seed(tmp.path());
+        let app = super::router(ctx.profile().to_owned(), Arc::new(HashMap::new()));
+        let missing = "1111111111111111111111111111111111111111";
+
+        let response = get(&app, format!("/{RID}/{missing}/README")).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let response = get(&app, format!("/{RID}/blobs/{missing}")).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let response = get(&app, format!("/{RID}/{HEAD}/does-not-exist")).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let response = get(&app, format!("/{RID}/{HEAD}/dir1")).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let response = get(&app, format!("/{RID}/head/dir1")).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
