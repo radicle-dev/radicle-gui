@@ -17,6 +17,7 @@ import { get } from "svelte/store";
 
 import { heardOfChange, heardOfChangeWithin } from "@app/lib/cacheActivity";
 import type { RepoList } from "@app/lib/cobQueries";
+import { inboxOpen, inInbox } from "@app/lib/inboxRepos";
 import { clearEntityCaches, invoke } from "@app/lib/invoke";
 import { queryClient } from "@app/lib/query";
 import { repoListScope } from "@app/lib/repoListScope";
@@ -87,7 +88,24 @@ export function onRefUpdate(update: RefUpdate) {
     queryClient.getQueryData<ActorInfo | null>(keys.actor())?.rid === update.rid
       ? [keys.actor()]
       : []),
+    // The inbox shows issue and patch statuses from the COB cache. The node
+    // updates the cache after it writes the notification, so the refresh that
+    // `notifications_changed` triggers can still show the old status. The
+    // same key as that refresh merges the two when they fall in one batch.
+    ...(inboxAffected(update.rid, affected, repoWide)
+      ? [keys.notifications()]
+      : []),
   ]);
+}
+
+function inboxAffected(rid: string, affected: Key[], repoWide: boolean) {
+  if (repoWide) return inInbox(rid);
+  return affected.some(
+    key =>
+      key.length === 4 &&
+      (key[2] === "issue" || key[2] === "patch") &&
+      inInbox(rid, key[3]),
+  );
 }
 
 function refreshCobCache(): void {
@@ -95,16 +113,20 @@ function refreshCobCache(): void {
   void invalidate(queryClient, {
     predicate: query => isCobCacheKey(query.queryKey as Key),
   });
+  // The change doesn't say which repository it was in.
+  if (inboxOpen()) {
+    void invalidate(queryClient, { queryKey: keys.notificationList() });
+  }
 }
 
 let deferredCobRefresh: ReturnType<typeof setTimeout> | undefined;
 
 // Issues and patches written without announcing them, such as with
-// `rad issue comment --no-announce`, only show in the node's COB cache. It
-// also changes with every fetch and write the cache already heard of, and
-// says nothing about which repository changed. So right after such a change
-// it refreshes once things are quiet, rather than with every fetch, and never
-// leaves a change out.
+// `rad issue comment --no-announce`, only show in the node's COB cache, and so
+// do their statuses in the inbox. The cache also changes with every fetch and
+// write we already heard of, and doesn't say which repository changed. So
+// after such a change, refresh once things are quiet rather than on every
+// fetch, without missing a change.
 export function onCobsChanged(): void {
   if (!heardOfChangeWithin(COB_QUIET_MS)) {
     refreshCobCache();

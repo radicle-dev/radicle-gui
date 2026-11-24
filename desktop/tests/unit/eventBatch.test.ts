@@ -1,3 +1,4 @@
+import type { NotificationsByRepo } from "@bindings/cob/inbox/NotificationsByRepo";
 import type { RefUpdate as BackendRefUpdate } from "@bindings/repo/RefUpdate";
 import type { RefUpdate } from "@radicle-gui/core/refUpdates";
 
@@ -12,6 +13,7 @@ import {
   vi,
 } from "vitest";
 
+import { setInboxItems } from "@app/lib/inboxRepos";
 import { queryClient } from "@app/lib/query";
 import { repoListScope } from "@app/lib/repoListScope";
 import { batch, onCobsChanged, onRefUpdate } from "@app/lib/startup.svelte";
@@ -31,6 +33,25 @@ const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
 
 const rid = "rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5";
 const nid = "z6MkkfM3tPXNPrPevKr3uSiQtHPuwnNhu2yUVjgd2jXVsVz5";
+const issueId = "d96f425412c9f8ad5d9a9a05c9831d0728e2338d";
+const patchId = "a1b5c9e2f3d4071829a3b4c5d6e7f80912a3b4c5";
+
+// Opens the inbox showing the given issues and patches of each repository.
+function openInbox(...repos: [string, string[]][]) {
+  setInboxItems(
+    repos.map(
+      ([rid, ids]) =>
+        ({
+          rid,
+          notifications: [ids.map(id => ({ id }))],
+        }) as unknown as NotificationsByRepo,
+    ),
+  );
+}
+
+function invalidatedKeys() {
+  return invalidateQueries.mock.calls.map(call => call[0]?.queryKey);
+}
 
 // Whether an invalidation with the given filter refetches a query of `key`.
 function covers(call: unknown[], key: readonly unknown[]): boolean {
@@ -56,6 +77,7 @@ afterEach(() => {
   vi.useRealTimers();
   invalidateQueries.mockClear();
   clearEntityCaches.mockReset();
+  setInboxItems(undefined);
   queryClient.clear();
 });
 
@@ -190,5 +212,71 @@ describe("the COB cache", () => {
     expect(cobInvalidations()).toHaveLength(0);
     vi.advanceTimersByTime(5_000);
     expect(cobInvalidations()).toHaveLength(1);
+  });
+
+  test("refreshes the open inbox along with it", () => {
+    openInbox([rid, [issueId]]);
+    onCobsChanged();
+    vi.advanceTimersByTime(5_000);
+    expect(invalidatedKeys()).toContainEqual(keys.notificationList());
+  });
+
+  test("leaves the inbox while it isn't open", () => {
+    onCobsChanged();
+    vi.advanceTimersByTime(5_000);
+    expect(invalidatedKeys()).not.toContainEqual(keys.notificationList());
+  });
+});
+
+describe("the inbox", () => {
+  const issue = `refs/namespaces/${nid}/refs/cobs/xyz.radicle.issue/${issueId}`;
+  const patch = `refs/namespaces/${nid}/refs/cobs/xyz.radicle.patch/${patchId}`;
+
+  function inboxInvalidated(): boolean {
+    vi.advanceTimersByTime(100);
+    return invalidatedKeys().some(
+      key => key?.join("\0") === keys.notifications().join("\0"),
+    );
+  }
+
+  test("refreshes for an update of an issue it shows", () => {
+    openInbox([rid, [issueId]]);
+    onRefUpdate({ rid, refs: [issue] });
+    expect(inboxInvalidated()).toBe(true);
+  });
+
+  test("refreshes for an update of a patch it shows", () => {
+    openInbox([rid, [patchId]]);
+    onRefUpdate({ rid, refs: [patch] });
+    expect(inboxInvalidated()).toBe(true);
+  });
+
+  test("refreshes for an update naming no refs of a repository it shows", () => {
+    openInbox([rid, [issueId]]);
+    onRefUpdate({ rid });
+    expect(inboxInvalidated()).toBe(true);
+  });
+
+  test("stays for an update of an issue it doesn't show", () => {
+    openInbox([rid, [patchId]]);
+    onRefUpdate({ rid, refs: [issue] });
+    expect(inboxInvalidated()).toBe(false);
+  });
+
+  test("stays for a branch update of a repository it shows", () => {
+    openInbox([rid, [issueId]]);
+    onRefUpdate({ rid, refs: [`refs/namespaces/${nid}/refs/heads/main`] });
+    expect(inboxInvalidated()).toBe(false);
+  });
+
+  test("stays for an update naming no refs of a repository it doesn't show", () => {
+    openInbox(["rad:z4V1sjrXqjvFdnCUbxPFqd5p4DtH5", [issueId]]);
+    onRefUpdate({ rid });
+    expect(inboxInvalidated()).toBe(false);
+  });
+
+  test("stays while it isn't open", () => {
+    onRefUpdate({ rid, refs: [issue] });
+    expect(inboxInvalidated()).toBe(false);
   });
 });

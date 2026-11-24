@@ -6,6 +6,7 @@
   import { untrack } from "svelte";
 
   import { nodeEvents } from "@app/lib/events";
+  import { setInboxItems } from "@app/lib/inboxRepos";
   import { invoke } from "@app/lib/invoke";
   import { latestOnly } from "@app/lib/latestOnly";
   import {
@@ -84,12 +85,17 @@
     return notificationsByRepo.reduce((acc, r) => acc + r.count, 0);
   }
 
+  $effect(() => {
+    setInboxItems(notificationsByRepo);
+    return () => setInboxItems(undefined);
+  });
+
   // Follow notifications that arrive or are cleared elsewhere, such as by the
-  // node or another instance of the app. The backend says when they change;
-  // new activity on an issue or patch already in the inbox leaves the count
-  // as it is.
-  // The count is refreshed along with the list, since the one this view was
-  // loaded with may be older than the list.
+  // node or another instance of the app, and status changes of the issues and
+  // patches they're about. New activity on an issue or patch already in the
+  // inbox doesn't change the count.
+  // Refresh the count with the list, since the count this view loaded with may
+  // be older than the list.
   onInvalidate(
     queryClient,
     () => keys.notificationList(),
