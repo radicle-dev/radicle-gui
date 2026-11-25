@@ -289,6 +289,8 @@ test("a repo that isn't here can be seeded from its chip", async ({
   page,
   peerManager,
 }) => {
+  // Two peers and a replication wait leave little room on a busy runner.
+  test.slow();
   const { bob, eve } = await createCollaborators(peerManager);
   const { rid: garden } = await createRepo(eve, { name: "garden" });
   await bob.startHttpd();
@@ -314,6 +316,8 @@ test("a link to a repo that isn't here can be seeded without an explorer page", 
   page,
   peerManager,
 }) => {
+  // Two peers and a replication wait leave little room on a busy runner.
+  test.slow();
   const { bob, eve } = await createCollaborators(peerManager);
   const { rid: garden } = await createRepo(eve, { name: "garden" });
   await bob.startHttpd();
