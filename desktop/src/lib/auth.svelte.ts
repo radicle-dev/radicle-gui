@@ -23,7 +23,12 @@ export async function checkAuth() {
       checkAuth,
       import.meta.env.VITE_AUTH_LONG_DELAY || 30_000,
     );
-    if (get(router.activeRouteStore).resource === "booting") {
+    // Only leave the booting screen after a failed authentication. On a
+    // normal start the route is still booting while the first page loads.
+    if (
+      startup.error !== undefined &&
+      get(router.activeRouteStore).resource === "booting"
+    ) {
       void router.push({ resource: "inbox" }).finally(deepLinksReady);
     } else {
       deepLinksReady();
