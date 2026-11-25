@@ -60,6 +60,7 @@
   import { flushBeforeClose } from "@app/lib/closeFlush";
   import { nodeRunning } from "@app/lib/events";
   import { invoke } from "@app/lib/invoke";
+  import { profileName } from "@app/lib/keyProfiles.svelte";
   import { show } from "@app/lib/modal";
   import { motion } from "@app/lib/motion";
   import { queryClient } from "@app/lib/query";
@@ -490,7 +491,17 @@
     );
   });
 
-  const people = $derived(assigneeOptions(issues, patches));
+  const people = $derived(
+    // Two keys of one profile share its name, so each keeps its own beside
+    // it.
+    assigneeOptions(issues, patches).map(person => {
+      const name = profileName(person.did);
+
+      return name === undefined
+        ? person
+        : { ...person, name: `${name} · ${person.name}` };
+    }),
+  );
   const allLabels = $derived(labelOptions(issues, patches));
 
   const itemCount = $derived(

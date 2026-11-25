@@ -15,6 +15,7 @@ import {
   PRIORITY_RANK,
   priorityOf,
 } from "@app/lib/board";
+import { publicKeyFromDid, truncateId } from "@app/lib/utils";
 
 // How a viewer arranges and filters a board. Kept per board in this browser
 // only.
@@ -266,7 +267,7 @@ export interface Person {
 export function assigneeOptions(issues: Issue[], patches: Patch[]): Person[] {
   const seen: Record<string, string> = {};
   for (const a of [...issues, ...patches].flatMap(i => i.assignees)) {
-    seen[a.did] = a.alias ?? `${a.did.slice(8, 16)}…`;
+    seen[a.did] = a.alias ?? truncateId(publicKeyFromDid(a.did));
   }
   return Object.entries(seen).map(([did, name]) => ({ did, name }));
 }

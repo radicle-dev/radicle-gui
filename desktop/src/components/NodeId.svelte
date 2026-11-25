@@ -15,8 +15,8 @@
   } from "@app/lib/useSharedRepoImage.svelte";
   import { didFromPublicKey, pluralize, truncateId } from "@app/lib/utils";
 
-  import ActorAvatar from "@app/components/ActorAvatar.svelte";
   import Icon from "@app/components/Icon.svelte";
+  import KeyAvatar from "@app/components/KeyAvatar.svelte";
   import Popover from "@app/components/Popover.svelte";
   import ProfileCard from "@app/components/ProfileCard.svelte";
 
@@ -493,11 +493,7 @@
         class="avatar-container"
         style:width={avatarSize}
         style:height={avatarSize}>
-        {#if profile}
-          <ActorAvatar actor={profile} styleWidth={avatarSize} />
-        {:else}
-          <UserAvatar nodeId={publicKey} styleWidth={avatarSize} />
-        {/if}
+        <KeyAvatar nodeId={publicKey} styleWidth={avatarSize} />
       </div>
       {#if !avatarOnly}
         {#if profile}

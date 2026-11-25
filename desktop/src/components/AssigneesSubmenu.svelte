@@ -1,10 +1,10 @@
 <script lang="ts">
   import type { Author } from "@bindings/cob/Author";
 
-  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
-
+  import { profileName } from "@app/lib/keyProfiles.svelte";
   import { publicKeyFromDid, truncateId } from "@app/lib/utils";
 
+  import KeyAvatar from "@app/components/KeyAvatar.svelte";
   import MenuCheckItem from "@app/components/MenuCheckItem.svelte";
 
   interface Props {
@@ -28,6 +28,15 @@
     return selected.some(other => other.did === author.did);
   }
 
+  // Two keys of one profile share its name, so the alias, or the key
+  // without one, tells them apart.
+  function label(author: Author): string {
+    const name = profileName(author.did);
+    const device = author.alias ?? truncateId(publicKeyFromDid(author.did));
+
+    return name === undefined ? device : `${name} · ${device}`;
+  }
+
   function toggle(author: Author) {
     selected = isSelected(author)
       ? selected.filter(other => other.did !== author.did)
@@ -39,11 +48,11 @@
 {#each options as author (author.did)}
   <MenuCheckItem
     checked={isSelected(author)}
-    label={author.alias ?? truncateId(publicKeyFromDid(author.did))}
+    label={label(author)}
     title={author.did}
     onclick={() => toggle(author)}>
     {#snippet leading()}
-      <UserAvatar nodeId={author.did} styleWidth="1rem" />
+      <KeyAvatar nodeId={author.did} styleWidth="1rem" />
     {/snippet}
   </MenuCheckItem>
 {/each}

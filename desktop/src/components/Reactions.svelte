@@ -2,7 +2,8 @@
   import type { Author } from "@bindings/cob/Author";
   import type { Reaction } from "@bindings/cob/Reaction";
 
-  import { emojiToTwemoji, publicKeyFromDid, truncateId } from "@app/lib/utils";
+  import { authorName } from "@app/lib/keyProfiles.svelte";
+  import { emojiToTwemoji, publicKeyFromDid } from "@app/lib/utils";
 
   interface Props {
     reactions: Reaction[];
@@ -13,7 +14,7 @@
   const { reactions, currentUserNid, handleReaction }: Props = $props();
 
   function authorsToTooltip(authors: Author[]) {
-    return authors.map(a => a.alias ?? a.did).join("\n");
+    return authors.map(authorName).join("\n");
   }
 
   function isMine(authors: Author[]) {
@@ -26,7 +27,7 @@
     if (currentUserNid && pk === currentUserNid) {
       return "You";
     }
-    return a.alias ?? truncateId(pk);
+    return authorName(a);
   }
 
   function formatAuthors(authors: Author[]) {

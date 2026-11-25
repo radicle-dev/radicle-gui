@@ -21,7 +21,6 @@
     shift,
     size,
   } from "@floating-ui/dom";
-  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
   import fuzzysort from "fuzzysort";
   import debounce from "lodash/debounce";
   import { useOverlayScrollbars } from "overlayscrollbars-svelte";
@@ -41,6 +40,7 @@
     cachedRepoSplitTreePath,
     cachedSearchAliases,
   } from "@app/lib/invoke";
+  import { profileName } from "@app/lib/keyProfiles.svelte";
   import { labs } from "@app/lib/labs";
   import type { Entity } from "@app/lib/mentions";
   import {
@@ -61,6 +61,7 @@
   import { formatOid, publicKeyFromDid, truncateId } from "@app/lib/utils";
 
   import Icon from "@app/components/Icon.svelte";
+  import KeyAvatar from "@app/components/KeyAvatar.svelte";
 
   type IconName = ComponentProps<typeof Icon>["name"];
 
@@ -73,7 +74,9 @@
     secondary?: string;
     mono?: boolean;
     icon?: IconName;
-    avatar?: string;
+    // Set when the suggestion is a key: the key, and its alias if it has one.
+    nid?: string;
+    alias?: string;
     badge?: "delegate" | "following" | "you";
     haystack: string;
   }
@@ -271,7 +274,8 @@
         primary: label,
         secondary: truncateId(target.nid),
         mono: alias === undefined,
-        avatar: target.nid,
+        nid: target.nid,
+        alias: alias ?? undefined,
         badge: badgeFor(target.nid, repo?.delegates ?? [], suggestions),
         haystack: label,
       };
@@ -546,7 +550,8 @@
           label: `@${label}`,
           primary: label,
           secondary: truncateId(nid),
-          avatar: nid,
+          nid,
+          alias: author.alias,
           badge: badgeFor(nid, delegates, aliases),
           mono: author.alias === undefined,
           named: author.alias !== undefined,
@@ -835,6 +840,10 @@
     }}>
     <div class="suggestions-scroll" bind:this={scrollEl}>
       {#each suggestions as suggestion, index (suggestion.key)}
+        {@const name =
+          suggestion.nid === undefined
+            ? undefined
+            : profileName(suggestion.nid)}
         <button
           type="button"
           bind:this={rowElements[index]}
@@ -845,15 +854,17 @@
             event.preventDefault();
             select(suggestion);
           }}>
-          {#if suggestion.avatar}
-            <UserAvatar nodeId={suggestion.avatar} styleWidth="1rem" />
+          {#if suggestion.nid}
+            <KeyAvatar nodeId={suggestion.nid} styleWidth="1rem" />
           {:else if suggestion.icon}
             <span class="suggestion-icon">
               <Icon name={suggestion.icon} />
             </span>
           {/if}
-          <span class="suggestion-primary" class:mono={suggestion.mono}>
-            {suggestion.primary}
+          <span
+            class="suggestion-primary"
+            class:mono={suggestion.mono && name === undefined}>
+            {name ?? suggestion.primary}
           </span>
           {#if suggestion.badge}
             <span class="suggestion-badge txt-body-s-medium">
@@ -861,7 +872,14 @@
             </span>
           {/if}
           {#if suggestion.secondary}
-            <span class="suggestion-secondary">{suggestion.secondary}</span>
+            <span class="suggestion-secondary">
+              <!-- Typing matches the alias, so it stays in sight beside the
+                   name that replaced it. -->
+              {#if name !== undefined && suggestion.alias !== undefined}
+                {suggestion.alias} ·
+              {/if}
+              {suggestion.secondary}
+            </span>
           {/if}
         </button>
       {/each}

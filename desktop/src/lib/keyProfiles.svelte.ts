@@ -7,7 +7,7 @@ import { createQuery } from "@radicle-gui/ui/lib/query.svelte";
 import { keyProfiles } from "@app/lib/cobQueries";
 import { labs } from "@app/lib/labs";
 import { queryClient } from "@app/lib/query";
-import { didFromPublicKey, publicKeyFromDid } from "@app/lib/utils";
+import { didFromPublicKey, publicKeyFromDid, truncateId } from "@app/lib/utils";
 
 // One observer for every key on the page, for as long as the app runs. Its
 // options follow the lab, so that turning the lab on finds the query in the
@@ -39,4 +39,21 @@ export function profileOf(key: string): ShownProfile | undefined {
   const rid = data?.keys[didFromPublicKey(publicKeyFromDid(key))];
 
   return rid === undefined ? undefined : data?.profiles[rid];
+}
+
+// The display name of the profile that `key` (a public key or its DID)
+// belongs to. Undefined when the key has no profile to show; the caller
+// then shows the alias.
+export function profileName(key: string): string | undefined {
+  return profileOf(key)?.profile.displayName;
+}
+
+// The name an author shows under wherever it is plain text: the profile's
+// display name, else the alias, else the shortened key.
+export function authorName(author: { did: string; alias?: string }): string {
+  return (
+    profileName(author.did) ??
+    author.alias ??
+    truncateId(publicKeyFromDid(author.did))
+  );
 }

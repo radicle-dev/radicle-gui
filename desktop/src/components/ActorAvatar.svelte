@@ -44,6 +44,11 @@
     display: block;
     object-fit: cover;
   }
+
+  .loading {
+    display: block;
+    flex-shrink: 0;
+  }
 </style>
 
 {#if image.url && !broken}
@@ -55,4 +60,9 @@
     onerror={() => (broken = true)} />
 {:else if patternId && (!named || image.failed || broken)}
   <UserAvatar nodeId={patternId} {styleWidth} />
+{:else}
+  <!-- Holds the picture's place while it loads, so that nothing beside it
+       moves when it arrives. -->
+  <span class="loading" style:width={styleWidth} style:height={styleWidth}>
+  </span>
 {/if}

@@ -360,7 +360,7 @@ describe("filter options", () => {
   test("lists each assignee once, by alias or shortened key", () => {
     expect(assigneeOptions(issues, patches)).toEqual([
       { did: alice.did, name: "alice" },
-      { did: bob.did, name: "bob…" },
+      { did: bob.did, name: "bob…bob" },
     ]);
     expect(assigneeOptions([], [])).toEqual([]);
   });

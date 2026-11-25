@@ -1,11 +1,10 @@
 <script lang="ts">
-  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
-
   import type { ReviewEntry } from "@app/lib/reviewSummary";
   import { reviewSummary, summaryTitle } from "@app/lib/reviewSummary";
   import { publicKeyFromDid } from "@app/lib/utils";
 
   import Icon from "@app/components/Icon.svelte";
+  import KeyAvatar from "@app/components/KeyAvatar.svelte";
 
   interface Props {
     reviews: ReviewEntry[];
@@ -107,7 +106,7 @@
     <span class="reviewer-stack">
       {#each state.authors.slice(0, 3) as author (author.did)}
         <span class="avatar">
-          <UserAvatar nodeId={publicKeyFromDid(author.did)} styleWidth="1rem" />
+          <KeyAvatar nodeId={publicKeyFromDid(author.did)} styleWidth="1rem" />
         </span>
       {/each}
       {#if state.authors.length > 3}

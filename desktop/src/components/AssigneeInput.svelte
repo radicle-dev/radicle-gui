@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { Author } from "@bindings/cob/Author";
 
-  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
   import debounce from "lodash/debounce";
 
   import type { AssigneeSuggestion } from "@app/lib/assigneeSuggestions";
@@ -12,6 +11,7 @@
   import { positionInputPopover } from "@app/lib/inputPopover";
   import { parseAssignee } from "@app/lib/inputValidation";
   import { cachedSearchAliases, invoke } from "@app/lib/invoke";
+  import { authorName, profileName } from "@app/lib/keyProfiles.svelte";
   import { portal } from "@app/lib/portal";
   import {
     authorForNodeId,
@@ -21,6 +21,7 @@
 
   import Button from "@app/components/Button.svelte";
   import Icon from "@app/components/Icon.svelte";
+  import KeyAvatar from "@app/components/KeyAvatar.svelte";
   import NodeId from "@app/components/NodeId.svelte";
   import TextInput from "@app/components/TextInput.svelte";
 
@@ -340,6 +341,7 @@
             {/if}
             {#each suggestions as suggestion, index (suggestion.did)}
               {@const nid = publicKeyFromDid(suggestion.did)}
+              {@const name = profileName(nid)}
               <button
                 type="button"
                 bind:this={rowElements[index]}
@@ -350,11 +352,12 @@
                   event.preventDefault();
                   selectSuggestion(suggestion);
                 }}>
-                <UserAvatar nodeId={nid} styleWidth="1rem" />
+                <KeyAvatar nodeId={nid} styleWidth="1rem" />
                 <span
                   class="suggestion-primary"
-                  class:mono={suggestion.alias === undefined}>
-                  {suggestion.alias ?? truncateId(nid)}
+                  class:mono={name === undefined &&
+                    suggestion.alias === undefined}>
+                  {authorName(suggestion)}
                 </span>
                 {#if suggestion.badge}
                   <span class="suggestion-badge txt-body-s-medium">
@@ -362,6 +365,9 @@
                   </span>
                 {/if}
                 <span class="suggestion-secondary">
+                  {#if name !== undefined && suggestion.alias !== undefined}
+                    {suggestion.alias} ·
+                  {/if}
                   {truncateId(nid)}
                 </span>
               </button>

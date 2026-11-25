@@ -1,7 +1,6 @@
 <script lang="ts">
-  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
-
   import Icon from "@app/components/Icon.svelte";
+  import KeyAvatar from "@app/components/KeyAvatar.svelte";
 
   interface Props {
     // Given when the chip navigates somewhere; otherwise it is a plain marker,
@@ -50,7 +49,7 @@
     class="chip compact"
     title="You have an unpublished review of this revision">
     <Icon name="edit" />
-    <UserAvatar nodeId={nid} styleWidth="1rem" />
+    <KeyAvatar nodeId={nid} styleWidth="1rem" />
   </span>
 {:else if onclick}
   <button

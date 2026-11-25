@@ -4,19 +4,15 @@
   import type { Comment } from "@bindings/cob/thread/Comment";
   import type { Thread } from "@bindings/cob/thread/Thread";
 
-  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
-
   import type { Resolution } from "@app/lib/commentResolutions";
+  import { authorName } from "@app/lib/keyProfiles.svelte";
   import { plainText } from "@app/lib/markdownPlain";
   import type { CommentAnchor } from "@app/lib/pierreComments";
   import { anchorOf, formatAnchorLines } from "@app/lib/pierreComments";
-  import {
-    formatResolvedCaption,
-    publicKeyFromDid,
-    truncateId,
-  } from "@app/lib/utils";
+  import { formatResolvedCaption, publicKeyFromDid } from "@app/lib/utils";
 
   import Icon from "@app/components/Icon.svelte";
+  import KeyAvatar from "@app/components/KeyAvatar.svelte";
   import Path from "@app/components/Path.svelte";
 
   interface Props {
@@ -48,9 +44,6 @@
   /// is. The avatar and the alias are the parts that matter at this size.
   function authorKey(author: Author): string {
     return publicKeyFromDid(author.did);
-  }
-  function authorName(author: Author): string {
-    return author.alias ?? truncateId(authorKey(author));
   }
 
   /// The last edit is the current text.
@@ -195,9 +188,7 @@
         class:selected={selectedId === thread.root.id}
         onclick={() => onSelect(thread.root.id, anchor)}>
         <span class="byline">
-          <UserAvatar
-            nodeId={authorKey(thread.root.author)}
-            styleWidth="1rem" />
+          <KeyAvatar nodeId={authorKey(thread.root.author)} styleWidth="1rem" />
           <span class="author">{authorName(thread.root.author)}</span>
           <span class="caption">commented</span>
           {#if isResolved}
@@ -221,7 +212,7 @@
           class:selected={selectedId === reply.id}
           onclick={() => onSelect(reply.id, anchor)}>
           <span class="byline">
-            <UserAvatar nodeId={authorKey(reply.author)} styleWidth="1rem" />
+            <KeyAvatar nodeId={authorKey(reply.author)} styleWidth="1rem" />
             <span class="author">{authorName(reply.author)}</span>
             <span class="caption">replied</span>
           </span>

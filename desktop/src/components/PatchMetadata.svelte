@@ -8,8 +8,6 @@
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
   import type { RepoRefs } from "@bindings/repo/RepoRefs";
 
-  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
-
   import { nodeRunning } from "@app/lib/events";
   import { invoke } from "@app/lib/invoke";
   import type { ReviewEntry } from "@app/lib/reviewSummary";
@@ -36,6 +34,7 @@
   import DropdownListItem from "@app/components/DropdownListItem.svelte";
   import Icon from "@app/components/Icon.svelte";
   import IdChip from "@app/components/IdChip.svelte";
+  import KeyAvatar from "@app/components/KeyAvatar.svelte";
   import LabelInput from "@app/components/LabelInput.svelte";
   import NodeId from "@app/components/NodeId.svelte";
   import Popover, { closeFocused } from "@app/components/Popover.svelte";
@@ -423,7 +422,7 @@
         {/if}
         <span class="reviewer-stack">
           {#each reviewAuthors.slice(0, 3) as author (author.did)}
-            <UserAvatar
+            <KeyAvatar
               nodeId={publicKeyFromDid(author.did)}
               styleWidth="1.125rem" />
           {/each}

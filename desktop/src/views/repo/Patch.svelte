@@ -11,14 +11,16 @@
   import type { Stats } from "@bindings/diff/Stats";
   import type { RepoInfo } from "@bindings/repo/RepoInfo";
 
-  import UserAvatar from "@radicle-gui/ui/components/UserAvatar.svelte";
   import { createQuery } from "@radicle-gui/ui/lib/query.svelte";
   import countBy from "lodash/countBy";
   import { tick } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
 
   import { patchDetail } from "@app/lib/cobQueries";
-  import { commentSourcesOf } from "@app/lib/commentSources";
+  import {
+    commentSourcesOf,
+    STANDALONE_COMMENTS,
+  } from "@app/lib/commentSources";
   import { checkedFileProgress } from "@app/lib/diffText";
   import { draftReviewStorage } from "@app/lib/draftReviewStorage";
   import { nodeRunning } from "@app/lib/events";
@@ -29,6 +31,7 @@
     cachedListCommits,
     invoke,
   } from "@app/lib/invoke";
+  import { authorName, profileName } from "@app/lib/keyProfiles.svelte";
   import { scrollBehavior } from "@app/lib/motion";
   import { setPatchActivitySource } from "@app/lib/patchActivityContext";
   import { patchContributions } from "@app/lib/patchContributions";
@@ -58,6 +61,7 @@
   import DropdownListItem from "@app/components/DropdownListItem.svelte";
   import EditableTitle from "@app/components/EditableTitle.svelte";
   import Icon from "@app/components/Icon.svelte";
+  import KeyAvatar from "@app/components/KeyAvatar.svelte";
   import NodeId from "@app/components/NodeId.svelte";
   import PatchMetadata from "@app/components/PatchMetadata.svelte";
   import PatchStateButton from "@app/components/PatchStateButton.svelte";
@@ -968,8 +972,7 @@
           </button>
           <Icon name="chevron-right" />
           <span style:color="var(--color-text-secondary)">
-            Review by {currentReview.author.alias ??
-              currentReview.author.did.slice(0, 16)}
+            Review by {authorName(currentReview.author)}
           </span>
         {:else}
           <span class="breadcrumb-title">{patch.title}</span>
@@ -1171,7 +1174,7 @@
                             <Icon name={hidden ? "eye-slash" : "eye"} />
                             <span class="avatar-stack">
                               {#each source.nids.slice(0, 2) as nid (nid)}
-                                <UserAvatar nodeId={nid} styleWidth="1rem" />
+                                <KeyAvatar nodeId={nid} styleWidth="1rem" />
                               {/each}
                               {#if source.nids.length > 2}
                                 <span class="avatar-overflow">+</span>
@@ -1181,7 +1184,9 @@
                               style:color={hidden
                                 ? "var(--color-text-tertiary)"
                                 : undefined}>
-                              {source.name}
+                              {source.id === STANDALONE_COMMENTS
+                                ? source.name
+                                : (profileName(source.nids[0]) ?? source.name)}
                             </span>
                             <div
                               class="global-flex"
